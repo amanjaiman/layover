@@ -7,12 +7,13 @@ on:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
-            cmd: npx electron-builder --win nsis
+            cmd: npx electron-builder --win nsis --publish never
           - os: macos-latest
-            cmd: npx electron-builder --mac zip dmg --arm64 --x64
+            cmd: npx electron-builder --mac zip dmg --arm64 --x64 --publish never
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
