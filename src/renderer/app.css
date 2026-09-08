@@ -372,3 +372,38 @@ body.compact .tk-split.has-detail .tk-list{ display:none; }
 .tk-detail > *{ min-width:0; }
 .tk-detail-f{ min-width:0; }
 .tk-detail-f .t-small{ white-space:nowrap; }
+
+/* ==========================================================
+   v0.3.1 — audit fixes
+   ========================================================== */
+.row{ display:flex; flex-wrap:wrap; gap:var(--s2); align-items:center; }
+code.path{ overflow-wrap:anywhere; word-break:normal; }
+.tl > *{ min-width:0; }
+.tl-turn > span:first-of-type{ min-width:0; }
+.tl-end-text{ min-width:0; }
+.tl-end-actions{ flex-wrap:wrap; }
+.thread-h .btn.small{ flex:none; }
+/* toolbar: one height for the button and the segment */
+.tk-bar > .btn, .tk-bar > .seg{ height:34px; box-sizing:border-box; }
+.tk-bar > .seg{ align-items:center; }
+.tk-bar > .btn{ padding-top:0; padding-bottom:0; }
+.prio.p0 i{ display:none; }
+/* break: two columns when there is room */
+.break{ max-width:none; grid-template-columns:minmax(0,1fr); }
+.break-timer{ display:grid; gap:var(--s3); align-content:start; }
+.break-side{ display:grid; gap:var(--s3); align-content:start; }
+body:not(.compact) .break-grid{ display:grid; grid-template-columns:minmax(280px, 1fr) minmax(0, 1.3fr); gap:var(--s5); align-items:start; }
+/* collapsible rail */
+body.rail-collapsed .app{ grid-template-columns:60px minmax(0,1fr); }
+body.rail-collapsed .rail .mark span:not(.mark-o), body.rail-collapsed .rail-h .t-eyebrow, body.rail-collapsed .ws-name, body.rail-collapsed .ws-sub, body.rail-collapsed .rail-btn .lbl{ display:none; }
+body.rail-collapsed .rail-top{ justify-content:center; padding:0; }
+body.rail-collapsed .rail-h{ justify-content:center; padding-inline:0; }
+body.rail-collapsed .ws{ grid-template-columns:30px; justify-items:center; padding:7px 0; position:relative; }
+body.rail-collapsed .ws .dot{ position:absolute; right:8px; top:8px; width:7px; height:7px; }
+body.rail-collapsed .ws > span:nth-child(2){ display:none; }
+body.rail-collapsed .rail-btn{ justify-content:center; padding:7px 0; }
+body.rail-collapsed .rail-list{ padding:0 var(--s2); }
+.rail-btn .lbl{ white-space:nowrap; }
+/* shortcut sheet */
+.keys{ display:grid; grid-template-columns:auto 1fr; gap:8px var(--s3); align-items:center; font-size:14px; color:var(--text-2); }
+.keys kbd{ justify-self:start; }

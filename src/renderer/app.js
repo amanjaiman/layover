@@ -62,6 +62,17 @@
   function projectName(p) { return p?.displayName || p?.name || 'Workspace'; }
   function isEngaged() { const a = document.activeElement; const editing = a && $('#view')?.contains(a) && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT'); return (editing && Date.now() - S.lastInteraction < 15000) || Date.now() - S.lastInteraction < 5000; }
   function ticketKey(t) { return `${project()?.prefix || 'WS'}-${t.number}`; }
+  /** Mirror of the hook's turnTitle, so turns recorded before v0.3.1 read cleanly too. */
+  function cleanTitle(raw) {
+    raw = String(raw || '').trim();
+    if (!raw) return '';
+    if (/^\s*<(task-notification|system-reminder|ci-monitor-event|command-name)/i.test(raw)) return 'Follow-up from a background task';
+    let t = raw.replace(/<[^>]{1,80}>/g, ' ').replace(/```[\s\S]*?```/g, ' ').replace(/^[#>*\-\s]+/, '').replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim();
+    const m = t.match(/^(.{12,80}?[.!?])(\s|$)/);
+    if (m) t = m[1];
+    return t.length > 80 ? t.slice(0, 79) + '…' : t;
+  }
+  function typing() { const a = document.activeElement; return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable); }
 
   // ---------- derived ----------
   function project() { return S.state?.projects.find(p => p.id === S.project) || null; }
@@ -132,6 +143,15 @@
     $('#btn-compact').addEventListener('click', () => api.setWindowMode('compact'));
     $('#btn-expand').addEventListener('click', () => api.setWindowMode('expanded'));
     $('#compact-ws').addEventListener('change', e => switchProject(e.target.value));
+    $('#btn-rail').addEventListener('click', () => toggleRail());
+    if (S.settings.window?.railCollapsed) toggleRail(true);
+  }
+  function shortcutSheet() {
+    const K = (k) => el('kbd', { text: k });
+    const rows = [['n', 'New ticket'], ['r', 'Reply to the latest item (Now)'], ['j', 'k', 'Move between tickets'], ['e', 'Edit the selected ticket'], ['Esc', 'Close a sheet, menu, or ticket'], ['[', 'Collapse or expand the sidebar'], ['?', 'This list'], ['Ctrl+1…4', 'Now · Next · Notes · Break'], ['Ctrl+N', 'New ticket from anywhere'], ['Ctrl+Shift+C', 'Compact companion'], ['Ctrl+,', 'Settings']];
+    const grid = el('div', { class: 'keys' });
+    for (const r of rows) { const label = r.pop(); grid.append(el('span', {}, ...r.flatMap((k, i) => [i ? ' / ' : null, K(k)]).filter(Boolean)), el('span', { text: label })); }
+    sheet([el('h2', { text: 'Shortcuts' }), el('p', { class: 't-small', text: 'Single keys work when you are not typing in a field.' }), grid, el('div', { class: 'card-actions', style: 'justify-content:flex-end' }, el('button', { class: 'btn primary', onclick: closeOverlay }, 'Close'))]);
   }
   function visibleProjects() { return (S.state?.projects || []).filter(p => !p.hidden).sort((a, b) => b.lastActive - a.lastActive); }
   async function loadUser(id) { S.users[id] = await call(api.getUser(id)); return S.users[id]; }
@@ -190,7 +210,7 @@
   }
   function tick() {
     if (!isEngaged() && S.pendingRefresh) { S.pendingRefresh = false; render(); }
-    else { renderRail(); renderHead(); }
+    else { renderRail(); renderHead(); refreshElapsed(); }
     const br = S.settings.breakReminder;
     if (br?.enabled && S.view !== 'break' && Date.now() - S.lastBreak > br.minutes * 60000 && Date.now() - S.reminderShown > br.minutes * 60000) {
       S.reminderShown = Date.now();
@@ -198,9 +218,45 @@
       else toast({ text: `You've been at it for ${br.minutes} minutes. Take a short break?`, ttl: 0, actions: [{ label: 'Take a break', primary: true, fn: () => setView('break') }, { label: 'Later', fn: () => {} }] });
     }
   }
+  /** Update the "Working · 3 min" chips in place so threads breathe without re-rendering. */
+  function refreshElapsed() {
+    if (S.view !== 'now' || !S.project) return;
+    for (const card of document.querySelectorAll('.thread.working')) {
+      const t = threadsOf(S.project).find(x => x.task.id === card.dataset.task); if (!t?.latest) continue;
+      const l = card.querySelector('.status .l'), s = card.querySelector('.status .s');
+      if (l) l.textContent = `Working · ${dur(Date.now() - t.latest.startedAt)}`; if (s) s.textContent = dur(Date.now() - t.latest.startedAt);
+    }
+  }
+  function toggleRail(force) {
+    const on = force === undefined ? !document.body.classList.contains('rail-collapsed') : !!force;
+    document.body.classList.toggle('rail-collapsed', on);
+    S.settings.window.railCollapsed = on; api.setSettings({ window: { railCollapsed: on } });
+    const b = $('#btn-rail'); if (b) b.setAttribute('aria-label', on ? 'Expand sidebar' : 'Collapse sidebar');
+  }
   function onKey(e) {
     const mod = e.ctrlKey || e.metaKey;
-    if (e.key === 'Escape') { closeOverlay(); closePopover(); return; }
+    if (e.key === 'Escape') {
+      if ($('#overlay').firstChild || S.popover) { closeOverlay(); closePopover(); return; }
+      if (S.view === 'tickets' && S.ticket) { S.ticket = null; savePlace(); render(true); return; }
+      if (typing()) document.activeElement.blur();
+      return;
+    }
+    if (!mod && !e.altKey && !typing() && !$('#overlay').firstChild) {
+      // Page shortcuts: single keys, only when nothing is being edited.
+      if (e.key === '?') { e.preventDefault(); shortcutSheet(); return; }
+      if (e.key === '[') { e.preventDefault(); toggleRail(); return; }
+      if (e.key === 'n' && S.project) { e.preventDefault(); if (S.view !== 'tickets') setView('tickets'); newTicket(); return; }
+      if (e.key === 'r' && S.view === 'now') { e.preventDefault(); const b = $('.tl-item.hot .tl-actions .btn') || $('.tl-item .tl-actions .btn'); if (b) b.click(); return; }
+      if (S.view === 'tickets' && (e.key === 'j' || e.key === 'k')) {
+        e.preventDefault();
+        const rows = [...document.querySelectorAll('.tk-row')]; if (!rows.length) return;
+        const i = rows.findIndex(r => r.classList.contains('selected'));
+        const next = rows[Math.max(0, Math.min(rows.length - 1, i < 0 ? 0 : i + (e.key === 'j' ? 1 : -1)))];
+        next.click(); next.scrollIntoView({ block: 'nearest' }); return;
+      }
+      if (e.key === 'e' && S.view === 'tickets' && S.ticket) { e.preventDefault(); $('.tk-detail .tk-title-in')?.focus(); return; }
+      return;
+    }
     if (!mod) return;
     if (e.key >= '1' && e.key <= '4') { e.preventDefault(); setView(VIEWS[Number(e.key) - 1][0]); }
     else if (e.key === ',') { e.preventDefault(); openSettings({}); }
@@ -237,7 +293,8 @@
     const tabs = el('div', { class: 'tabs', role: 'tablist' });
     for (const [id, label] of VIEWS) {
       const count = id === 'now' ? open : id === 'tickets' ? active : 0;
-      tabs.append(el('button', { class: 'tab', role: 'tab', 'aria-selected': S.view === id ? 'true' : 'false', onclick: () => setView(id) }, label, count ? el('span', { class: 'count' + (id === 'now' && st.cls === 'attention' ? ' hot' : ''), text: String(count) }) : null));
+      const tip = id === 'now' ? 'Open items from agents' : id === 'tickets' ? 'Tickets in Todo or In progress' : '';
+      tabs.append(el('button', { class: 'tab', role: 'tab', title: tip || null, 'aria-selected': S.view === id ? 'true' : 'false', onclick: () => setView(id) }, label, count ? el('span', { class: 'count' + (id === 'now' && st.cls === 'attention' ? ' hot' : ''), text: String(count) }) : null));
     }
     if (S.mode !== 'compact') h.append(row, tabs); else h.append(row);
   }
@@ -289,7 +346,7 @@
     const latest = t.latest;
     const card = el('section', { class: 'thread ' + t.status, dataset: { task: t.task.id } });
     // header
-    const title = latest?.title || t.task.name || 'Conversation';
+    const title = cleanTitle(latest?.title) || (t.task.name && !/^(claude|codex):/.test(t.task.name) ? t.task.name : 'Conversation');
     const statusChip = t.status === 'working' ? el('span', { class: 'status working' }, el('span', { class: 'dot working' }), ...lbl(`Working · ${dur(Date.now() - latest.startedAt)}`, dur(Date.now() - latest.startedAt)))
       : t.status === 'attention' ? el('span', { class: 'status attention' }, el('span', { class: 'dot attention' }), ...lbl('Waiting on you', 'Waiting'))
       : t.status === 'completed' ? el('span', { class: 'status done' }, el('span', { class: 'dot done' }), ...lbl(`Finished ${ago(latest.endedAt)}`, 'Done'))
@@ -299,9 +356,9 @@
       : el('span', { class: 'status' }, el('span', { class: 'dot quiet' }), 'Idle');
     card.append(el('div', { class: 'thread-h' },
       el('span', { class: 'agent ' + agent, text: short }),
-      el('div', { class: 'thread-t' }, el('b', { text: title }), el('span', { text: `${who} · ${t.runs.length} turn${t.runs.length === 1 ? '' : 's'} · ${t.task.source ? t.task.source.split('\n')[0] : ''}` })),
+      el('div', { class: 'thread-t' }, el('b', { text: title }), el('span', { text: `${who} · ${t.runs.length} turn${t.runs.length === 1 ? '' : 's'} · started ${clock(t.runs[0]?.startedAt || t.task.createdAt)}` })),
       statusChip,
-      el('button', { class: 'icon-btn', title: `How to return to ${who}`, 'aria-label': 'How to return', onclick: () => returnSheet(latest || { agent, task: t.task.id, id: '', source: t.task.source }) }, svg(ICON.arrow, 14))));
+      el('button', { class: 'btn small ghost', title: `How to return to ${who}`, 'aria-label': 'How to return', onclick: () => returnSheet(latest || { agent, task: t.task.id, id: '', source: t.task.source }) }, el('span', { class: 'l', text: 'Return' }), svg(ICON.arrow, 13))));
     // timeline entries in time order
     const entries = [];
     for (const r of t.runs) {
@@ -317,9 +374,10 @@
     if (shown.length < entries.length) tl.append(el('button', { class: 'btn small ghost tl-more', onclick: () => { S.expandedThreads.add(t.task.id); render(true); } }, `Show ${entries.length - shown.length} earlier`));
     const openLatest = [...t.items].reverse().find(i => i.status === 'open' && !i.userDismissed);
     for (const e of shown) {
-      if (e.kind === 'turn') tl.append(el('div', { class: 'tl-turn' }, el('i'), el('span', { text: e.run.title || 'Turn' }), el('span', { class: 'tl-time', text: clock(e.at) })));
+      if (e.kind === 'turn') tl.append(el('div', { class: 'tl-turn' }, el('i'), el('span', { text: cleanTitle(e.run.title) || `Turn ${t.runs.indexOf(e.run) + 1}` }), el('span', { class: 'tl-time', text: clock(e.at) })));
       else if (e.kind === 'item') tl.append(itemEntry(e.item, u, openLatest && e.item.key === openLatest.key && t.status !== 'completed'));
-      else tl.append(endEntry(e.run, who, quiet));
+      // Only the latest turn's ending deserves the prominent row; older completions read as quiet history.
+      else tl.append(endEntry(e.run, who, quiet || e.run.id !== latest?.id));
     }
     if (t.status === 'working' && !shown.some(e => e.kind === 'item' && e.item.runStatus === 'active')) tl.append(el('div', { class: 'tl-quiet', text: 'Working quietly. Items the agent leaves for you will appear here.' }));
     card.append(tl);
@@ -406,7 +464,7 @@
     const all = u.tickets;
     const visible = all.filter(t => FILTERS[S.ticketFilter].includes(t.status));
     const bar = el('div', { class: 'tk-bar' },
-      el('button', { class: 'btn primary small', onclick: () => newTicket() }, svg(ICON.plus, 12), ...lbl('New ticket', 'New')),
+      el('button', { class: 'btn primary', onclick: () => newTicket() }, svg(ICON.plus, 12), ...lbl('New ticket', 'New')),
       seg([['active', 'Active'], ['backlog', 'Backlog'], ['done', 'Done'], ['all', 'All']], S.ticketFilter, v => { S.ticketFilter = v; savePlace(); render(true); }),
       el('span', { class: 'spacer' }),
       el('span', { class: 't-small l', text: `${visible.length} of ${all.length}` }));
@@ -524,13 +582,15 @@
     const startBtn = el('button', { class: 'btn primary', onclick: () => { if (S.breakTimer) stopBreak(); else startBreak(setTime, startBtn); startBtn.textContent = S.breakTimer ? 'Stop' : 'Start'; } }, S.breakTimer ? 'Stop' : 'Start');
     row.append(startBtn);
     for (const m of [3, 5, 10]) row.append(el('button', { class: 'btn ghost small', onclick: () => { if (S.breakTimer) stopBreak(); S.breakTotal = m * 60; S.breakLeft = S.breakTotal; setTime(); startBtn.textContent = 'Start'; } }, `${m} min`));
-    box.append(ring, row);
-    box.append(el('div', { class: 'card sunk stretch' }, el('span', { class: 't-eyebrow', text: name }), el('p', { text }), el('div', { class: 'card-actions' }, el('button', { class: 'btn small ghost', onclick: () => { S.stretchIndex++; render(true); } }, 'Another one'))));
     const br = S.settings.breakReminder;
-    box.append(el('div', { class: 'card', style: 'padding-top:6px;padding-bottom:6px' },
-      switchRow('Remind me to take breaks', 'A quiet nudge, never a takeover unless you ask for it.', br.enabled, v => saveBreak({ enabled: v })),
-      el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'Every' })), el('select', { class: 'input', style: 'width:auto', onchange: e => saveBreak({ minutes: Number(e.target.value) }) }, ...[15, 30, 45, 60, 90].map(m => el('option', { value: m, selected: br.minutes === m, text: `${m} minutes` })))),
-      el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'When it is time' }), el('span', { text: 'Automatic entry waits until you have stopped typing.' })), seg([['suggest', 'Suggest'], ['auto', 'Enter break']], br.mode, v => saveBreak({ mode: v })))));
+    const timer = el('div', { class: 'break-timer' }, ring, row);
+    const side = el('div', { class: 'break-side' },
+      el('div', { class: 'card sunk stretch' }, el('span', { class: 't-eyebrow', text: name }), el('p', { text }), el('div', { class: 'card-actions' }, el('button', { class: 'btn small ghost', onclick: () => { S.stretchIndex++; render(true); } }, 'Another one'))),
+      el('div', { class: 'card', style: 'padding-top:6px;padding-bottom:6px' },
+        switchRow('Remind me to take breaks', 'A quiet nudge, never a takeover unless you ask for it.', br.enabled, v => saveBreak({ enabled: v })),
+        el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'Every' })), el('select', { class: 'input', style: 'width:auto', onchange: e => saveBreak({ minutes: Number(e.target.value) }) }, ...[15, 30, 45, 60, 90].map(m => el('option', { value: m, selected: br.minutes === m, text: `${m} minutes` })))),
+        el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'When it is time' }), el('span', { text: 'Automatic entry waits until you have stopped typing.' })), seg([['suggest', 'Suggest'], ['auto', 'Enter break']], br.mode, v => saveBreak({ mode: v })))));
+    box.append(el('div', { class: 'break-grid' }, timer, side));
     wrap.append(box);
     S.lastBreak = Date.now();
   }
@@ -546,19 +606,16 @@
     pop.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - w - 8)) + 'px'; pop.style.top = Math.min(rect.bottom + 8, window.innerHeight - pop.offsetHeight - 8) + 'px';
     setTimeout(() => document.addEventListener('pointerdown', onDocDown), 0);
   }
+  /** The status chip opens a small workspace card: folder, conversations, prefix. Runs live in the threads. */
   function runsPopover(anchor) {
     closePopover();
-    const p = project(); const runs = runsOf(p.id).slice(0, 12); const tasks = tasksOf(p.id);
-    const pop = el('div', { class: 'pop', role: 'dialog', 'aria-label': 'Runs' });
-    pop.append(el('div', { class: 'section-h', style: 'margin:0 0 6px' }, el('span', { class: 't-eyebrow', text: 'Runs' }), el('span', { class: 'spacer' }), el('span', { class: 't-small', text: `${tasks.length} conversation${tasks.length === 1 ? '' : 's'}` })));
-    if (!runs.length) pop.append(el('p', { class: 't-small', text: 'No runs yet in this workspace.' }));
-    for (const r of runs) {
-      pop.append(el('div', { class: 'run-row' },
-        el('div', { class: 'l1' }, el('span', { class: 'dot ' + (r.status === 'active' ? 'working' : r.status === 'completed' ? 'done' : r.status === 'failed' ? 'failed' : 'attention') }), el('span', { text: `${AGENT[r.agent] || r.agent} · ${r.title || 'Working'}` }), el('span', { class: 'spacer', style: 'flex:1' }), el('span', { class: 'chip', text: r.status === 'active' ? 'working' : r.status })),
-        el('div', { class: 'l2', text: `${r.status === 'active' ? 'started ' + ago(r.startedAt) : (r.endedAt ? 'ended ' + ago(r.endedAt) + ' · ran ' + dur(r.endedAt - r.startedAt) : '')}${r.lifecycle === 'hooks' ? ' · lifecycle via hooks' : r.lifecycle === 'voluntary' ? ' · reported by the agent' : ''}` }),
-        el('div', { class: 'l2' }, el('button', { class: 'btn small ghost', onclick: () => { closePopover(); returnSheet(r); } }, 'How to return'), r.agent === 'codex' ? el('button', { class: 'btn small ghost', onclick: () => { closePopover(); sendSheet(r); } }, 'Send to Codex…') : null)));
-    }
-    if (p.path) pop.append(el('div', { class: 'run-row' }, el('div', { class: 'l2' }, 'Folder: ', el('code', { class: 'path', text: p.path }), ' ', el('button', { class: 'btn small ghost', onclick: () => api.openPath(p.path) }, 'Open'))));
+    const p = project(); const tasks = tasksOf(p.id); const active = activeRuns(p.id);
+    const pop = el('div', { class: 'pop', role: 'dialog', 'aria-label': 'Workspace' });
+    pop.append(el('div', { class: 'section-h', style: 'margin:0 0 6px' }, el('span', { class: 't-eyebrow', text: 'Workspace' }), el('span', { class: 'spacer' }), el('span', { class: 'chip', text: p.prefix })));
+    pop.append(el('div', { class: 'run-row' }, el('div', { class: 'l1' }, el('b', { text: projectName(p) })), el('div', { class: 'l2', text: `${tasks.length} conversation${tasks.length === 1 ? '' : 's'}${active.length ? ` · ${active.length} working now` : ''}` })));
+    if (p.path) pop.append(el('div', { class: 'run-row' }, el('div', { class: 'l2' }, el('code', { class: 'path', text: p.path })), el('div', { class: 'l2' }, el('button', { class: 'btn small ghost', onclick: () => api.openPath(p.path) }, 'Open folder'), el('button', { class: 'btn small ghost', onclick: () => { api.copy(p.path); toast({ text: 'Path copied.', ttl: 3000 }); } }, 'Copy path'))));
+    const codexRun = runsOf(p.id).find(r => r.agent === 'codex');
+    pop.append(el('div', { class: 'run-row' }, el('div', { class: 'l2' }, el('button', { class: 'btn small ghost', onclick: () => { closePopover(); openSettings({}); } }, 'Workspace settings'), codexRun ? el('button', { class: 'btn small ghost', onclick: () => { closePopover(); sendSheet(codexRun); } }, 'Send to Codex…') : null)));
     place(pop, anchor);
   }
   function onDocDown(e) { if (S.popover && !S.popover.contains(e.target)) closePopover(); }

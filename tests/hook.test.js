@@ -1,6 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mapHook, resolveLatest } from '../src/cli/hook.js';
+import { mapHook, resolveLatest, turnTitle } from '../src/cli/hook.js';
+
+test('turn titles are short, tag-free, and name system-generated turns', () => {
+  assert.equal(turnTitle('<task-notification>\n<task-id>abc</task-id>'), 'Follow-up from a background task');
+  assert.equal(turnTitle('Great start, and I mostly love the look of the app. Couple problems I am noticing: 1. Claude...'), 'Great start, and I mostly love the look of the app.');
+  assert.equal(turnTitle('## Fix the **build**\n```js\nx\n```'), 'Fix the build');
+  assert.equal(turnTitle('x'.repeat(200)).length, 80);
+  assert.equal(turnTitle(''), '');
+});
 import { projectIdFromPath } from '../src/main/paths.js';
 
 const common = { session_id: 'abc', cwd: 'C:\\work\\site', transcript_path: 'x' };

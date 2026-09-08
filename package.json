@@ -1,7 +1,7 @@
 {
   "name": "layover",
   "productName": "Layover",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "A calm companion for the time while your coding agent works.",
   "main": "src/main/main.js",
   "type": "module",
@@ -21,3 +21,4 @@
     "electron-builder": "26.15.3"
   }
 }
+

@@ -28,6 +28,9 @@ Uninstall from Windows Settings, or run `Uninstall Layover.exe`. Your data in `%
 - **Break**: stretch prompts, a timer, and optional reminders (suggest, or enter the break automatically once you stop typing).
 - **Return to the agent**: shows the session and a copyable resume command; Layover never pretends it can focus another window.
 - **Compact companion**: the same app at 400×580, floating, with a workspace picker and short labels. `Ctrl+Shift+C`.
+- **Keyboard**: `n` new ticket, `r` reply to the latest item, `j`/`k` move between tickets, `e` edit, `Esc` close, `[` collapse the sidebar, `?` the full list. `Ctrl+1…4` switch views.
+
+The design audit that drove 0.3.1, with the open questions, is in [docs/DESIGN-AUDIT.md](docs/DESIGN-AUDIT.md).
 
 **Focus.** The start of a turn is the one moment Layover comes forward (you just pressed Enter and are waiting). Items and completions never move the window, and a switch to another workspace is offered rather than forced while you're typing. Settings → *When an agent starts a turn* offers: bring Layover forward (default), open behind my work, only if already open, stay quiet.
 

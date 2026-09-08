@@ -9,6 +9,17 @@ function oneLine(s, max = 90) {
   return t.length > max ? t.slice(0, max - 1) + '…' : t;
 }
 
+/** A short human title for a turn: no tags or markdown, first sentence, and a plain name for system-generated turns. */
+export function turnTitle(prompt) {
+  const raw = String(prompt || '').trim();
+  if (!raw) return '';
+  if (/^\s*<(task-notification|system-reminder|ci-monitor-event|command-name)/i.test(raw)) return 'Follow-up from a background task';
+  let t = raw.replace(/<[^>]{1,80}>/g, ' ').replace(/```[\s\S]*?```/g, ' ').replace(/^[#>*\-\s]+/, '').replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim();
+  const m = t.match(/^(.{12,80}?[.!?])(\s|$)/);
+  if (m) t = m[1];
+  return oneLine(t, 80);
+}
+
 /** Turn a hook payload into {events, context, open}. `context` is printed to stdout when allowed. */
 export function mapHook(agent, input, { hookContext = true } = {}) {
   if (!['claude', 'codex'].includes(agent)) throw Error('agent must be claude or codex');
@@ -37,7 +48,7 @@ export function mapHook(agent, input, { hookContext = true } = {}) {
       break;
     case 'UserPromptSubmit': {
       const r = run || `${task}:${now}`;
-      const title = oneLine(input.prompt) || 'Working';
+      const title = turnTitle(input.prompt) || 'Working';
       events.push({ ...base, id: `start:${r}`, type: 'start', run: r, seq: 0, title, source, lifecycle: 'hooks', sessionId: session });
       open = { project, task, run, reason: 'run-start' };
       if (hookContext) context = `Layover is open for this workspace (run ${r}). When you make a consequential decision, need the user's input, or spot an opportunity worth saving, publish it: layover item --run ${r} --kind decision|question|opportunity|suggestion --text "..." (one short call per item; keep going unless you truly need an answer). Use --waiting when you will stop for it.`;
