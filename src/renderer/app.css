@@ -541,3 +541,22 @@ body.compact .app, body.compact.rail-collapsed .app{ grid-template-columns:minma
 .bubble-top{ display:flex; align-items:center; gap:6px; }
 .bubble{ cursor:default; }
 @media (prefers-reduced-motion: reduce){ .app, .tl-wrap, .tl-wrap > .tl{ transition:none; } }
+
+/* ==========================================================
+   v0.3.6 — Next: inline titles, prompt folds open under the row
+   ========================================================== */
+.tk-item{ display:grid; }
+.tk-item.open > .tk-row{ background:var(--surface); border-radius:var(--r-md) var(--r-md) 0 0; }
+.tk-prompt-wrap{ display:grid; grid-template-rows:0fr; transition:grid-template-rows var(--dur-calm) var(--ease-out); }
+.tk-item.open > .tk-prompt-wrap{ grid-template-rows:1fr; }
+.tk-prompt{ min-height:0; overflow:hidden; }
+.tk-prompt-in{ padding:2px 10px 12px 44px; display:grid; gap:8px; background:var(--surface); border-radius:0 0 var(--r-md) var(--r-md); }
+.tk-item.open{ box-shadow:var(--e1); border-radius:var(--r-md); margin-bottom:4px; }
+body.compact .tk-prompt-in{ padding-left:10px; }
+.tk-prompt-f{ display:flex; align-items:center; gap:10px; }
+.tk-prompt-btn{ flex:none; color:var(--text-faint); padding:3px 8px; }
+.tk-prompt-btn.has{ color:var(--accent-text); }
+.tk-prompt-btn[aria-expanded="true"]{ background:var(--surface-2); color:var(--text); }
+.tk-title-row{ flex:1; min-width:0; border:none; background:transparent; font-size:14.5px; padding:0; color:var(--text); }
+.tk-title-row:focus{ outline:none; }
+@media (prefers-reduced-motion: reduce){ .tk-prompt-wrap{ transition:none; } }

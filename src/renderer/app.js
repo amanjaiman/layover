@@ -37,7 +37,7 @@
     state: null, settings: null, project: null, view: 'now', mode: 'expanded', users: {},
     viewKey: '', pendingRefresh: false, acked: {}, offers: new Map(), theme: 'system',
     brk: { timer: null, left: 300, total: 300, stretch: 0, lastStretchAt: 0 }, lastBreak: Date.now(), reminderShown: 0, reminderToast: null,
-    lastInteraction: 0, popover: null, notesConflict: null, ticket: null, ticketFilter: 'active', expandedThreads: new Set(), flushers: {},
+    lastInteraction: 0, popover: null, notesConflict: null, ticket: null, ticketFilter: 'active', expandedThreads: new Set(), flushers: {}, promptOpen: new Set(), editingTitle: null,
   };
 
   // ---------- helpers ----------
@@ -205,7 +205,7 @@
   }
   function shortcutSheet() {
     const K = (k) => el('kbd', { text: k });
-    const rows = [['n', 'New in Next'], ['r', 'Reply to the latest item (Now)'], ['j', 'k', 'Move through Next'], ['e', 'Edit the selected entry'], ['Esc', 'Close a sheet, menu, or entry'], ['[', 'Collapse or expand the sidebar'], ['?', 'This list'], ['Ctrl+1…4', 'Now · Next · Notes · Break'], ['Ctrl+N', 'New in Next from anywhere'], ['Ctrl+Shift+C', 'Compact companion'], ['Ctrl+,', 'Settings']];
+    const rows = [['n', 'New in Next'], ['p', 'Open the prompt of the selected entry'], ['r', 'Reply to the latest item (Now)'], ['j', 'k', 'Move through Next'], ['e', 'Edit the selected entry'], ['Esc', 'Close a sheet, menu, or entry'], ['[', 'Collapse or expand the sidebar'], ['?', 'This list'], ['Ctrl+1…4', 'Now · Next · Notes · Break'], ['Ctrl+N', 'New in Next from anywhere'], ['Ctrl+Shift+C', 'Compact companion'], ['Ctrl+,', 'Settings']];
     const grid = el('div', { class: 'keys' });
     for (const r of rows) { const label = r.pop(); grid.append(el('span', {}, ...r.flatMap((k, i) => [i ? ' / ' : null, K(k)]).filter(Boolean)), el('span', { text: label })); }
     sheet([el('h2', { text: 'Shortcuts' }), el('p', { class: 't-small', text: 'Single keys work when you are not typing in a field.' }), grid, el('div', { class: 'card-actions', style: 'justify-content:flex-end' }, el('button', { class: 'btn primary', onclick: closeOverlay }, 'Close'))]);
@@ -315,6 +315,7 @@
         next.click(); next.scrollIntoView({ block: 'nearest' }); return;
       }
       if (e.key === 'e' && S.view === 'tickets' && S.ticket) { e.preventDefault(); $('.tk-detail .tk-title-in')?.focus(); return; }
+      if (e.key === 'p' && S.view === 'tickets') { e.preventDefault(); const item = $('.tk-row.selected')?.closest('.tk-item') || $('.tk-item'); if (item) { const id = item.dataset.id; const tk = user()?.tickets.find(x => x.id === id); if (tk) togglePrompt(tk, item); } return; }
       return;
     }
     if (!mod) return;
@@ -570,34 +571,76 @@
     const visible = all.filter(t => FILTERS[S.ticketFilter].includes(t.status));
     const bar = el('div', { class: 'tk-bar' },
       el('button', { class: 'btn primary', onclick: () => newTicket() }, svg(ICON.plus, 12), 'New'),
-      seg([['active', 'Active'], ['done', 'Done']], FILTERS[S.ticketFilter] && S.ticketFilter !== 'all' && S.ticketFilter !== 'backlog' ? S.ticketFilter : 'active', v => { S.ticketFilter = v; savePlace(); render(true); }),
+      seg([['active', 'Active'], ['done', 'Done']], S.ticketFilter, v => { S.ticketFilter = v; savePlace(); render(true); }),
       el('span', { class: 'spacer' }),
-      el('span', { class: 't-small l', text: `${visible.length} of ${all.length}` }));
+      el('span', { class: 't-small l', text: visible.length + ' of ' + all.length }));
     const split = el('div', { class: 'tk-split' + (S.ticket ? ' has-detail' : '') });
     const list = el('div', { class: 'tk-list' });
     if (!visible.length) list.append(el('div', { class: 'empty' }, el('p', {}, el('b', { text: all.length ? 'Nothing in this view.' : 'Nothing lined up yet.' }), all.length ? '' : ' Press n to add something.')));
     for (const st of STATUS_ORDER) {
-      const rows = visible.filter(t => t.status === st).sort((a, b) => b.priority - a.priority || b.updatedAt - a.updatedAt);
+      const rows = visible.filter(x => x.status === st).sort((a, b) => b.priority - a.priority || b.updatedAt - a.updatedAt);
       if (!rows.length) continue;
       list.append(el('div', { class: 'tk-group' }, el('span', { text: STATUS[st] }), el('span', { class: 'faint', text: String(rows.length) })));
-      for (const t of rows) list.append(ticketRow(t));
+      for (const x of rows) list.append(ticketRow(x));
     }
     split.append(list);
-    const sel = S.ticket ? all.find(t => t.id === S.ticket) : null;
+    const sel = S.ticket ? all.find(x => x.id === S.ticket) : null;
     if (sel) split.append(ticketDetail(sel)); else S.ticket = null;
     wrap.append(bar, split);
   }
+  /** One entry: the row, plus a prompt editor that folds open underneath it. */
   function ticketRow(t) {
+    const open = S.promptOpen.has(t.id);
+    const item = el('div', { class: 'tk-item' + (open ? ' open' : ''), dataset: { id: t.id } });
+    const select = () => { S.ticket = t.id; savePlace(); render(true); };
     const row = el('div', { class: 'tk-row' + (t.id === S.ticket ? ' selected' : '') + (t.status === 'done' || t.status === 'cancelled' ? ' closed' : ''), role: 'button', tabindex: '0',
-      onclick: () => { S.ticket = t.id; savePlace(); render(true); }, onkeydown: e => { if (e.key === 'Enter') { S.ticket = t.id; savePlace(); render(true); } } });
+      onclick: e => { if (!e.target.closest('button, input, textarea')) select(); }, onkeydown: e => { if (e.key === 'Enter' && e.target === row) select(); } });
+    const editing = S.editingTitle === t.id;
+    const title = editing
+      ? (() => {
+          let done = false;
+          const commit = async (cancel) => {
+            if (done) return; done = true; S.editingTitle = null;
+            const v = cancel ? '' : input.value.trim();
+            if (!v && !t.description && !t.prompt) { await api.deleteTicket(S.project, t.id); const uu = user(); uu.tickets = uu.tickets.filter(x => x.id !== t.id); }
+            else if (v && v !== t.title) { const saved = await call(api.upsertTicket(S.project, { id: t.id, title: v })); Object.assign(t, saved); }
+            render(true);
+          };
+          const input = el('input', { class: 'tk-title-row', placeholder: 'What needs doing?', 'aria-label': 'Title', value: t.title,
+            onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); commit(false); } else if (e.key === 'Escape') { e.stopPropagation(); commit(true); } },
+            onblur: () => commit(false) });
+          return input;
+        })()
+      : el('span', { class: 'tk-title', text: t.title || 'Untitled' });
     row.append(...[
       el('button', { class: 'tk-status ' + t.status, title: STATUS[t.status], onclick: e => { e.stopPropagation(); statusMenu(e.currentTarget, t); } }, STATUS_ICON[t.status]()),
       el('span', { class: 'tk-key', text: ticketKey(t) }),
-      el('span', { class: 'tk-title', text: t.title || 'Untitled' }),
-      t.prompt ? el('span', { class: 'chip accent', title: 'Has a prompt draft' }, ...lbl('prompt', 'P')) : null,
+      title,
+      el('button', { class: 'btn small ghost tk-prompt-btn' + (t.prompt ? ' has' : ''), title: t.prompt ? 'Edit the prompt' : 'Draft a prompt for the agent', 'aria-expanded': open ? 'true' : 'false', onclick: e => { e.stopPropagation(); togglePrompt(t, item); } }, svg('M3 13l1-4 7-7 3 3-7 7-4 1z', 12), ...lbl('Prompt', 'P')),
       priorityGlyph(t.priority),
       el('span', { class: 'tk-time l', text: ago(t.updatedAt) })].filter(Boolean));
-    return row;
+    item.append(row, promptPanel(t));
+    if (editing) queueMicrotask(() => { title.focus(); title.select(); });
+    return item;
+  }
+  function togglePrompt(t, item) {
+    const open = !item.classList.contains('open');
+    if (open) S.promptOpen.add(t.id); else S.promptOpen.delete(t.id);
+    item.classList.toggle('open', open);
+    const btn = item.querySelector('.tk-prompt-btn'); if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) setTimeout(() => item.querySelector('textarea')?.focus(), 240);
+  }
+  function promptPanel(t) {
+    const ta = el('textarea', { class: 'input grow', placeholder: 'Prompt for the agent…', 'aria-label': 'Prompt' }); ta.value = t.prompt;
+    const meta = el('span', { class: 't-small', text: t.prompt ? 'Saved' : '' });
+    const save = debounce(async () => { const saved = await call(api.upsertTicket(S.project, { id: t.id, prompt: ta.value })); Object.assign(t, saved); meta.textContent = 'Saved'; const btn = document.querySelector('.tk-item[data-id="' + t.id + '"] .tk-prompt-btn'); if (btn) btn.classList.toggle('has', !!t.prompt); }, 400);
+    registerFlush('prompt:' + t.id, () => save.flush());
+    ta.addEventListener('input', () => { autoGrow(ta); meta.textContent = 'Saving…'; save(); });
+    const copy = () => { const parts = [(t.title || 'Untitled') + ' (' + ticketKey(t) + ')', t.description.trim(), ta.value.trim()].filter(Boolean); api.copy(parts.join('\n\n')); toast({ text: 'Prompt copied.', ttl: 3000 }); };
+    const panel = el('div', { class: 'tk-prompt-wrap' }, el('div', { class: 'tk-prompt' }, el('div', { class: 'tk-prompt-in' }, ta,
+      el('div', { class: 'tk-prompt-f' }, el('button', { class: 'btn primary small', onclick: copy }, svg(ICON.copy, 12), ...lbl('Copy prompt', 'Copy')), meta))));
+    queueMicrotask(() => autoGrow(ta));
+    return panel;
   }
   function statusMenu(anchor, t) {
     closePopover();
@@ -626,29 +669,25 @@
     render(true);
     return saved;
   }
+  /** New entry: an inline title on a fresh row. Enter keeps it, Escape drops it. */
   async function newTicket() {
     const u = user(); if (!u) return;
-    const t = await call(api.upsertTicket(S.project, { title: '', status: S.ticketFilter === 'backlog' ? 'backlog' : 'todo' }));
-    u.tickets.unshift(t); S.ticket = t.id; savePlace();
+    if (S.ticketFilter !== 'active') { S.ticketFilter = 'active'; savePlace(); }
+    const t = await call(api.upsertTicket(S.project, { title: '', status: 'todo' }));
+    u.tickets.unshift(t); S.editingTitle = t.id;
     render(true);
-    $('.tk-detail input.tk-title-in')?.focus();
   }
   function ticketDetail(t) {
     const d = el('div', { class: 'tk-detail card' });
     const u = user();
     const title = el('input', { class: 'tk-title-in', placeholder: 'Title', 'aria-label': 'Title' }); title.value = t.title;
     const desc = el('textarea', { class: 'input grow', placeholder: 'Description', 'aria-label': 'Description' }); desc.value = t.description;
-    const prompt = el('textarea', { class: 'input grow', placeholder: 'Prompt for the agent. Title and description are included when you copy it.', 'aria-label': 'Prompt' }); prompt.value = t.prompt;
-    const meta = el('span', { class: 't-small', text: `Updated ${ago(t.updatedAt)}` });
-    const save = debounce(async () => { const saved = await call(api.upsertTicket(S.project, { id: t.id, title: title.value, description: desc.value, prompt: prompt.value })); Object.assign(t, saved); meta.textContent = 'Saved'; const row = $(`.tk-row.selected .tk-title`); if (row) row.textContent = t.title || 'Untitled'; }, 400);
+    const meta = el('span', { class: 't-small', text: 'Updated ' + ago(t.updatedAt) });
+    const save = debounce(async () => { const saved = await call(api.upsertTicket(S.project, { id: t.id, title: title.value, description: desc.value })); Object.assign(t, saved); meta.textContent = 'Saved'; const row = document.querySelector('.tk-row.selected .tk-title'); if (row) row.textContent = t.title || 'Untitled'; }, 400);
     registerFlush('ticket:' + t.id, () => save.flush());
-    for (const f of [title, desc, prompt]) f.addEventListener('input', () => { meta.textContent = 'Saving…'; if (f.tagName === 'TEXTAREA') autoGrow(f); save(); });
+    for (const f of [title, desc]) f.addEventListener('input', () => { meta.textContent = 'Saving…'; if (f.tagName === 'TEXTAREA') autoGrow(f); save(); });
     const statusSel = pick({ label: 'Status', value: t.status, options: STATUS_ORDER.map(s => [s, STATUS[s], () => el('span', { class: 'tk-status ' + s }, STATUS_ICON[s]())]), onPick: v => setTicket(t, { status: v }) });
     const prioSel = pick({ label: 'Priority', value: t.priority, options: PRIORITY.map((p, i) => [i, p, () => priorityGlyph(i)]), onPick: v => setTicket(t, { priority: Number(v) }) });
-    const copyPrompt = () => {
-      const parts = [`${t.title || 'Untitled'} (${ticketKey(t)})`, t.description.trim(), t.prompt.trim()].filter(Boolean);
-      api.copy(parts.join('\n\n')); toast({ text: 'Prompt copied. Paste it into the agent when it is free.', ttl: 4000 });
-    };
     const linked = (t.runs || []).map(id => S.state.runs.find(r => r.id === id)).filter(Boolean);
     d.append(...[
       el('div', { class: 'tk-detail-h' }, S.mode === 'compact' ? el('button', { class: 'icon-btn', 'aria-label': 'Back', onclick: () => { S.ticket = null; savePlace(); render(true); } }, svg(ICON.back, 14)) : null, el('span', { class: 'tk-key', text: ticketKey(t) }), el('span', { class: 'spacer' }),
@@ -657,13 +696,13 @@
       el('div', { class: 'tk-detail-c' }, statusSel, prioSel),
       title,
       el('div', { class: 'field' }, el('label', { text: 'Description' }), desc),
-      el('div', { class: 'field' }, el('label', { text: 'Prompt for the agent' }), prompt),
-      el('div', { class: 'tk-detail-f' }, el('button', { class: 'btn primary small', onclick: copyPrompt }, svg(ICON.copy, 12), ...lbl('Copy prompt', 'Copy')),
+      el('div', { class: 'tk-detail-f' },
+        el('button', { class: 'btn small', onclick: () => { const item = document.querySelector('.tk-item[data-id="' + t.id + '"]'); if (item && !item.classList.contains('open')) togglePrompt(t, item); item?.querySelector('textarea')?.focus(); if (S.mode === 'compact') { S.ticket = null; S.promptOpen.add(t.id); render(true); } } }, svg('M3 13l1-4 7-7 3 3-7 7-4 1z', 12), ...lbl(t.prompt ? 'Edit prompt' : 'Draft prompt', 'Prompt')),
         t.status !== 'done' ? el('button', { class: 'btn small', onclick: () => setTicket(t, { status: 'done' }) }, svg(ICON.check, 12), ...lbl('Mark done', 'Done')) : el('button', { class: 'btn small', onclick: () => setTicket(t, { status: 'todo' }) }, 'Reopen'),
         el('span', { class: 'spacer' }), meta),
-      linked.length ? el('p', { class: 't-small' }, `Worked on by ${[...new Set(linked.map(r => AGENT[r.agent] || r.agent))].join(' and ')} · ${linked.length} turn${linked.length === 1 ? '' : 's'}`, ' ', el('button', { class: 'btn small ghost', onclick: () => { setView('now'); } }, 'See in Now')) : el('p', { class: 't-small', text: 'The key in the copied prompt links the agent’s turn back here.' }),
-      t.fromItem ? el('p', { class: 't-small', text: 'Created from an agent item.' }) : null].filter(Boolean));
-    queueMicrotask(() => { autoGrow(desc); autoGrow(prompt); });
+      linked.length ? el('p', { class: 't-small' }, 'Worked on by ' + [...new Set(linked.map(r => AGENT[r.agent] || r.agent))].join(' and ') + ' · ' + linked.length + ' turn' + (linked.length === 1 ? '' : 's'), ' ', el('button', { class: 'btn small ghost', onclick: () => { setView('now'); } }, 'See in Now')) : null,
+      t.fromItem ? el('p', { class: 't-small', text: 'From an agent item.' }) : null].filter(Boolean));
+    queueMicrotask(() => { autoGrow(desc); });
     return d;
   }
 
