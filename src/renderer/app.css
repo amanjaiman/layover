@@ -664,3 +664,21 @@ body.rail-collapsed .ws > span:nth-child(2){ display:none !important; }
 .accent-seg button:hover .acc-dot{ transform:scale(1.12); }
 .accent-seg button[aria-checked="true"]{ background:transparent; box-shadow:none; }
 .accent-seg button[aria-checked="true"] .acc-dot{ box-shadow:inset 0 0 0 1px rgba(0,0,0,.14), 0 0 0 2px var(--surface), 0 0 0 3.5px var(--text); }
+
+/* ==========================================================
+   v0.4.2 — agent icons, single appearance row
+   ========================================================== */
+.agent-ic{ --agent-bg:var(--surface-sunk); width:26px; height:26px; border-radius:var(--r-full); background:var(--agent-bg); color:var(--text); display:inline-grid; place-items:center; flex:none; vertical-align:middle; }
+.agent-ic svg{ width:14px; height:14px; display:block; }
+.agent-ic.sm{ width:16px; height:16px; margin-right:5px; }
+.agent-ic.sm svg{ width:9px; height:9px; }
+.agent-ic.claude{ --agent-bg:color-mix(in oklab, var(--ws-clay) 18%, var(--surface)); color:var(--ws-clay); }
+.agent-ic.codex{ --agent-bg:var(--surface-sunk); color:var(--text); }
+.status .agent-ic{ margin-right:2px; }
+.ws-sub{ display:inline-flex; align-items:center; }
+.tl-end .agent-ic{ flex:none; }
+.appearance{ display:flex; align-items:center; gap:var(--s3); flex-wrap:wrap; }
+.theme-seg{ padding:3px; gap:2px; }
+.theme-seg button{ padding:0; width:34px; height:28px; display:grid; place-items:center; color:var(--text-faint); }
+.theme-seg button[aria-checked="true"]{ color:var(--accent-text); }
+.theme-seg svg{ display:block; }

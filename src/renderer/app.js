@@ -57,6 +57,15 @@
   const svg = (d, size = 14, extra = '') => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('width', size); s.setAttribute('height', size); s.setAttribute('viewBox', '0 0 16 16'); s.setAttribute('fill', 'none'); s.setAttribute('aria-hidden', 'true'); s.innerHTML = `<path d="${d}" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" ${extra}/>`; return s; };
   const ICON = { check: 'M3 8.5l3 3 7-7', copy: 'M6 6h7v7H6zM3 10V3h7', x: 'M4 4l8 8M12 4l-8 8', arrow: 'M3 8h10M9 4l4 4-4 4', plus: 'M8 3v10M3 8h10', trash: 'M3 4h10M6 4V2.5h4V4M5 4l.6 9h4.8L11 4', back: 'M13 8H3M7 4L3 8l4 4', reply: 'M6 4L2 8l4 4M2 8h7a5 5 0 0 1 5 5' };
   /** Long label in the expanded window, short label in the compact companion. */
+  /** Circular agent mark: an eight-ray asterisk for Claude, a six-petal knot for Codex. Names stay in the tooltip. */
+  function agentIcon(agent, size = 26) {
+    const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    s.setAttribute('viewBox', '0 0 16 16'); s.setAttribute('aria-hidden', 'true');
+    if (agent === 'claude') s.innerHTML = '<path d="M8 1.6v12.8M1.6 8h12.8M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>';
+    else if (agent === 'codex') s.innerHTML = [0, 60, 120].map(a => '<rect x="6.6" y="1.6" width="2.8" height="12.8" rx="1.4" fill="currentColor" transform="rotate(' + a + ' 8 8)"/>').join('') + '<circle cx="8" cy="8" r="2.1" fill="var(--agent-bg)"/>';
+    else s.innerHTML = '<circle cx="8" cy="8" r="3" fill="currentColor"/>';
+    return el('span', { class: 'agent-ic ' + agent + (size <= 18 ? ' sm' : ''), title: AGENT[agent] || agent, role: 'img', 'aria-label': AGENT[agent] || agent }, s);
+  }
   const lbl = (long, short) => [el('span', { class: 'l', text: long }), el('span', { class: 's', text: short })];
   function ago(ts) {
     if (!ts) return '';
@@ -109,7 +118,7 @@
     const active = activeRuns(id);
     const waiting = openItems(id).find(i => i.waiting && i.runStatus === 'active');
     if (waiting) return { cls: 'attention', label: 'Waiting on you', run: active[0] };
-    if (active.length) return { cls: 'working', label: `${AGENT[active[0].agent] || active[0].agent} working${active.length > 1 ? ` · ${active.length} runs` : ''}`, run: active[0] };
+    if (active.length) return { cls: 'working', label: `Working${active.length > 1 ? ` · ${active.length} runs` : ''}`, run: active[0], agent: active[0].agent };
     const last = latestRun(id);
     if (last && !isAcked(last.id) && Date.now() - (last.endedAt || last.lastSeen) < 12 * 3600000) {
       if (last.status === 'completed') return { cls: 'done', label: 'Ready when you are', run: last };
@@ -342,7 +351,7 @@
       const st = projectStatus(p.id);
       list.append(el('button', { class: 'ws', role: 'listitem', 'aria-current': p.id === S.project ? 'true' : 'false', onclick: () => switchProject(p.id), title: p.path || '' },
         el('span', { class: 'ws-tok', style: `background:var(--ws-${p.color})` }, initials(projectName(p))),
-        el('span', { style: 'display:grid;min-width:0' }, el('span', { class: 'ws-name', text: projectName(p) }), el('span', { class: 'ws-sub', text: st.label })),
+        el('span', { style: 'display:grid;min-width:0' }, el('span', { class: 'ws-name', text: projectName(p) }), el('span', { class: 'ws-sub' }, st.agent ? agentIcon(st.agent, 14) : null, st.label)),
         el('span', { class: 'dot ' + st.cls })));
     }
     const sel = $('#compact-ws'); sel.textContent = '';
@@ -356,7 +365,7 @@
     const p = project();
     if (!p) { h.append(el('h1', { text: 'Layover' })); return; }
     const st = projectStatus(p.id);
-    const row = el('div', { class: 'head-row' }, S.mode === 'compact' ? null : el('h1', { text: projectName(p) }), el('button', { class: 'status ' + st.cls, onclick: (e) => runsPopover(e.currentTarget) }, el('span', { class: 'dot ' + st.cls }), st.label),
+    const row = el('div', { class: 'head-row' }, S.mode === 'compact' ? null : el('h1', { text: projectName(p) }), el('button', { class: 'status ' + st.cls, onclick: (e) => runsPopover(e.currentTarget) }, st.agent ? agentIcon(st.agent, 16) : el('span', { class: 'dot ' + st.cls }), st.label),
       S.brk.timer && S.view !== 'break' ? el('button', { class: 'status brk', title: 'Back to the break', onclick: () => setView('break') }, svg('M8 4.5V8l2.5 1.5M8 2.5a5.5 5.5 0 1 1 0 11a5.5 5.5 0 0 1 0-11Z', 13), el('span', { class: 'brk-chip', text: fmt(S.brk.left) })) : null);
     const open = openItems(p.id).length, active = (user(p.id)?.tickets || []).filter(t => FILTERS.active.includes(t.status)).length;
     const tabs = el('div', { class: 'tabs', role: 'tablist' });
@@ -462,8 +471,8 @@
       : el('span', { class: 'status' }, el('span', { class: 'dot quiet' }), 'Idle');
     card.append(el('div', { class: 'thread-h', onclick: e => { if (!e.target.closest('button')) toggle(); } },
       el('button', { class: 'icon-btn chev', 'aria-label': collapsed ? 'Expand' : 'Collapse', 'aria-expanded': collapsed ? 'false' : 'true', onclick: toggle }, svg('M6 4l4 4-4 4', 14)),
-      el('span', { class: 'agent ' + agent, text: short }),
-      el('div', { class: 'thread-t' }, el('div', { class: 'thread-title' }, el('b', { text: title }), t.ticket ? el('button', { class: 'chip accent link', title: t.ticket.title, onclick: () => { S.ticket = t.ticket.id; S.ticketFilter = 'all'; setView('tickets'); } }, ticketKey(t.ticket)) : null, t.open ? el('span', { class: 'chip open-badge' + (t.waiting ? ' warn' : ''), text: `${t.open} open`, hidden: !collapsed }) : null), el('span', { text: `${who} · ${t.runs.length} turn${t.runs.length === 1 ? '' : 's'} · started ${clock(t.runs[0]?.startedAt || t.task.createdAt)}` })),
+      agentIcon(agent, 26),
+      el('div', { class: 'thread-t' }, el('div', { class: 'thread-title' }, el('b', { text: title }), t.ticket ? el('button', { class: 'chip accent link', title: t.ticket.title, onclick: () => { S.ticket = t.ticket.id; S.ticketFilter = 'all'; setView('tickets'); } }, ticketKey(t.ticket)) : null, t.open ? el('span', { class: 'chip open-badge' + (t.waiting ? ' warn' : ''), text: `${t.open} open`, hidden: !collapsed }) : null), el('span', { text: `${t.runs.length} turn${t.runs.length === 1 ? '' : 's'} · started ${clock(t.runs[0]?.startedAt || t.task.createdAt)}` })),
       statusChip,
       el('button', { class: 'btn small ghost l', title: t.task.host ? `Bring ${t.task.host.name} forward` : `How to return to ${who}`, onclick: () => returnTo(latest || { agent, task: t.task.id, id: '', source: t.task.source }) }, 'Return', svg(ICON.arrow, 13)),
       el('button', { class: 'icon-btn', title: 'More', 'aria-label': 'Conversation menu', onclick: e => threadMenu(e.currentTarget, t, who) }, svg('M3 8h.01M8 8h.01M13 8h.01', 16, 'stroke-width="2.4"'))));
@@ -535,12 +544,12 @@
   function endEntry(r, who, quiet, ticket = null) {
     const acked = isAcked(r.id) || quiet;
     const cls = r.status === 'completed' ? 'done' : r.status === 'failed' ? 'failed' : 'attention';
-    const text = r.status === 'completed' ? `${who} finished · ran ${dur((r.endedAt || r.lastSeen) - r.startedAt)}`
-      : r.status === 'failed' ? `${who} stopped with an error${r.endNote ? ' · ' + r.endNote : ''}`
-      : r.status === 'cancelled' ? `${who} was interrupted${r.endNote ? ' · ' + r.endNote : ''}`
-      : `No recent signal from ${who}. It may still be thinking, or the session may have closed.`;
-    const row = el('div', { class: 'tl-end ' + cls + (acked ? ' acked' : '') }, el('span', { class: 'dot ' + cls }), el('span', { class: 'tl-end-text' }, acked ? text : [el('b', { text: r.status === 'completed' ? 'Ready when you are. ' : '' }), text]), el('span', { class: 'tl-time', text: clock(r.endedAt || r.lastSeen) }));
-    if (!acked) row.append(el('span', { class: 'tl-end-actions' }, el('button', { class: 'btn small primary', onclick: () => returnTo(r) }, ...lbl(`Return to ${who}`, 'Return'), svg(ICON.arrow, 12)),
+    const text = r.status === 'completed' ? `Finished · ran ${dur((r.endedAt || r.lastSeen) - r.startedAt)}`
+      : r.status === 'failed' ? `Stopped with an error${r.endNote ? ' · ' + r.endNote : ''}`
+      : r.status === 'cancelled' ? `Interrupted${r.endNote ? ' · ' + r.endNote : ''}`
+      : 'No recent signal. It may still be thinking, or the session may have closed.';
+    const row = el('div', { class: 'tl-end ' + cls + (acked ? ' acked' : '') }, agentIcon(r.agent, 16), el('span', { class: 'tl-end-text' }, acked ? text : [el('b', { text: r.status === 'completed' ? 'Ready when you are. ' : '' }), text]), el('span', { class: 'tl-time', text: clock(r.endedAt || r.lastSeen) }));
+    if (!acked) row.append(el('span', { class: 'tl-end-actions' }, el('button', { class: 'btn small primary', title: `Return to ${who}`, onclick: () => returnTo(r) }, 'Return', svg(ICON.arrow, 12)),
       ticket && ticket.status !== 'done' && r.status === 'completed' ? el('button', { class: 'btn small', onclick: () => setTicket(ticket, { status: 'done' }) }, svg(ICON.check, 12), ...lbl(`Mark ${ticketKey(ticket)} done`, 'Done')) : null,
       el('button', { class: 'btn small ghost', onclick: () => { ack(r.id); render(true); } }, ...lbl('Got it', 'OK'))));
     return row;
@@ -929,7 +938,7 @@
         row.textContent = '';
         const connected = info.connected; const stale = connected && !(info.skillCurrent && info.hooksCurrent);
         row.append(...[
-          el('span', { class: 'dot ' + (connected ? 'done' : 'quiet'), style: connected ? '' : 'background:var(--border-strong)' }),
+          agentIcon(id, 26), el('span', { class: 'dot ' + (connected ? 'done' : 'quiet'), style: connected ? '' : 'background:var(--border-strong)', title: connected ? 'Connected' : 'Not connected' }),
           el('div', { class: 'l' }, el('b', { text: label }), el('span', { text: connected ? (stale ? 'Connected · update available' : 'Connected: skill and lifecycle hooks installed') : 'Not connected. One click installs the skill and hooks in your user settings.' }),
             id === 'codex' && connected ? el('span', { text: 'Codex asks you to trust hooks once: type /hooks in Codex and approve the Layover entries.' }) : null, info.hooksError ? el('span', { style: 'color:var(--danger)', text: 'Hooks file could not be read: ' + info.hooksError }) : null),
           connected ? el('button', { class: 'btn small ghost', onclick: async () => { await call(api.setupRemove(id)); info = (await call(api.setupStatus()))[id]; draw(); } }, 'Disconnect') : null,
@@ -954,9 +963,14 @@
           switchRow('Windows notification when a turn finishes', 'Silent toast; only when Layover is not in front.', s.notifyOnComplete, v => api.setSettings({ notifyOnComplete: v })),
           switchRow('Keep running in the tray when the window is closed', 'Needed so agents can reach it.', s.closeToTray, v => api.setSettings({ closeToTray: v })),
           switchRow('Tell the agent its run id', 'One short line per prompt so it can publish items without guessing.', s.hookContext, v => api.setSettings({ hookContext: v }))),
-        el('div', { class: 'sheet-sec' }, el('h3', { text: 'Appearance' }), seg([['system', 'Match system'], ['light', 'Light'], ['dark', 'Dark']], s.theme, v => { s.theme = v; api.setSettings({ theme: v }); }),
-          el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'Accent' }), el('span', { text: 'The one interactive colour. Marigold stays for work happening elsewhere.' })),
-            (() => { const g = el('div', { class: 'seg accent-seg', role: 'radiogroup', 'aria-label': 'Accent' }); for (const [id, label, sw] of ACCENTS) g.append(el('button', { role: 'radio', 'aria-checked': (s.accent || 'teal') === id ? 'true' : 'false', title: label, 'aria-label': label + ' accent', onclick: () => { g.querySelectorAll('button').forEach(b => b.setAttribute('aria-checked', 'false')); g.querySelector(`[title="${label}"]`).setAttribute('aria-checked', 'true'); s.accent = id; applyAccent(id); api.setSettings({ accent: id }); } }, el('span', { class: 'acc-dot', style: 'background:' + sw }))); return g; })())),
+        el('div', { class: 'sheet-sec' }, el('h3', { text: 'Appearance' }), el('div', { class: 'appearance' },
+          (() => {
+            const icons = { light: 'M8 4.9a3.1 3.1 0 1 0 0 6.2a3.1 3.1 0 0 0 0-6.2ZM8 1.1v1.7M8 13.2v1.7M1.1 8h1.7M13.2 8h1.7M3.3 3.3l1.2 1.2M11.5 11.5l1.2 1.2M12.7 3.3l-1.2 1.2M4.5 11.5l-1.2 1.2', system: 'M2.4 3.4h11.2a.8.8 0 0 1 .8.8v7.2a.8.8 0 0 1-.8.8H2.4a.8.8 0 0 1-.8-.8V4.2a.8.8 0 0 1 .8-.8ZM5.6 14h4.8', dark: 'M13.4 9.9A5.8 5.8 0 0 1 6.1 2.6a5.8 5.8 0 1 0 7.3 7.3Z' };
+            const g = el('div', { class: 'seg theme-seg', role: 'radiogroup', 'aria-label': 'Theme' });
+            for (const [id, label] of [['light', 'Light'], ['system', 'Match system'], ['dark', 'Dark']]) g.append(el('button', { role: 'radio', 'aria-checked': s.theme === id ? 'true' : 'false', title: label, 'aria-label': label, onclick: () => { g.querySelectorAll('button').forEach(b => b.setAttribute('aria-checked', 'false')); g.querySelector('[title="' + label + '"]').setAttribute('aria-checked', 'true'); s.theme = id; api.setSettings({ theme: id }); } }, svg(icons[id], 16)));
+            return g;
+          })(),
+          (() => { const g = el('div', { class: 'seg accent-seg', role: 'radiogroup', 'aria-label': 'Accent' }); for (const [id, label, sw] of ACCENTS) g.append(el('button', { role: 'radio', 'aria-checked': (s.accent || 'teal') === id ? 'true' : 'false', title: label, 'aria-label': label + ' accent', onclick: () => { g.querySelectorAll('button').forEach(b => b.setAttribute('aria-checked', 'false')); g.querySelector('[title="' + label + '"]').setAttribute('aria-checked', 'true'); s.accent = id; applyAccent(id); api.setSettings({ accent: id }); } }, el('span', { class: 'acc-dot', style: 'background:' + sw }))); return g; })())),
         el('div', { class: 'sheet-sec' }, el('p', { class: 't-small' }, 'Layover ' + s.version + ' · data in ', el('code', { class: 'path', text: s.dataDir }), ' ', el('button', { class: 'btn small ghost', onclick: () => api.openPath(s.dataDir) }, 'Open'), ' · local service on 127.0.0.1:' + s.port + '. Layover makes no model calls.'),
           el('p', { class: 't-small' }, 'Press ', el('kbd', { text: '?' }), ' anywhere for keyboard shortcuts.'))],
     };
