@@ -1,89 +1,54 @@
-// Draws the Layover mark (teal ring + marigold dot) as PNG and ICO with no dependencies.
+// Builds every icon from build/logo.png (the folded-L mark, iris gradient, transparent background):
+//   icon.png       1024, transparent   Windows/Linux app icon, notifications, Windows tray (resized by the app)
+//   icon.ico       16…256              Windows executable and installer
+//   icon-mac.png   1024                the mark on a rounded off-white tile with the macOS margin, for .icns
+//   trayTemplate*.png                  black silhouette for the macOS menu bar (template image)
+//   src/renderer/logo.png  96          the mark in the app's rail
+// No dependencies: runs on plain Node in the release workflow.
 import fs from 'node:fs';
 import path from 'node:path';
-import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
+import { decodePng, encodePng, resample, bounds, crop, over, roundedSquare, blank } from './png.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const source = decodePng(fs.readFileSync(path.join(here, 'logo.png')));
+const mark = crop(source, bounds(source));
 
-function raster(size) {
-  const px = new Uint8ClampedArray(size * size * 4);
-  const c = size / 2, R = size * 0.36, W = size * 0.085, dr = size * 0.075, dx = c + size * 0.22, dy = c - size * 0.22;
-  const bgR = size * 0.46;
-  const put = (i, r, g, b, a) => {
-    const A = a / 255, oa = px[i + 3] / 255, na = A + oa * (1 - A);
-    if (!na) return;
-    px[i] = (r * A + px[i] * oa * (1 - A)) / na; px[i + 1] = (g * A + px[i + 1] * oa * (1 - A)) / na; px[i + 2] = (b * A + px[i + 2] * oa * (1 - A)) / na; px[i + 3] = na * 255;
-  };
-  const SS = 4; // supersampling
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    let bg = 0, ring = 0, dot = 0;
-    for (let sy = 0; sy < SS; sy++) for (let sx = 0; sx < SS; sx++) {
-      const X = x + (sx + .5) / SS - c, Y = y + (sy + .5) / SS - c;
-      const d = Math.hypot(X, Y);
-      if (d <= bgR) bg++;
-      if (Math.abs(d - R) <= W / 2) ring++;
-      if (Math.hypot(x + (sx + .5) / SS - dx, y + (sy + .5) / SS - dy) <= dr) dot++;
-    }
-    const i = (y * size + x) * 4, n = SS * SS;
-    if (bg) put(i, 0xF6, 0xF5, 0xF2, 255 * bg / n);
-    if (ring) put(i, 0x0F, 0x73, 0x6D, 255 * ring / n);
-    if (dot) put(i, 0xC8, 0x87, 0x1B, 255 * dot / n);
-  }
-  return px;
+/** The mark centred on a transparent square, its taller side filling `fill` of the canvas. */
+function markOn(size, fill, base = blank(size, size), dy = 0) {
+  const scale = (size * fill) / Math.max(mark.width, mark.height);
+  const w = Math.max(1, Math.round(mark.width * scale)), h = Math.max(1, Math.round(mark.height * scale));
+  return over(base, resample(mark, w, h), Math.round((size - w) / 2), Math.round((size - h) / 2 + dy));
 }
 
-function crc32(buf) {
-  let c, crc = 0xffffffff;
-  for (let n = 0; n < buf.length; n++) { c = (crc ^ buf[n]) & 0xff; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; crc = (crc >>> 8) ^ c; }
-  return (crc ^ 0xffffffff) >>> 0;
-}
-function chunk(type, data) {
-  const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
-  const td = Buffer.concat([Buffer.from(type), data]);
-  const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td));
-  return Buffer.concat([len, td, crc]);
-}
-function png(size) {
-  const px = raster(size);
-  const raw = Buffer.alloc((size * 4 + 1) * size);
-  for (let y = 0; y < size; y++) { raw[y * (size * 4 + 1)] = 0; raw.set(px.subarray(y * size * 4, (y + 1) * size * 4), y * (size * 4 + 1) + 1); }
-  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(size, 0); ihdr.writeUInt32BE(size, 4); ihdr[8] = 8; ihdr[9] = 6; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
-  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw, { level: 9 })), chunk('IEND', Buffer.alloc(0))]);
-}
-function ico(sizes) {
-  const images = sizes.map(s => ({ s, data: png(s) }));
+function ico(frames) {
+  const images = frames.map(f => ({ s: f.width, data: encodePng(f) }));
   const header = Buffer.alloc(6); header.writeUInt16LE(0, 0); header.writeUInt16LE(1, 2); header.writeUInt16LE(images.length, 4);
-  let offset = 6 + 16 * images.length;
-  const entries = [], blobs = [];
+  let offset = 6 + 16 * images.length; const entries = [], blobs = [];
   for (const { s, data } of images) {
-    const e = Buffer.alloc(16); e[0] = s >= 256 ? 0 : s; e[1] = s >= 256 ? 0 : s; e[2] = 0; e[3] = 0; e.writeUInt16LE(1, 4); e.writeUInt16LE(32, 6); e.writeUInt32LE(data.length, 8); e.writeUInt32LE(offset, 12);
+    const e = Buffer.alloc(16); e[0] = s >= 256 ? 0 : s; e[1] = s >= 256 ? 0 : s; e.writeUInt16LE(1, 4); e.writeUInt16LE(32, 6); e.writeUInt32LE(data.length, 8); e.writeUInt32LE(offset, 12);
     entries.push(e); blobs.push(data); offset += data.length;
   }
   return Buffer.concat([header, ...entries, ...blobs]);
 }
 
-/** Monochrome ring + dot for the macOS menu bar (template image: black on transparent). */
-function trayPng(size) {
-  const px = new Uint8ClampedArray(size * size * 4);
-  const c = size / 2, R = size * 0.34, W = size * 0.11, dr = size * 0.09, dx = c + size * 0.24, dy = c - size * 0.24, SS = 4;
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    let ring = 0, dot = 0;
-    for (let sy = 0; sy < SS; sy++) for (let sx = 0; sx < SS; sx++) {
-      const X = x + (sx + .5) / SS - c, Y = y + (sy + .5) / SS - c, d = Math.hypot(X, Y);
-      if (Math.abs(d - R) <= W / 2) ring++;
-      if (Math.hypot(x + (sx + .5) / SS - dx, y + (sy + .5) / SS - dy) <= dr) dot++;
-    }
-    const i = (y * size + x) * 4, a = Math.min(255, 255 * (ring + dot) / (SS * SS));
-    px[i] = 0; px[i + 1] = 0; px[i + 2] = 0; px[i + 3] = a;
-  }
-  const raw = Buffer.alloc((size * 4 + 1) * size);
-  for (let y = 0; y < size; y++) { raw[y * (size * 4 + 1)] = 0; raw.set(px.subarray(y * size * 4, (y + 1) * size * 4), y * (size * 4 + 1) + 1); }
-  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(size, 0); ihdr.writeUInt32BE(size, 4); ihdr[8] = 8; ihdr[9] = 6;
-  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw, { level: 9 })), chunk('IEND', Buffer.alloc(0))]);
+/** Black silhouette of the mark for the menu bar; macOS tints template images itself. */
+function trayTemplate(size) {
+  const img = markOn(size, 0.9);
+  for (let i = 0; i < img.data.length; i += 4) { img.data[i] = 0; img.data[i + 1] = 0; img.data[i + 2] = 0; img.data[i + 3] = Math.min(255, img.data[i + 3] * 1.15); }
+  return img;
 }
-fs.writeFileSync(path.join(here, 'trayTemplate.png'), trayPng(16));
-fs.writeFileSync(path.join(here, 'trayTemplate@2x.png'), trayPng(32));
-fs.writeFileSync(path.join(here, 'icon.png'), png(512));
-fs.writeFileSync(path.join(here, 'icon.ico'), ico([16, 24, 32, 48, 64, 128, 256]));
-console.log('wrote build/icon.png and build/icon.ico');
+
+// App icon: a little breathing room so Windows does not clip the fold at small sizes.
+fs.writeFileSync(path.join(here, 'icon.png'), encodePng(markOn(1024, 0.86)));
+fs.writeFileSync(path.join(here, 'icon.ico'), ico([16, 24, 32, 48, 64, 128, 256].map(s => markOn(s, s <= 32 ? 0.96 : 0.9))));
+
+// macOS: the tile occupies 824/1024 of the canvas with ~22.4% corner radius, as Apple's grid does.
+const macSize = 1024, tile = 824, inset = (macSize - tile) / 2;
+const macBase = roundedSquare(macSize, tile * 0.224, [0xF6, 0xF5, 0xF2], inset);
+fs.writeFileSync(path.join(here, 'icon-mac.png'), encodePng(markOn(macSize, 0.56, macBase)));
+
+fs.writeFileSync(path.join(here, 'trayTemplate.png'), encodePng(trayTemplate(16)));
+fs.writeFileSync(path.join(here, 'trayTemplate@2x.png'), encodePng(trayTemplate(32)));
+fs.writeFileSync(path.join(here, '..', 'src', 'renderer', 'logo.png'), encodePng(markOn(96, 1)));
+console.log('wrote build/icon.png, icon.ico, icon-mac.png, trayTemplate*.png and src/renderer/logo.png from build/logo.png');

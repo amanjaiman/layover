@@ -71,8 +71,7 @@ body.compact .app{ grid-template-columns:minmax(0,1fr); }
 body.compact .rail{ display:none; }
 .rail-top{ height:var(--titlebar); display:flex; align-items:center; padding:0 var(--s3); flex:none; }
 .mark{ display:flex; align-items:center; gap:10px; font-family:var(--f-display); font-weight:600; font-size:16px; letter-spacing:-.01em; }
-.mark-o{ width:18px; height:18px; border-radius:var(--r-full); border:2px solid var(--accent); position:relative; flex:none; }
-.mark-o::after{ content:""; position:absolute; top:1px; right:1px; width:5px; height:5px; border-radius:var(--r-full); background:var(--gold); }
+.mark-o{ width:20px; height:20px; object-fit:contain; flex:none; display:block; -webkit-user-drag:none; }
 .rail-h{ display:flex; align-items:center; justify-content:space-between; padding:var(--s3) var(--s3) var(--s1); }
 .rail-list{ flex:1; overflow:auto; padding:0 var(--s2); display:grid; gap:2px; align-content:start; }
 .ws{ display:grid; grid-template-columns:30px minmax(0,1fr) auto; gap:10px; align-items:center; padding:7px 8px; border-radius:var(--r-md); border:none; background:transparent; text-align:left; cursor:pointer; color:var(--text-2); width:100%;

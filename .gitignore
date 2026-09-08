@@ -11,3 +11,5 @@ build/trayTemplate@2x.png
 
 # Local design explorations, not part of the product
 design/
+output/
+build/icon-mac.png
