@@ -10,15 +10,14 @@
 <body>
 <div class="app" id="app">
   <aside class="rail" aria-label="Workspaces">
-    <div class="rail-top drag"><span class="mark"><span class="mark-o" aria-hidden="true"></span><span>Layover</span></span></div>
+    <div class="rail-top drag"><span class="mark"><span class="mark-o" aria-hidden="true"></span><span>Layover</span></span>
+      <button class="icon-btn no-drag" id="btn-rail" title="Hide sidebar ( [ )" aria-label="Hide sidebar"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M6 2.5v11" stroke="currentColor" stroke-width="1.5"/></svg></button></div>
     <div class="rail-h"><span class="t-eyebrow">Workspaces</span><button class="icon-btn" id="add-ws" title="New workspace" aria-label="New workspace">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button></div>
     <div class="rail-list" id="ws-list" role="list"></div>
     <div class="rail-foot">
       <button class="rail-btn" id="btn-compact" title="Compact companion (Ctrl+Shift+C)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3" stroke="currentColor" stroke-width="1.5"/><path d="M6 8h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span class="lbl">Compact companion</span></button>
-      <button class="rail-btn" id="btn-settings" title="Settings (Ctrl+,)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="2.2" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.8v1.7M8 12.5v1.7M1.8 8h1.7M12.5 8h1.7M3.6 3.6l1.2 1.2M11.2 11.2l1.2 1.2M12.4 3.6l-1.2 1.2M4.8 11.2l-1.2 1.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span class="lbl">Settings</span></button>
-      <button class="rail-btn" id="btn-rail" title="Collapse sidebar ( [ )" aria-label="Collapse sidebar"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M6 2.5v11" stroke="currentColor" stroke-width="1.5"/></svg><span class="lbl">Hide sidebar</span></button>
-    </div>
+      <button class="rail-btn" id="btn-settings" title="Settings (Ctrl+,)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="2.2" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.8v1.7M8 12.5v1.7M1.8 8h1.7M12.5 8h1.7M3.6 3.6l1.2 1.2M11.2 11.2l1.2 1.2M12.4 3.6l-1.2 1.2M4.8 11.2l-1.2 1.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span class="lbl">Settings</span></button>    </div>
   </aside>
   <main class="main">
     <div class="top drag">

@@ -512,3 +512,32 @@ body.compact .break-timer{ gap:var(--s2); }
 .sheet .switch{ flex-wrap:wrap; }
 .sheet .switch .input{ max-width:100%; }
 .tk-group{ padding-left:10px; }
+
+/* ==========================================================
+   v0.3.5 — motion, rail toggle at the top, compact fixes
+   ========================================================== */
+/* sidebar: the grid animates its column; the rail hides its overflow while it moves */
+.app{ transition:grid-template-columns var(--dur-calm) var(--ease-out); }
+.rail{ overflow:hidden; white-space:nowrap; }
+.rail-top{ justify-content:space-between; gap:8px; }
+.rail-top .icon-btn{ flex:none; color:var(--text-faint); }
+body.rail-collapsed .rail-top{ flex-direction:column; height:auto; justify-content:center; padding:10px 0 6px; gap:6px; }
+body.rail-collapsed .rail-top .mark{ margin:0; }
+body.compact #btn-rail{ display:none; }
+/* compact always wins over a collapsed rail */
+body.compact .app, body.compact.rail-collapsed .app{ grid-template-columns:minmax(0,1fr); }
+/* pages settle in */
+@keyframes viewIn{ from{ opacity:0; transform:translateY(4px);} to{ opacity:1; transform:none;} }
+.view-in.enter{ animation:viewIn var(--dur-quick) var(--ease-out); }
+.tab, .cnav button{ transition:color var(--dur-quick) var(--ease-out), background var(--dur-quick) var(--ease-out); }
+/* thread collapse: the timeline folds, the chevron turns */
+.tl-wrap{ display:grid; grid-template-rows:1fr; transition:grid-template-rows var(--dur-calm) var(--ease-out); }
+.tl-wrap > .tl{ min-height:0; overflow:hidden; transition:padding var(--dur-calm) var(--ease-out); }
+.thread.collapsed .tl-wrap{ grid-template-rows:0fr; }
+.thread.collapsed .tl-wrap > .tl{ padding-top:0; padding-bottom:0; }
+.thread.collapsed .thread-h{ border-bottom-color:transparent; }
+.thread-h{ transition:border-color var(--dur-calm) var(--ease-out); }
+/* reply bubble header */
+.bubble-top{ display:flex; align-items:center; gap:6px; }
+.bubble{ cursor:default; }
+@media (prefers-reduced-motion: reduce){ .app, .tl-wrap, .tl-wrap > .tl{ transition:none; } }

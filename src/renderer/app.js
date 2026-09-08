@@ -382,6 +382,7 @@
     if (!S.project) { v.append(el('div', { class: 'empty' }, el('p', {}, el('b', { text: 'Nothing here yet.' }), ' Layover fills in when Claude Code or Codex starts working in a folder. Connect them in Settings, or add a workspace by hand.'), el('p', { style: 'margin-top:12px' }, el('button', { class: 'btn', onclick: () => openSettings({}) }, 'Open Settings')))); return; }
     const wrap = el('div', { class: 'view-in' });
     ({ now: renderNow, tickets: renderTickets, notes: renderNotes, break: renderBreak })[S.view](wrap);
+    if (!keepScroll) wrap.classList.add('enter'); // a new page settles in; an in-place refresh stays still
     v.append(wrap);
     if (keepScroll) v.scrollTop = keepScroll;
   }
@@ -433,7 +434,16 @@
     const latest = t.latest;
     const collapsed = !!user()?.place?.collapsed?.[t.task.id];
     const card = el('section', { class: 'thread ' + t.status + (collapsed ? ' collapsed' : ''), dataset: { task: t.task.id } });
-    const toggle = async () => { const u = user(); u.place.collapsed = { ...(u.place.collapsed || {}) }; if (collapsed) delete u.place.collapsed[t.task.id]; else u.place.collapsed[t.task.id] = true; await api.setPlace(S.project, { collapsed: u.place.collapsed }); render(true); };
+    // Collapse animates in place; the state is persisted without re-rendering the whole view.
+    const toggle = async () => {
+      const u = user(); u.place.collapsed = { ...(u.place.collapsed || {}) };
+      const now = !card.classList.contains('collapsed');
+      if (now) u.place.collapsed[t.task.id] = true; else delete u.place.collapsed[t.task.id];
+      card.classList.toggle('collapsed', now);
+      const chev = card.querySelector('.chev'); if (chev) { chev.setAttribute('aria-expanded', now ? 'false' : 'true'); chev.setAttribute('aria-label', now ? 'Expand' : 'Collapse'); }
+      const badge = card.querySelector('.open-badge'); if (badge) badge.hidden = !now;
+      await api.setPlace(S.project, { collapsed: u.place.collapsed });
+    };
     // header
     const title = cleanTitle(latest?.title) || (t.task.name && !/^(claude|codex):/.test(t.task.name) ? t.task.name : 'Conversation');
     const statusChip = t.status === 'working' ? el('span', { class: 'status working' }, el('span', { class: 'dot working' }), ...lbl(`Working · ${dur(Date.now() - latest.startedAt)}`, dur(Date.now() - latest.startedAt)))
@@ -446,7 +456,7 @@
     card.append(el('div', { class: 'thread-h', onclick: e => { if (!e.target.closest('button')) toggle(); } },
       el('button', { class: 'icon-btn chev', 'aria-label': collapsed ? 'Expand' : 'Collapse', 'aria-expanded': collapsed ? 'false' : 'true', onclick: toggle }, svg('M6 4l4 4-4 4', 14)),
       el('span', { class: 'agent ' + agent, text: short }),
-      el('div', { class: 'thread-t' }, el('div', { class: 'thread-title' }, el('b', { text: title }), t.ticket ? el('button', { class: 'chip accent link', title: t.ticket.title, onclick: () => { S.ticket = t.ticket.id; S.ticketFilter = 'all'; setView('tickets'); } }, ticketKey(t.ticket)) : null, collapsed && t.open ? el('span', { class: 'chip' + (t.waiting ? ' warn' : ''), text: `${t.open} open` }) : null), el('span', { text: `${who} · ${t.runs.length} turn${t.runs.length === 1 ? '' : 's'} · started ${clock(t.runs[0]?.startedAt || t.task.createdAt)}` })),
+      el('div', { class: 'thread-t' }, el('div', { class: 'thread-title' }, el('b', { text: title }), t.ticket ? el('button', { class: 'chip accent link', title: t.ticket.title, onclick: () => { S.ticket = t.ticket.id; S.ticketFilter = 'all'; setView('tickets'); } }, ticketKey(t.ticket)) : null, t.open ? el('span', { class: 'chip open-badge' + (t.waiting ? ' warn' : ''), text: `${t.open} open`, hidden: !collapsed }) : null), el('span', { text: `${who} · ${t.runs.length} turn${t.runs.length === 1 ? '' : 's'} · started ${clock(t.runs[0]?.startedAt || t.task.createdAt)}` })),
       statusChip,
       el('button', { class: 'btn small ghost l', title: t.task.host ? `Bring ${t.task.host.name} forward` : `How to return to ${who}`, onclick: () => returnTo(latest || { agent, task: t.task.id, id: '', source: t.task.source }) }, 'Return', svg(ICON.arrow, 13)),
       el('button', { class: 'icon-btn', title: 'More', 'aria-label': 'Conversation menu', onclick: e => threadMenu(e.currentTarget, t, who) }, svg('M3 8h.01M8 8h.01M13 8h.01', 16, 'stroke-width="2.4"'))));
@@ -471,7 +481,7 @@
       else tl.append(endEntry(e.run, who, quiet || e.run.id !== latest?.id, e.run.id === latest?.id ? t.ticket : null));
     }
     if (t.status === 'working' && !shown.some(e => e.kind === 'item' && e.item.runStatus === 'active')) tl.append(el('div', { class: 'tl-quiet', text: 'Working quietly.' }));
-    if (!collapsed) card.append(tl);
+    card.append(el('div', { class: 'tl-wrap' }, tl));
     return card;
   }
 
@@ -487,10 +497,11 @@
     let editing = false;
     const drawResp = () => {
       respBox.textContent = '';
-      if (!editing) { if (resp?.body) respBox.append(el('div', { class: 'bubble', onclick: () => { editing = true; drawResp(); } }, el('span', { class: 'bubble-who', text: 'You · saved here, not sent' }), el('div', { class: 'tl-text', text: resp.body }))); return; }
+      const copyReply = (body) => { api.copy(`Regarding your ${i.kind}: "${i.text}"\n\n${body}`); toast({ text: 'Reply copied with the item it answers. Paste it into the agent.', ttl: 4000 }); };
+      if (!editing) { if (resp?.body) respBox.append(el('div', { class: 'bubble' }, el('div', { class: 'bubble-top' }, el('span', { class: 'bubble-who', text: 'You · saved here, not sent' }), el('span', { class: 'spacer' }), el('button', { class: 'btn small ghost', onclick: () => copyReply(resp.body) }, svg(ICON.copy, 12), ...lbl('Copy for agent', 'Copy')), el('button', { class: 'btn small ghost', onclick: () => { editing = true; drawResp(); } }, 'Edit')), el('div', { class: 'tl-text', text: resp.body }))); return; }
       const ta = el('textarea', { class: 'input', placeholder: i.kind === 'question' ? 'Your answer, for when you return to the agent…' : 'A thought, a concern, a reply…', 'aria-label': 'Your reply' });
       ta.value = resp?.body || '';
-      const meta = el('div', { class: 'resp-meta' }, el('span', { text: resp ? `Saved ${ago(resp.updatedAt)}` : 'Saved as you type' }), el('span', { class: 'faint' }, ...lbl('· Not sent to the agent', '· local')));
+      const meta = el('div', { class: 'resp-meta' }, el('span', { text: resp ? `Saved ${ago(resp.updatedAt)}` : 'Saved as you type' }), el('span', { class: 'faint' }, ...lbl('· Not sent to the agent', '· local')), el('span', { class: 'spacer' }), el('button', { class: 'btn small ghost', onclick: () => { if (ta.value.trim()) copyReply(ta.value); } }, svg(ICON.copy, 12), ...lbl('Copy for agent', 'Copy')));
       const save = debounce(() => api.respond(S.project, i.key, ta.value).then(() => { const uu = user(); if (uu) { if (ta.value) uu.responses[i.key] = { body: ta.value, updatedAt: Date.now() }; else delete uu.responses[i.key]; } meta.firstChild.textContent = ta.value ? 'Saved just now' : 'Saved as you type'; }), 400);
       ta.addEventListener('input', () => { autoGrow(ta); save(); });
       registerFlush('resp:' + i.key, () => save.flush());
@@ -499,8 +510,8 @@
     };
     const actions = el('div', { class: 'tl-actions' },
       el('button', { class: 'btn small' + (i.kind === 'question' && i.status === 'open' ? ' primary' : ' ghost'), onclick: () => { editing = true; drawResp(); } }, svg(ICON.reply, 12), ...lbl(i.kind === 'question' ? 'Answer' : 'Reply', i.kind === 'question' ? 'Answer' : 'Reply')),
-      el('button', { class: 'btn small ghost', onclick: () => ticketFromItem(i) }, svg(ICON.plus, 12), ...lbl('Add to Next', 'Next')),
-      el('button', { class: 'btn small ghost', onclick: () => copyItem(i, u) }, svg(ICON.copy, 12), ...lbl('Copy for agent', 'Copy')),
+      // Only proposals can be promoted into Next; a decision or a question is not something to do later.
+      i.kind === 'opportunity' || i.kind === 'suggestion' ? el('button', { class: 'btn small ghost', onclick: () => ticketFromItem(i) }, svg(ICON.plus, 12), ...lbl('Add to Next', 'Next')) : null,
       el('span', { class: 'spacer' }),
       i.status === 'open' ? el('button', { class: 'btn small ghost', title: 'Dismiss', onclick: async () => { await api.dismiss(S.project, i.key, true); const uu = user(); if (uu) uu.dismissed[i.key] = Date.now(); render(true); } }, svg(ICON.x, 12), el('span', { class: 'l', text: 'Dismiss' })) : el('span', { class: 'chip', text: i.status }));
     row.append(actions, respBox);
