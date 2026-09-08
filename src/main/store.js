@@ -72,7 +72,44 @@ export class Store {
     this.items = new Map();    // run:item -> item
     this.listeners = new Set();
     this.userDoc = { version: 1, projects: {}, manualProjects: {} };
+    this.outboxFile = path.join(dir, 'outbox.json');
+    this.outboxFlag = path.join(dir, 'outbox.flag'); // exists while anything is queued; the fast hook shim checks it
+    this.outbox = [];
     this.load();
+  }
+
+  // ---------- outbox: messages from the user to an agent, delivered by its hooks ----------
+  loadOutbox() {
+    try { if (fs.existsSync(this.outboxFile)) this.outbox = JSON.parse(fs.readFileSync(this.outboxFile, 'utf8')); } catch { this.outbox = []; }
+    if (!Array.isArray(this.outbox)) this.outbox = [];
+    this.syncFlag();
+  }
+  saveOutbox() { this.outbox = this.outbox.slice(-300); atomicWrite(this.outboxFile, JSON.stringify(this.outbox, null, 1)); this.syncFlag(); }
+  syncFlag() {
+    const pending = this.outbox.some(m => m.status === 'queued');
+    try { if (pending) fs.writeFileSync(this.outboxFlag, '1'); else if (fs.existsSync(this.outboxFlag)) fs.unlinkSync(this.outboxFlag); } catch { /* best effort */ }
+  }
+  /** Queue a message for the agent behind a conversation. It is handed over by that agent's next hook. */
+  queueMessage({ project, task, run, itemKey, text }) {
+    if (!isId(project) || !isId(task)) throw Error('Invalid message target');
+    if (!this.tasks.has(task)) throw Error('Unknown conversation');
+    if (typeof text !== 'string' || !text.trim() || text.length > MAX_TEXT) throw Error('Message must be 1-12000 characters');
+    const m = { id: 'm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), project, task, run: run || null, itemKey: itemKey || null, text: text.trim(), status: 'queued', createdAt: Date.now(), deliveredAt: 0, moment: '' };
+    this.outbox.push(m); this.saveOutbox(); this.emit({ type: 'outbox', project });
+    return structuredClone(m);
+  }
+  /** Hooks call this: every queued message for the conversation is returned once and marked delivered. */
+  takeMessages(task, moment) {
+    const taken = this.outbox.filter(m => m.task === task && m.status === 'queued');
+    if (!taken.length) return [];
+    const now = Date.now();
+    for (const m of taken) { m.status = 'delivered'; m.deliveredAt = now; m.moment = String(moment || '').slice(0, 40); }
+    this.saveOutbox(); this.emit({ type: 'outbox', project: taken[0].project });
+    return structuredClone(taken);
+  }
+  cancelMessage(id) {
+    const m = this.outbox.find(x => x.id === id && x.status === 'queued'); if (!m) return false;
+    m.status = 'cancelled'; this.saveOutbox(); this.emit({ type: 'outbox', project: m.project }); return true;
   }
 
   // ---------- persistence ----------
@@ -96,6 +133,7 @@ export class Store {
       }
     }
     this.fd = fs.openSync(this.eventsFile, 'a');
+    this.loadOutbox();
   }
 
   append(e, received) {
@@ -258,6 +296,7 @@ export class Store {
       tasks: [...this.tasks.values()],
       runs,
       items,
+      outbox: this.outbox.slice(-100),
     };
   }
 

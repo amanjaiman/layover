@@ -1,6 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mapHook, resolveLatest, turnTitle } from '../src/cli/hook.js';
+import { mapHook, resolveLatest, turnTitle, formatMessages, deliveryOutput } from '../src/cli/hook.js';
+
+test('messages are formatted as user instructions and wrapped per hook moment', () => {
+  const msgs = [{ text: 'Keep the spool.', createdAt: Date.UTC(2026, 8, 8, 12, 4), itemKey: 'r1:d1' }];
+  const text = formatMessages(msgs, [{ key: 'r1:d1', kind: 'decision', text: 'Retry once' }]);
+  assert.match(text, /sent you a message through Layover/); assert.match(text, /replying to your decision: "Retry once"/); assert.match(text, /Keep the spool\./);
+  assert.deepEqual(JSON.parse(deliveryOutput('claude', 'Stop', text)), { decision: 'block', reason: text });
+  assert.equal(JSON.parse(deliveryOutput('claude', 'PostToolUse', text)).hookSpecificOutput.additionalContext, text);
+  assert.equal(deliveryOutput('claude', 'UserPromptSubmit', text), text);
+  assert.equal(deliveryOutput('claude', 'Stop', ''), '');
+});
 
 test('turn titles are short, tag-free, and name system-generated turns', () => {
   assert.equal(turnTitle('<task-notification>\n<task-id>abc</task-id>'), 'Follow-up from a background task');

@@ -105,6 +105,27 @@ test('notification items resolve themselves when the run ends', () => {
   s.close();
 });
 
+test('outbox: queued messages are taken once by the conversation they target, and the flag file tracks them', () => {
+  const dir = tmp();
+  const s = new Store(dir);
+  s.event(start('r1'));
+  s.event({ ...start('x1'), task: 'codex:s2', agent: 'codex', id: 'start:x1' });
+  assert.throws(() => s.queueMessage({ project: 'p1', task: 'claude:nope', text: 'hi' }), /Unknown conversation/);
+  const m = s.queueMessage({ project: 'p1', task: 'claude:s1', run: 'r1', itemKey: 'r1:d1', text: 'Keep the spool.' });
+  assert.equal(m.status, 'queued');
+  assert.ok(fs.existsSync(path.join(dir, 'outbox.flag')));
+  assert.deepEqual(s.takeMessages('codex:s2', 'mid-turn'), []);
+  const taken = s.takeMessages('claude:s1', 'turn-end');
+  assert.equal(taken.length, 1); assert.equal(taken[0].moment, 'turn-end');
+  assert.deepEqual(s.takeMessages('claude:s1', 'turn-end'), []);
+  assert.ok(!fs.existsSync(path.join(dir, 'outbox.flag')));
+  assert.equal(s.state().outbox[0].status, 'delivered');
+  s.close();
+  const s2 = new Store(dir);
+  assert.equal(s2.state().outbox.length, 1);
+  s2.close();
+});
+
 test('a session can record the host window; a bad host is rejected', () => {
   const s = new Store(tmp());
   s.event({ ...base, id: 's1', type: 'session', name: 'Claude Code · Demo', host: { pid: 5, hwnd: '4242', name: 'Code', title: 'demo - VS Code' } });

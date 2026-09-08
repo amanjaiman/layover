@@ -53,6 +53,8 @@ export function createService({ store, bridge, onOpen, onEvent, settings = () =>
           return send(200, { results });
         }
         case '/api/open': return send(200, await onOpen(input || {}));
+        case '/api/outbox/take': return send(200, { messages: store.takeMessages(String(input.task || ''), String(input.moment || '')) });
+        case '/api/outbox/send': return send(200, store.queueMessage(input));
         case '/api/stop': { send(200, { stopping: true }); setTimeout(() => process.emit('layover:stop'), 10); return; }
         case '/api/bind': return send(200, await bridge.bind(input));
         case '/api/target': return send(200, await bridge.target(input));

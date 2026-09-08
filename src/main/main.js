@@ -323,6 +323,8 @@ handle('clipboard:write', (text) => { clipboard.writeText(String(text ?? '')); r
 handle('shell:openPath', (p) => shell.openPath(String(p)));
 handle('shell:openExternal', (url) => { const u = new URL(String(url)); if (!['https:', 'http:'].includes(u.protocol)) throw Error('Only web links can be opened'); return shell.openExternal(u.href); });
 handle('return:focus', (taskId) => returnToHost(String(taskId)));
+handle('outbox:send', (m) => store.queueMessage(m));
+handle('outbox:cancel', (id) => store.cancelMessage(String(id)));
 handle('bridge:target', (run) => bridge.target({ run }));
 handle('bridge:send', (payload) => bridge.send(payload));
 ipcMain.on('ui:engaged', (_e, flag) => { uiEngaged = !!flag; if (flag) lastInteraction = Date.now(); });

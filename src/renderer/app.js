@@ -468,6 +468,7 @@
       if (r.status !== 'active') entries.push({ at: r.endedAt || r.lastSeen, kind: 'end', run: r });
     }
     for (const i of t.items) if (!i.userDismissed) entries.push({ at: i.createdAt, kind: 'item', item: i });
+    for (const m of (S.state.outbox || [])) if (m.task === t.task.id && m.status !== 'cancelled' && !m.itemKey) entries.push({ at: m.createdAt, kind: 'msg', m });
     entries.sort((a, b) => a.at - b.at);
     const limit = S.mode === 'compact' ? 4 : 10;
     const expanded = S.expandedThreads.has(t.task.id);
@@ -477,17 +478,21 @@
     const openLatest = [...t.items].reverse().find(i => i.status === 'open' && !i.userDismissed);
     for (const e of shown) {
       if (e.kind === 'turn') tl.append(el('div', { class: 'tl-turn' }, el('i'), el('span', { text: cleanTitle(e.run.title) || `Turn ${t.runs.indexOf(e.run) + 1}` }), el('span', { class: 'tl-time', text: clock(e.at) })));
-      else if (e.kind === 'item') tl.append(itemEntry(e.item, u, openLatest && e.item.key === openLatest.key && t.status !== 'completed'));
+      else if (e.kind === 'item') tl.append(itemEntry(e.item, u, openLatest && e.item.key === openLatest.key && t.status !== 'completed', t));
+      else if (e.kind === 'msg') tl.append(msgEntry(e.m, t));
       // Only the latest turn's ending deserves the prominent row; older completions read as quiet history.
       else tl.append(endEntry(e.run, who, quiet || e.run.id !== latest?.id, e.run.id === latest?.id ? t.ticket : null));
     }
     if (t.status === 'working' && !shown.some(e => e.kind === 'item' && e.item.runStatus === 'active')) tl.append(el('div', { class: 'tl-quiet', text: 'Working quietly.' }));
+    if (!quiet && (t.status === 'working' || t.status === 'attention' || t.status === 'completed')) tl.append(composer(t, who));
     card.append(el('div', { class: 'tl-wrap' }, tl));
     return card;
   }
 
-  function itemEntry(i, u, hot) {
+  function itemEntry(i, u, hot, thread = null) {
     const resp = u?.responses?.[i.key];
+    const who = AGENT[i.agent] || i.agent;
+    const sent = (S.state.outbox || []).filter(m => m.itemKey === i.key && m.status !== 'cancelled').sort((a, b) => b.createdAt - a.createdAt)[0] || null;
     const row = el('div', { class: 'tl-item ' + i.kind + (hot ? ' hot' : ''), dataset: { key: i.key } });
     const chip = i.waiting && i.runStatus === 'active' ? el('span', { class: 'chip warn', text: 'Waiting on you' })
       : i.kind === 'decision' && i.runStatus === 'active' ? el('span', { class: 'chip' }, ...lbl('Assumption · continuing', 'Assumption')) : null;
@@ -499,10 +504,10 @@
     const drawResp = () => {
       respBox.textContent = '';
       const copyReply = (body) => { api.copy(`Regarding your ${i.kind}: "${i.text}"\n\n${body}`); toast({ text: 'Reply copied with the item it answers. Paste it into the agent.', ttl: 4000 }); };
-      if (!editing) { if (resp?.body) respBox.append(el('div', { class: 'bubble' }, el('div', { class: 'bubble-top' }, el('span', { class: 'bubble-who', text: 'You · saved here, not sent' }), el('span', { class: 'spacer' }), el('button', { class: 'btn small ghost', onclick: () => copyReply(resp.body) }, svg(ICON.copy, 12), ...lbl('Copy for agent', 'Copy')), el('button', { class: 'btn small ghost', onclick: () => { editing = true; drawResp(); } }, 'Edit')), el('div', { class: 'tl-text', text: resp.body }))); return; }
+      if (!editing) { if (resp?.body) respBox.append(el('div', { class: 'bubble' + (sent ? ' sent' : '') }, el('div', { class: 'bubble-top' }, el('span', { class: 'bubble-who', text: sent && sent.text === resp.body ? 'You · ' + msgStatus(sent, thread) : 'You · saved here, not sent' }), el('span', { class: 'spacer' }), sent && sent.status === 'queued' && sent.text === resp.body ? el('button', { class: 'btn small ghost', onclick: async () => { await api.cancelMessage(sent.id); } }, 'Unsend') : el('button', { class: 'btn small primary', onclick: () => sendToAgent({ task: i.task, run: i.run, itemKey: i.key, text: resp.body }) }, svg(ICON.arrow, 12), ...lbl(`Send to ${who}`, 'Send')), el('button', { class: 'btn small ghost', onclick: () => copyReply(resp.body) }, svg(ICON.copy, 12), el('span', { class: 'l', text: 'Copy' })), el('button', { class: 'btn small ghost', onclick: () => { editing = true; drawResp(); } }, 'Edit')), el('div', { class: 'tl-text', text: resp.body }))); return; }
       const ta = el('textarea', { class: 'input', placeholder: i.kind === 'question' ? 'Your answer, for when you return to the agent…' : 'A thought, a concern, a reply…', 'aria-label': 'Your reply' });
       ta.value = resp?.body || '';
-      const meta = el('div', { class: 'resp-meta' }, el('span', { text: resp ? `Saved ${ago(resp.updatedAt)}` : 'Saved as you type' }), el('span', { class: 'faint' }, ...lbl('· Not sent to the agent', '· local')), el('span', { class: 'spacer' }), el('button', { class: 'btn small ghost', onclick: () => { if (ta.value.trim()) copyReply(ta.value); } }, svg(ICON.copy, 12), ...lbl('Copy for agent', 'Copy')));
+      const meta = el('div', { class: 'resp-meta' }, el('span', { text: resp ? `Saved ${ago(resp.updatedAt)}` : 'Saved as you type' }), el('span', { class: 'spacer' }), el('button', { class: 'btn small ghost', onclick: () => { if (ta.value.trim()) copyReply(ta.value); } }, svg(ICON.copy, 12), el('span', { class: 'l', text: 'Copy' })), el('button', { class: 'btn small primary', onclick: async () => { if (!ta.value.trim()) return; save.flush(); await sendToAgent({ task: i.task, run: i.run, itemKey: i.key, text: ta.value }); editing = false; } }, svg(ICON.arrow, 12), ...lbl(`Send to ${who}`, 'Send')));
       const save = debounce(() => api.respond(S.project, i.key, ta.value).then(() => { const uu = user(); if (uu) { if (ta.value) uu.responses[i.key] = { body: ta.value, updatedAt: Date.now() }; else delete uu.responses[i.key]; } meta.firstChild.textContent = ta.value ? 'Saved just now' : 'Saved as you type'; }), 400);
       ta.addEventListener('input', () => { autoGrow(ta); save(); });
       registerFlush('resp:' + i.key, () => save.flush());
@@ -534,6 +539,31 @@
     return row;
   }
 
+  /** Honest delivery status for a queued or delivered message. */
+  function msgStatus(m, thread) {
+    const who = thread ? (AGENT[thread.task.agent] || thread.task.agent) : 'the agent';
+    if (m.status === 'queued') return thread && (thread.status === 'working' || thread.status === 'attention') ? 'sent · ' + who + ' sees it at its next pause' : 'sent · goes with your next message to ' + who;
+    if (m.status === 'delivered') return 'delivered ' + clock(m.deliveredAt) + (m.moment === 'mid-turn' ? ' · while it worked' : m.moment === 'turn-end' ? ' · as it finished, so it kept going' : ' · with your next message');
+    return m.status;
+  }
+  async function sendToAgent({ task, run, itemKey, text }) {
+    try {
+      await call(api.sendMessage({ project: S.project, task, run: run || null, itemKey: itemKey || null, text }));
+      toast({ text: 'Sent. It reaches the agent at its next pause.', ttl: 4000 });
+    } catch (e) { toast({ text: e.message, ttl: 6000 }); }
+  }
+  function composer(t, who) {
+    const box = el('div', { class: 'composer' });
+    const ta = el('textarea', { class: 'input', placeholder: 'Message ' + who + '…', 'aria-label': 'Message ' + who, rows: '1' });
+    const send = async () => { const v = ta.value.trim(); if (!v) return; ta.value = ''; autoGrow(ta); await sendToAgent({ task: t.task.id, run: t.latest?.id, itemKey: null, text: v }); };
+    ta.addEventListener('input', () => autoGrow(ta));
+    ta.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } });
+    box.append(ta, el('button', { class: 'btn small primary', onclick: send, title: 'Ctrl+Enter' }, svg(ICON.arrow, 12), ...lbl('Send', 'Send')));
+    return box;
+  }
+  function msgEntry(m, t) {
+    return el('div', { class: 'tl-msg ' + m.status }, el('div', { class: 'tl-meta' }, el('span', { class: 'bubble-who', text: 'You · ' + msgStatus(m, t) }), el('span', { class: 'spacer' }), m.status === 'queued' ? el('button', { class: 'btn small ghost', onclick: () => api.cancelMessage(m.id) }, 'Unsend') : null, el('span', { class: 'tl-time', text: clock(m.createdAt) })), el('div', { class: 'tl-text', text: m.text }));
+  }
   function copyItem(i, u) {
     const r = u?.responses?.[i.key]?.body;
     api.copy(r ? `Regarding your ${i.kind}: "${i.text}"\n\nMy response: ${r}` : `Regarding your ${i.kind}: "${i.text}"`);

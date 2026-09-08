@@ -23,6 +23,7 @@ test('install writes skill + hooks for both agents, preserves other settings, an
   assert.equal(setup.hookCommand('C:\\Users\\amanj\\AppData\\Local\\Programs\\layover\\bin\\layover.cmd', 'codex'), 'C:/Users/amanj/AppData/Local/Programs/layover/bin/layover.cmd hook codex');
   assert.equal(setup.hookCommand(cli, 'codex'), "& 'C:/Users/Some One/AppData/Local/Programs/Layover/bin/layover.cmd' hook codex");
   assert.ok(doc.hooks.UserPromptSubmit && doc.hooks.SessionEnd && doc.hooks.Notification);
+  assert.equal(doc.hooks.PostToolUse[0].hooks[0].command, `"${cli.replace(/\\/g, '/').replace('layover.cmd', 'layover-fast.cmd')}" hook claude`);
   const skill = fs.readFileSync(path.join(home, '.claude', 'skills', 'layover', 'SKILL.md'), 'utf8');
   assert.match(skill, /^---\nname: layover/); assert.ok(!skill.includes('__CLI__')); assert.ok(skill.includes('Layover/bin/layover.cmd'));
   const r2 = setup.install('claude', cli);

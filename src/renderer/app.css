@@ -560,3 +560,23 @@ body.compact .tk-prompt-in{ padding-left:10px; }
 .tk-title-row{ flex:1; min-width:0; border:none; background:transparent; font-size:14.5px; padding:0; color:var(--text); }
 .tk-title-row:focus{ outline:none; }
 @media (prefers-reduced-motion: reduce){ .tk-prompt-wrap{ transition:none; } }
+
+/* ==========================================================
+   v0.4 — messages to the agent, quieter prompt panel, rail fix
+   ========================================================== */
+/* prompt panel: no card, just the editor under the row */
+.tk-item.open{ box-shadow:none; }
+.tk-item.open > .tk-row{ background:transparent; }
+.tk-prompt-in{ background:transparent; }
+.tk-item.open > .tk-row.selected{ background:var(--surface); }
+/* collapsed rail: the name wrapper carries an inline display, so force it off and drop the gap */
+body.rail-collapsed .ws{ gap:0; }
+body.rail-collapsed .ws > span:nth-child(2){ display:none !important; }
+/* messages to the agent */
+.composer{ display:flex; gap:8px; align-items:flex-end; padding:var(--s2) 0 0; }
+.composer textarea{ flex:1; min-height:38px; max-height:200px; resize:none; overflow:hidden; padding:8px 12px; }
+.composer .btn{ flex:none; height:38px; }
+.tl-msg{ display:grid; gap:4px; padding:var(--s2) var(--s3); margin-left:3px; border-left:2px solid var(--accent-soft); background:var(--accent-wash); border-radius:0 var(--r-md) var(--r-md) 0; }
+.tl-msg.queued{ border-left-style:dashed; background:transparent; }
+.tl-msg .tl-text{ font-size:14.5px; }
+.bubble.sent{ background:var(--accent-wash); }

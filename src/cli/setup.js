@@ -50,7 +50,13 @@ function writeJson(file, obj) {
   fs.renameSync(tmp, file);
 }
 
-function isOurs(h) { return h && typeof h.command === 'string' && /layover(\.cmd)?['"]? hook (claude|codex)\b/.test(h.command); }
+function isOurs(h) { return h && typeof h.command === 'string' && /layover(-fast)?(\.cmd)?['"]? hook (claude|codex)\b/.test(h.command); }
+
+/** The frequent-event variant: same folder, layover-fast.cmd, which exits at once unless a message is queued. */
+export function fastHookCommand(cliPath, agent) {
+  const fast = cliPath.replace(/layover(\.cmd)?$/i, (m, ext) => 'layover-fast' + (ext || ''));
+  return hookCommand(fast, agent);
+}
 
 function stripOurs(hooks) {
   const out = {};
@@ -62,13 +68,17 @@ function stripOurs(hooks) {
   return out;
 }
 
-function hookSpec(agent, cmd) {
+function hookSpec(agent, cmd, fastCmd) {
   const c = (extra = {}) => ({ hooks: [{ type: 'command', command: cmd, timeout: 20, ...extra }] });
+  // PostToolUse runs after every tool call, so it goes through the fast shim (a file check, no runtime)
+  // and only does work while a message from the user is queued.
+  const fast = { hooks: [{ type: 'command', command: fastCmd, timeout: 10 }] };
   // Stop stays synchronous: it takes ~130 ms and an async hook can be killed when a non-interactive
   // session (codex exec, claude -p) exits right after the turn.
   if (agent === 'claude') return {
     SessionStart: [c({ matcher: 'startup|resume|clear' })],
     UserPromptSubmit: [c()],
+    PostToolUse: [fast],
     Stop: [c()],
     StopFailure: [c()],
     SessionEnd: [c()],
@@ -77,6 +87,7 @@ function hookSpec(agent, cmd) {
   return {
     SessionStart: [c()],
     UserPromptSubmit: [c()],
+    PostToolUse: [fast],
     Stop: [c()],
     Interrupt: [c({ timeout: 3 })],
     SessionEnd: [c({ timeout: 3 })],
@@ -99,7 +110,7 @@ export function status(agent, cliPath) {
     const doc = readJson(loc.hooks);
     const all = Object.values(doc[loc.hooksKey] || {}).flat().flatMap(g => g?.hooks || []);
     hooksInstalled = all.some(isOurs);
-    hooksCurrent = cliPath ? all.filter(isOurs).every(h => h.command === hookCommand(cliPath, agent)) && hooksInstalled : hooksInstalled;
+    hooksCurrent = cliPath ? all.filter(isOurs).every(h => h.command === hookCommand(cliPath, agent) || h.command === fastHookCommand(cliPath, agent)) && all.some(h => h.command === fastHookCommand(cliPath, agent)) && hooksInstalled : hooksInstalled;
   } catch (e) { hooksError = e.message; }
   return { agent, skillPath: loc.skill, hooksPath: loc.hooks, skillInstalled, skillCurrent, hooksInstalled, hooksCurrent, hooksError, connected: skillInstalled && hooksInstalled };
 }
@@ -115,7 +126,7 @@ export function install(agent, cliPath, { hooks = true, skill = true } = {}) {
   }
   if (hooks) {
     const doc = readJson(loc.hooks);
-    doc[loc.hooksKey] = mergeHooks(doc[loc.hooksKey], hookSpec(agent, hookCommand(cliPath, agent)));
+    doc[loc.hooksKey] = mergeHooks(doc[loc.hooksKey], hookSpec(agent, hookCommand(cliPath, agent), fastHookCommand(cliPath, agent)));
     writeJson(loc.hooks, doc);
     result.wroteHooks = true;
     if (agent === 'codex') result.notes.push('Codex asks you to trust new hooks once: run /hooks inside Codex and approve the Layover entries.');

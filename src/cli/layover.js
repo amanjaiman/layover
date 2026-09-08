@@ -79,24 +79,42 @@ async function runHook(agent) {
   let host = null;
   if (input?.hook_event_name === 'SessionStart') { try { const { findHostWindow } = await import('./host.js'); host = findHostWindow(); } catch { host = null; } }
   const { events, context, open } = mapHook(agent, input, { hookContext: settings.hookContext !== false, host });
-  if (!events.length) return;
+  const hookName = input?.hook_event_name;
+  const deliveryMoment = { PostToolUse: 'mid-turn', Stop: 'turn-end', UserPromptSubmit: 'next-prompt' }[hookName];
+  const session = String(input?.session_id || input?.thread_id || '');
+  if (!events.length && !deliveryMoment) return;
   const isStart = events.some(e => e.type === 'start');
   const wantsWindow = isStart && ['focus', 'open'].includes(settings.openOnRunStart || 'focus');
   let status = await health() ? 'running' : null;
   if (!status) {
-    if (settings.autoStart === false) status = 'unavailable';
+    // A PostToolUse check must never start the app; it only matters when the app (and its outbox) is up.
+    if (hookName === 'PostToolUse' || settings.autoStart === false) status = 'unavailable';
     else { const r = await launch({ background: !wantsWindow, open: wantsWindow ? open : null }); status = r.launched ? 'launched' : 'unavailable'; }
   }
-  let ready = events;
-  if (status === 'unavailable') { const { spool } = await import('./client.js'); spool(events); if (context) process.stdout.write(context + '\n'); return; }
-  if (events.some(e => e.run === '__latest__')) {
-    const state = await request('/api/state');
-    ready = resolveLatest(events, state);
-    if (!ready.length) return;
+  if (status === 'unavailable') { if (events.length) { const { spool } = await import('./client.js'); spool(events); } if (context) process.stdout.write(context + '\n'); return; }
+
+  // Messages the user sent from Layover: hand them over at this pause. A delivery at turn end keeps the turn open.
+  let delivered = '';
+  if (deliveryMoment && session) {
+    try {
+      const { messages } = await request('/api/outbox/take', { task: `${agent}:${session}`, moment: deliveryMoment }, 4000);
+      if (messages.length) { const { formatMessages } = await import('./hook.js'); const state = await request('/api/state'); delivered = formatMessages(messages, state.items); }
+    } catch (e) { process.stderr.write('layover: outbox ' + e.message + '\n'); }
   }
-  const { results } = await request('/api/events/batch', ready, 8000);
-  for (const r of results) if (r.error) process.stderr.write('layover: ' + r.error + '\n');
-  if (context) process.stdout.write(context + '\n');
+  let ready = events;
+  if (delivered && hookName === 'Stop') ready = ready.filter(e => e.type !== 'end'); // the agent continues, so the run does not end yet
+  if (ready.some(e => e.run === '__latest__')) {
+    const state = await request('/api/state');
+    ready = resolveLatest(ready, state);
+  }
+  if (ready.length) {
+    const { results } = await request('/api/events/batch', ready, 8000);
+    for (const r of results) if (r.error) process.stderr.write('layover: ' + r.error + '\n');
+  }
+  const { deliveryOutput } = await import('./hook.js');
+  if (delivered && hookName !== 'UserPromptSubmit') { process.stdout.write(deliveryOutput(agent, hookName, delivered) + '\n'); return; }
+  const out = [context, delivered].filter(Boolean).join('\n\n');
+  if (out) process.stdout.write(out + '\n');
 }
 
 async function main() {
@@ -190,6 +208,15 @@ async function main() {
     return;
   }
 
+  if (command === 'message') {
+    // layover message --task ID --text "..."  (queues a message the agent's hooks will hand over)
+    await must();
+    const state = await request('/api/state');
+    const task = state.tasks.find(t => t.id === flags.task);
+    if (!task) throw Error('Unknown conversation; use a task id from: layover state');
+    out(await request('/api/outbox/send', { project: task.project, task: task.id, run: flags.run, itemKey: flags.item, text: flags.file ? fs.readFileSync(flags.file, 'utf8') : String(flags.text || '') }));
+    return;
+  }
   if (command === 'bind') { await must(); out(await request('/api/bind', { run: flags.run, thread: flags.thread, endpoint: flags.endpoint, turn: flags.turn }, 40000)); return; }
   if (command === 'target') { await must(); out(await request('/api/target', { run: flags.run }, 40000)); return; }
   if (command === 'ack') { await must(); out(await request('/api/ack', { id: flags.id, run: flags.run, thread: flags.thread })); return; }

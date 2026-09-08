@@ -83,6 +83,26 @@ export function mapHook(agent, input, { hookContext = true, host = null } = {}) 
   return { events, context, open };
 }
 
+/** Text handed to the agent for queued user messages. Plain, attributable, and clearly from the user. */
+export function formatMessages(messages, items = []) {
+  if (!messages.length) return '';
+  const lines = messages.map(m => {
+    const item = m.itemKey ? items.find(i => i.key === m.itemKey) : null;
+    const about = item ? ` (replying to your ${item.kind}: "${String(item.text).replace(/\s+/g, ' ').slice(0, 160)}")` : '';
+    const when = new Date(m.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    return `[${when}]${about}\n${m.text}`;
+  });
+  return `The user sent you ${messages.length === 1 ? 'a message' : messages.length + ' messages'} through Layover while you were working. Treat it as their instruction and acknowledge it in your reply:\n\n${lines.join('\n\n')}`;
+}
+
+/** What a hook should print for delivered messages at each moment, per agent. */
+export function deliveryOutput(agent, hookName, text) {
+  if (!text) return '';
+  if (hookName === 'Stop') return JSON.stringify({ decision: 'block', reason: text });
+  if (hookName === 'PostToolUse') return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: text } });
+  return text; // UserPromptSubmit / SessionStart: plain stdout becomes context
+}
+
 /** Resolve '__latest__' run placeholders against the app state (latest active run of the task). */
 export function resolveLatest(events, state) {
   const out = [];
