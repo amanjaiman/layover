@@ -117,7 +117,9 @@ function createWindow({ show }) {
     width: bounds.width || size.width, height: bounds.height || size.height, x: bounds.x, y: bounds.y,
     minWidth: size.minWidth, minHeight: size.minHeight,
     show: false, backgroundColor: c.bg, title: APP_NAME,
-    icon: iconPath('png'),
+    // Windows wants an ICO here (a 1024 px PNG becomes a 1024 px HICON the taskbar cannot show, so it
+    // fell back to Electron's logo). Packaged, the executable's own icon is the right one; leave it unset.
+    icon: process.platform === 'win32' ? (app.isPackaged ? undefined : path.join(repoRoot, 'build', 'icon.ico')) : iconPath('png'),
     // Windows: hidden title bar with the native caption buttons overlaid. macOS: inset traffic lights.
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
     ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 14, y: 13 } } : { titleBarOverlay: { color: c.overlay, symbolColor: c.symbol, height: 42 } }),
