@@ -6,11 +6,12 @@
   const AGENT = { claude: 'Claude Code', codex: 'Codex', test: 'Test agent' };
   const AGENT_SHORT = { claude: 'Claude', codex: 'Codex', test: 'Test' };
   const KIND_LABEL = { suggestion: 'Think ahead', decision: 'Decision', question: 'Input requested', opportunity: 'Opportunity' };
-  const VIEWS = [['now', 'Now'], ['tickets', 'Tickets'], ['notes', 'Notes'], ['break', 'Break']];
-  const STATUS = { progress: 'In progress', todo: 'Todo', backlog: 'Backlog', done: 'Done', cancelled: 'Cancelled' };
+  const VIEWS = [['now', 'Now'], ['tickets', 'Next'], ['notes', 'Notes'], ['break', 'Break']];
+  const STATUS = { progress: 'In progress', todo: 'Up next', backlog: 'Someday', done: 'Done', cancelled: 'Dropped' };
   const STATUS_ORDER = ['progress', 'todo', 'backlog', 'done', 'cancelled'];
   const PRIORITY = ['No priority', 'Low', 'Medium', 'High', 'Urgent'];
   const FILTERS = { active: ['progress', 'todo'], backlog: ['backlog'], done: ['done', 'cancelled'], all: STATUS_ORDER };
+  const RECENT_MS = 30 * 60000;   // a quiet conversation stays in Now for 30 minutes, then moves to Archive on its own
   const STRETCHES = [
     ['Shoulders', 'Roll your shoulders back five times, slowly. Let your arms hang.'],
     ['Eyes', 'Look at something at least six metres away for twenty seconds. Blink a few times.'],
@@ -60,7 +61,14 @@
   function autoGrow(t) { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }
   function initials(name) { const w = String(name || '?').replace(/[_-]+/g, ' ').trim().split(/\s+/); return (w.length > 1 ? w[0][0] + w[1][0] : w[0].slice(0, 2)).toUpperCase(); }
   function projectName(p) { return p?.displayName || p?.name || 'Workspace'; }
-  function isEngaged() { const a = document.activeElement; const editing = a && $('#view')?.contains(a) && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT'); return (editing && Date.now() - S.lastInteraction < 15000) || Date.now() - S.lastInteraction < 5000; }
+  /** Engaged means typing in a field in the last ten seconds. Clicking around never blocks updates. */
+  function isEngaged() { const a = document.activeElement; const editing = a && $('#view')?.contains(a) && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT'); return !!editing && Date.now() - S.lastInteraction < 10000; }
+  let refreshTimer = null;
+  function deferRefresh() {
+    S.pendingRefresh = true;
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => { if (!S.pendingRefresh) return; if (isEngaged()) deferRefresh(); else { S.pendingRefresh = false; render(); } }, 1500);
+  }
   function ticketKey(t) { return `${project()?.prefix || 'WS'}-${t.number}`; }
   /** Mirror of the hook's turnTitle, so turns recorded before v0.3.1 read cleanly too. */
   function cleanTitle(raw) {
@@ -111,8 +119,45 @@
       const waiting = ti.some(i => i.waiting && i.status === 'open' && !i.userDismissed && i.runStatus === 'active');
       const lastActivity = Math.max(t.lastSeen || 0, ...tr.map(r => Math.max(r.lastSeen, r.endedAt)), ...ti.map(i => i.updatedAt));
       const status = !latest ? 'idle' : latest.status === 'active' ? (waiting ? 'attention' : 'working') : latest.status;
-      return { task: t, runs: tr, items: ti, latest, waiting, lastActivity, status, open: ti.filter(i => i.status === 'open' && !i.userDismissed).length };
+      const archivedAt = user(id)?.place?.archived?.[t.id] || 0;
+      const archived = archivedAt > 0 && archivedAt >= lastActivity; // new activity un-archives on its own
+      const live = status === 'working' || status === 'attention';
+      const recent = live || (!archived && Date.now() - lastActivity < RECENT_MS);
+      const ticket = latest ? ticketForRun(latest, id) : null;
+      return { task: t, runs: tr, items: ti, latest, waiting, lastActivity, status, archived, recent, ticket, open: ti.filter(i => i.status === 'open' && !i.userDismissed).length };
     }).sort((a, b) => (b.status === 'working' || b.status === 'attention') - (a.status === 'working' || a.status === 'attention') || b.lastActivity - a.lastActivity);
+  }
+  /** A turn whose prompt carries a key like LAY-12 is linked to that ticket. Copy prompt puts the key there. */
+  function ticketForRun(run, pid = S.project) {
+    const u = user(pid); const p = S.state?.projects.find(x => x.id === pid);
+    if (!u || !p || !run?.title) return null;
+    const m = run.title.match(new RegExp(`\\b${p.prefix}-(\\d+)\\b`, 'i'));
+    if (!m) return null;
+    return u.tickets.find(t => t.number === Number(m[1])) || null;
+  }
+  /** Runs that mention a ticket move it to In progress once, and remember the run on the ticket. */
+  async function linkRuns() {
+    for (const p of S.state?.projects || []) await linkRunsFor(p.id).catch(() => {});
+  }
+  async function linkRunsFor(pid) {
+    if (!runsOf(pid).some(r => Date.now() - r.startedAt < 24 * 3600000)) return;
+    const u = user(pid) || await loadUser(pid); if (!u) return;
+    for (const r of runsOf(pid)) {
+      if (Date.now() - r.startedAt > 24 * 3600000) continue;
+      const t = ticketForRun(r, pid);
+      if (!t || (t.runs || []).includes(r.id) || r.startedAt < t.createdAt) continue;
+      const patch = { id: t.id, runs: [...(t.runs || []), r.id] };
+      if (t.status === 'backlog' || t.status === 'todo') patch.status = 'progress';
+      const saved = await call(api.upsertTicket(pid, patch));
+      const i = u.tickets.findIndex(x => x.id === t.id); if (i >= 0) u.tickets[i] = saved;
+    }
+  }
+  async function setArchived(taskId, on) {
+    const u = user(); if (!u) return;
+    u.place.archived = { ...(u.place.archived || {}) };
+    if (on) u.place.archived[taskId] = Date.now(); else delete u.place.archived[taskId];
+    await api.setPlace(S.project, { archived: u.place.archived });
+    render(true);
   }
 
   // ---------- boot ----------
@@ -126,6 +171,7 @@
     S.project = visible.find(p => p.id === S.settings.window?.lastProject)?.id || visible[0]?.id || null;
     if (S.project) await loadUser(S.project);
     restorePlace();
+    await linkRuns().catch(() => {});
     render(true);
     if (!S.settings.onboarded) openSettings({ onboarding: true });
     api.on('state', st => { S.state = st; onState(); });
@@ -138,6 +184,7 @@
     document.addEventListener('keydown', onKey);
     ['keydown', 'pointerdown', 'input'].forEach(evn => document.addEventListener(evn, () => { S.lastInteraction = Date.now(); api.engaged(true); }, { passive: true }));
     document.addEventListener('focusout', () => setTimeout(() => { if (S.pendingRefresh && !isEngaged()) { S.pendingRefresh = false; render(); } api.engaged(isEngaged()); }, 400));
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && S.pendingRefresh && !isEngaged()) { S.pendingRefresh = false; render(); } });
     $('#add-ws').addEventListener('click', addWorkspace);
     $('#btn-settings').addEventListener('click', () => openSettings({}));
     $('#btn-compact').addEventListener('click', () => api.setWindowMode('compact'));
@@ -148,7 +195,7 @@
   }
   function shortcutSheet() {
     const K = (k) => el('kbd', { text: k });
-    const rows = [['n', 'New ticket'], ['r', 'Reply to the latest item (Now)'], ['j', 'k', 'Move between tickets'], ['e', 'Edit the selected ticket'], ['Esc', 'Close a sheet, menu, or ticket'], ['[', 'Collapse or expand the sidebar'], ['?', 'This list'], ['Ctrl+1…4', 'Now · Next · Notes · Break'], ['Ctrl+N', 'New ticket from anywhere'], ['Ctrl+Shift+C', 'Compact companion'], ['Ctrl+,', 'Settings']];
+    const rows = [['n', 'New in Next'], ['r', 'Reply to the latest item (Now)'], ['j', 'k', 'Move through Next'], ['e', 'Edit the selected entry'], ['Esc', 'Close a sheet, menu, or entry'], ['[', 'Collapse or expand the sidebar'], ['?', 'This list'], ['Ctrl+1…4', 'Now · Next · Notes · Break'], ['Ctrl+N', 'New in Next from anywhere'], ['Ctrl+Shift+C', 'Compact companion'], ['Ctrl+,', 'Settings']];
     const grid = el('div', { class: 'keys' });
     for (const r of rows) { const label = r.pop(); grid.append(el('span', {}, ...r.flatMap((k, i) => [i ? ' / ' : null, K(k)]).filter(Boolean)), el('span', { text: label })); }
     sheet([el('h2', { text: 'Shortcuts' }), el('p', { class: 't-small', text: 'Single keys work when you are not typing in a field.' }), grid, el('div', { class: 'card-actions', style: 'justify-content:flex-end' }, el('button', { class: 'btn primary', onclick: closeOverlay }, 'Close'))]);
@@ -167,6 +214,7 @@
     if (!id || id === S.project) { if (view) setView(view); return; }
     flushAll();
     S.project = id;
+    const offer = S.offers.get(id); if (offer) { offer.remove(); S.offers.delete(id); }
     if (!user(id)) await loadUser(id);
     restorePlace();
     if (view) S.view = view;
@@ -181,8 +229,9 @@
   function onState() {
     if (!S.project || !S.state.projects.some(p => p.id === S.project)) S.project = visibleProjects()[0]?.id || null;
     if (S.project && !user(S.project)) loadUser(S.project).then(() => render());
+    linkRuns().catch(() => {});
     renderRail(); renderHead(); renderCompactNav();
-    if (isEngaged()) { S.pendingRefresh = true; return; }
+    if (isEngaged()) { deferRefresh(); return; }
     renderView();
   }
   function onOpenRequest(req) {
@@ -293,7 +342,7 @@
     const tabs = el('div', { class: 'tabs', role: 'tablist' });
     for (const [id, label] of VIEWS) {
       const count = id === 'now' ? open : id === 'tickets' ? active : 0;
-      const tip = id === 'now' ? 'Open items from agents' : id === 'tickets' ? 'Tickets in Todo or In progress' : '';
+      const tip = id === 'now' ? 'Open items from agents' : id === 'tickets' ? 'Up next and in progress' : '';
       tabs.append(el('button', { class: 'tab', role: 'tab', title: tip || null, 'aria-selected': S.view === id ? 'true' : 'false', onclick: () => setView(id) }, label, count ? el('span', { class: 'count' + (id === 'now' && st.cls === 'attention' ? ' hot' : ''), text: String(count) }) : null));
     }
     if (S.mode !== 'compact') h.append(row, tabs); else h.append(row);
@@ -312,7 +361,8 @@
     const key = `${S.project}|${S.view}|${S.mode}`;
     const v = $('#view');
     if (!force && key === S.viewKey && S.view !== 'now') return;
-    if (S.view === 'now' && !force && key === S.viewKey && isEngaged()) { S.pendingRefresh = true; return; }
+    if (S.view === 'now' && !force && key === S.viewKey && isEngaged()) { deferRefresh(); return; }
+    const keepScroll = key === S.viewKey ? v.scrollTop : 0;
     S.viewKey = key; S.pendingRefresh = false;
     v.textContent = '';
     v.className = 'view view-' + S.view;
@@ -320,25 +370,38 @@
     const wrap = el('div', { class: 'view-in' });
     ({ now: renderNow, tickets: renderTickets, notes: renderNotes, break: renderBreak })[S.view](wrap);
     v.append(wrap);
+    if (keepScroll) v.scrollTop = keepScroll;
   }
 
   // ---------- Now: threads ----------
   function renderNow(wrap) {
     const pid = S.project, u = user(pid);
     const threads = threadsOf(pid);
-    const recent = threads.filter(t => t.status === 'working' || t.status === 'attention' || Date.now() - t.lastActivity < 24 * 3600000);
-    const earlier = threads.filter(t => !recent.includes(t));
+    const recent = threads.filter(t => t.recent);
+    const archive = threads.filter(t => !t.recent);
     if (!threads.length) {
-      wrap.append(el('div', { class: 'empty' }, el('p', {}, el('b', { text: 'No agent has started here yet.' }), ' When Claude Code or Codex begins a turn in this folder, a thread appears here with what it decides, asks, and notices. Draft tickets in the meantime.')));
+      wrap.append(el('div', { class: 'empty' }, el('p', {}, el('b', { text: 'No agent has started here yet.' }), ' When Claude Code or Codex begins a turn in this folder, a thread appears here with what it decides, asks, and notices. Line up what comes next in the meantime.')));
       return;
     }
     const list = el('div', { class: 'threads' });
+    if (!recent.length) list.append(el('div', { class: 'empty' }, el('p', {}, el('b', { text: 'All quiet.' }), ' Nothing has happened here in the last half hour. Conversations wait in the archive below.')));
     for (const t of recent) list.append(threadCard(t, u));
     wrap.append(list);
-    if (earlier.length) {
-      const d = el('details', { class: 'more' }, el('summary', { text: `Earlier conversations · ${earlier.length}` }));
-      const l2 = el('div', { class: 'threads' }); for (const t of earlier) l2.append(threadCard(t, u, true)); d.append(l2); wrap.append(d);
+    if (archive.length) {
+      const d = el('details', { class: 'more' }, el('summary', { text: `Archive · ${archive.length}` }));
+      const l2 = el('div', { class: 'threads' }); for (const t of archive) l2.append(threadCard(t, u, true)); d.append(l2); wrap.append(d);
     }
+  }
+  function threadMenu(anchor, t, who) {
+    closePopover();
+    const pop = el('div', { class: 'pop menu', role: 'menu' });
+    const item = (label, fn, icon) => el('button', { class: 'menu-item', role: 'menuitem', onclick: () => { closePopover(); fn(); } }, icon ? svg(icon, 13) : null, label);
+    pop.append(item(`How to return to ${who}`, () => returnSheet(t.latest || { agent: t.task.agent, task: t.task.id, id: '', source: t.task.source }), ICON.arrow));
+    if (t.ticket) pop.append(item(`Open ${ticketKey(t.ticket)}`, () => { S.ticket = t.ticket.id; S.ticketFilter = 'all'; setView('tickets'); }, ICON.plus));
+    pop.append(item(t.archived || !t.recent ? 'Restore to Now' : 'Archive', () => setArchived(t.task.id, !(t.archived || !t.recent)), ICON.x));
+    if (t.task.sessionId) pop.append(item('Copy session id', () => { api.copy(t.task.sessionId); toast({ text: 'Session id copied.', ttl: 3000 }); }, ICON.copy));
+    if (t.task.agent === 'codex' && t.latest) pop.append(item('Send to Codex…', () => sendSheet(t.latest)));
+    place(pop, anchor);
   }
 
   function threadCard(t, u, quiet = false) {
@@ -356,9 +419,10 @@
       : el('span', { class: 'status' }, el('span', { class: 'dot quiet' }), 'Idle');
     card.append(el('div', { class: 'thread-h' },
       el('span', { class: 'agent ' + agent, text: short }),
-      el('div', { class: 'thread-t' }, el('b', { text: title }), el('span', { text: `${who} · ${t.runs.length} turn${t.runs.length === 1 ? '' : 's'} · started ${clock(t.runs[0]?.startedAt || t.task.createdAt)}` })),
+      el('div', { class: 'thread-t' }, el('div', { class: 'thread-title' }, el('b', { text: title }), t.ticket ? el('button', { class: 'chip accent link', title: t.ticket.title, onclick: () => { S.ticket = t.ticket.id; S.ticketFilter = 'all'; setView('tickets'); } }, ticketKey(t.ticket)) : null), el('span', { text: `${who} · ${t.runs.length} turn${t.runs.length === 1 ? '' : 's'} · started ${clock(t.runs[0]?.startedAt || t.task.createdAt)}` })),
       statusChip,
-      el('button', { class: 'btn small ghost', title: `How to return to ${who}`, 'aria-label': 'How to return', onclick: () => returnSheet(latest || { agent, task: t.task.id, id: '', source: t.task.source }) }, el('span', { class: 'l', text: 'Return' }), svg(ICON.arrow, 13))));
+      el('button', { class: 'btn small ghost l', title: `How to return to ${who}`, onclick: () => returnSheet(latest || { agent, task: t.task.id, id: '', source: t.task.source }) }, 'Return', svg(ICON.arrow, 13)),
+      el('button', { class: 'icon-btn', title: 'More', 'aria-label': 'Conversation menu', onclick: e => threadMenu(e.currentTarget, t, who) }, svg('M3 8h.01M8 8h.01M13 8h.01', 16, 'stroke-width="2.4"'))));
     // timeline entries in time order
     const entries = [];
     for (const r of t.runs) {
@@ -377,7 +441,7 @@
       if (e.kind === 'turn') tl.append(el('div', { class: 'tl-turn' }, el('i'), el('span', { text: cleanTitle(e.run.title) || `Turn ${t.runs.indexOf(e.run) + 1}` }), el('span', { class: 'tl-time', text: clock(e.at) })));
       else if (e.kind === 'item') tl.append(itemEntry(e.item, u, openLatest && e.item.key === openLatest.key && t.status !== 'completed'));
       // Only the latest turn's ending deserves the prominent row; older completions read as quiet history.
-      else tl.append(endEntry(e.run, who, quiet || e.run.id !== latest?.id));
+      else tl.append(endEntry(e.run, who, quiet || e.run.id !== latest?.id, e.run.id === latest?.id ? t.ticket : null));
     }
     if (t.status === 'working' && !shown.some(e => e.kind === 'item' && e.item.runStatus === 'active')) tl.append(el('div', { class: 'tl-quiet', text: 'Working quietly. Items the agent leaves for you will appear here.' }));
     card.append(tl);
@@ -408,7 +472,7 @@
     };
     const actions = el('div', { class: 'tl-actions' },
       el('button', { class: 'btn small' + (i.kind === 'question' && i.status === 'open' ? ' primary' : ' ghost'), onclick: () => { editing = true; drawResp(); } }, svg(ICON.reply, 12), ...lbl(i.kind === 'question' ? 'Answer' : 'Reply', i.kind === 'question' ? 'Answer' : 'Reply')),
-      el('button', { class: 'btn small ghost', onclick: () => ticketFromItem(i) }, svg(ICON.plus, 12), ...lbl('Make a ticket', 'Ticket')),
+      el('button', { class: 'btn small ghost', onclick: () => ticketFromItem(i) }, svg(ICON.plus, 12), ...lbl('Add to Next', 'Next')),
       el('button', { class: 'btn small ghost', onclick: () => copyItem(i, u) }, svg(ICON.copy, 12), ...lbl('Copy for agent', 'Copy')),
       el('span', { class: 'spacer' }),
       i.status === 'open' ? el('button', { class: 'btn small ghost', title: 'Dismiss', onclick: async () => { await api.dismiss(S.project, i.key, true); const uu = user(); if (uu) uu.dismissed[i.key] = Date.now(); render(true); } }, svg(ICON.x, 12), el('span', { class: 'l', text: 'Dismiss' })) : el('span', { class: 'chip', text: i.status }));
@@ -417,7 +481,7 @@
     return row;
   }
 
-  function endEntry(r, who, quiet) {
+  function endEntry(r, who, quiet, ticket = null) {
     const acked = isAcked(r.id) || quiet;
     const cls = r.status === 'completed' ? 'done' : r.status === 'failed' ? 'failed' : 'attention';
     const text = r.status === 'completed' ? `${who} finished · ran ${dur((r.endedAt || r.lastSeen) - r.startedAt)}`
@@ -425,7 +489,9 @@
       : r.status === 'cancelled' ? `${who} was interrupted${r.endNote ? ' · ' + r.endNote : ''}`
       : `No recent signal from ${who}. It may still be thinking, or the session may have closed.`;
     const row = el('div', { class: 'tl-end ' + cls + (acked ? ' acked' : '') }, el('span', { class: 'dot ' + cls }), el('span', { class: 'tl-end-text' }, acked ? text : [el('b', { text: r.status === 'completed' ? 'Ready when you are. ' : '' }), text]), el('span', { class: 'tl-time', text: clock(r.endedAt || r.lastSeen) }));
-    if (!acked) row.append(el('span', { class: 'tl-end-actions' }, el('button', { class: 'btn small primary', onclick: () => returnSheet(r) }, ...lbl(`Return to ${who}`, 'Return'), svg(ICON.arrow, 12)), el('button', { class: 'btn small ghost', onclick: () => { ack(r.id); render(true); } }, ...lbl('Got it', 'OK'))));
+    if (!acked) row.append(el('span', { class: 'tl-end-actions' }, el('button', { class: 'btn small primary', onclick: () => returnSheet(r) }, ...lbl(`Return to ${who}`, 'Return'), svg(ICON.arrow, 12)),
+      ticket && ticket.status !== 'done' && r.status === 'completed' ? el('button', { class: 'btn small', onclick: () => setTicket(ticket, { status: 'done' }) }, svg(ICON.check, 12), ...lbl(`Mark ${ticketKey(ticket)} done`, 'Done')) : null,
+      el('button', { class: 'btn small ghost', onclick: () => { ack(r.id); render(true); } }, ...lbl('Got it', 'OK'))));
     return row;
   }
 
@@ -440,7 +506,7 @@
     const description = `${i.text}\n\n— ${AGENT[i.agent] || i.agent}, ${KIND_LABEL[i.kind].toLowerCase()}`;
     const t = await call(api.upsertTicket(S.project, { title, description, status: 'backlog', fromItem: i.key }));
     if (u) u.tickets.unshift(t);
-    toast({ text: `${ticketKey(t)} created in Backlog.`, ttl: 4000, actions: [{ label: 'Open', fn: () => { S.ticket = t.id; S.ticketFilter = 'backlog'; setView('tickets'); } }] });
+    toast({ text: `Added to Next as ${ticketKey(t)}, under Someday.`, ttl: 4000, actions: [{ label: 'Open', fn: () => { S.ticket = t.id; S.ticketFilter = 'backlog'; setView('tickets'); } }] });
     renderHead(); renderCompactNav();
   }
 
@@ -464,13 +530,13 @@
     const all = u.tickets;
     const visible = all.filter(t => FILTERS[S.ticketFilter].includes(t.status));
     const bar = el('div', { class: 'tk-bar' },
-      el('button', { class: 'btn primary', onclick: () => newTicket() }, svg(ICON.plus, 12), ...lbl('New ticket', 'New')),
-      seg([['active', 'Active'], ['backlog', 'Backlog'], ['done', 'Done'], ['all', 'All']], S.ticketFilter, v => { S.ticketFilter = v; savePlace(); render(true); }),
+      el('button', { class: 'btn primary', onclick: () => newTicket() }, svg(ICON.plus, 12), 'New'),
+      seg([['active', 'Active'], ['backlog', 'Someday'], ['done', 'Done'], ['all', 'All']], S.ticketFilter, v => { S.ticketFilter = v; savePlace(); render(true); }),
       el('span', { class: 'spacer' }),
       el('span', { class: 't-small l', text: `${visible.length} of ${all.length}` }));
     const split = el('div', { class: 'tk-split' + (S.ticket ? ' has-detail' : '') });
     const list = el('div', { class: 'tk-list' });
-    if (!visible.length) list.append(el('div', { class: 'empty' }, el('p', {}, el('b', { text: all.length ? 'Nothing in this view.' : 'No tickets yet.' }), all.length ? '' : ' Track the work you want done next, and draft the prompt for each piece so it is ready when the agent is.')));
+    if (!visible.length) list.append(el('div', { class: 'empty' }, el('p', {}, el('b', { text: all.length ? 'Nothing in this view.' : 'Nothing lined up yet.' }), all.length ? '' : ' Keep what you want to do next here, with the prompt ready for when the agent is free. Press n to add one.')));
     for (const st of STATUS_ORDER) {
       const rows = visible.filter(t => t.status === st).sort((a, b) => b.priority - a.priority || b.updatedAt - a.updatedAt);
       if (!rows.length) continue;
@@ -529,16 +595,19 @@
       const parts = [`${t.title || 'Untitled'} (${ticketKey(t)})`, t.description.trim(), t.prompt.trim()].filter(Boolean);
       api.copy(parts.join('\n\n')); toast({ text: 'Prompt copied. Paste it into the agent when it is free.', ttl: 4000 });
     };
+    const linked = (t.runs || []).map(id => S.state.runs.find(r => r.id === id)).filter(Boolean);
     d.append(...[
-      el('div', { class: 'tk-detail-h' }, S.mode === 'compact' ? el('button', { class: 'icon-btn', 'aria-label': 'Back', onclick: () => { S.ticket = null; savePlace(); render(true); } }, svg(ICON.back, 14)) : null, el('span', { class: 'tk-key', text: ticketKey(t) }), statusSel, prioSel, el('span', { class: 'spacer' }),
-        el('button', { class: 'icon-btn', title: 'Delete ticket', 'aria-label': 'Delete', onclick: async () => { await api.deleteTicket(S.project, t.id); u.tickets = u.tickets.filter(x => x.id !== t.id); S.ticket = null; render(true); } }, svg(ICON.trash, 14)),
+      el('div', { class: 'tk-detail-h' }, S.mode === 'compact' ? el('button', { class: 'icon-btn', 'aria-label': 'Back', onclick: () => { S.ticket = null; savePlace(); render(true); } }, svg(ICON.back, 14)) : null, el('span', { class: 'tk-key', text: ticketKey(t) }), el('span', { class: 'spacer' }),
+        el('button', { class: 'icon-btn', title: 'Delete', 'aria-label': 'Delete', onclick: async () => { await api.deleteTicket(S.project, t.id); u.tickets = u.tickets.filter(x => x.id !== t.id); S.ticket = null; render(true); } }, svg(ICON.trash, 14)),
         S.mode !== 'compact' ? el('button', { class: 'icon-btn', 'aria-label': 'Close', onclick: () => { S.ticket = null; savePlace(); render(true); } }, svg(ICON.x, 14)) : null),
+      el('div', { class: 'tk-detail-c' }, statusSel, prioSel),
       title,
       el('div', { class: 'field' }, el('label', { text: 'Description' }), desc),
       el('div', { class: 'field' }, el('label', { text: 'Prompt for the agent' }), prompt),
       el('div', { class: 'tk-detail-f' }, el('button', { class: 'btn primary small', onclick: copyPrompt }, svg(ICON.copy, 12), ...lbl('Copy prompt', 'Copy')),
         t.status !== 'done' ? el('button', { class: 'btn small', onclick: () => setTicket(t, { status: 'done' }) }, svg(ICON.check, 12), ...lbl('Mark done', 'Done')) : el('button', { class: 'btn small', onclick: () => setTicket(t, { status: 'todo' }) }, 'Reopen'),
         el('span', { class: 'spacer' }), meta),
+      linked.length ? el('p', { class: 't-small' }, `Worked on by ${[...new Set(linked.map(r => AGENT[r.agent] || r.agent))].join(' and ')} · ${linked.length} turn${linked.length === 1 ? '' : 's'}`, ' ', el('button', { class: 'btn small ghost', onclick: () => { setView('now'); } }, 'See in Now')) : el('p', { class: 't-small', text: 'Copy the prompt and paste it to an agent: the key in it links the turn back here and moves this to In progress.' }),
       t.fromItem ? el('p', { class: 't-small', text: 'Created from an agent item.' }) : null].filter(Boolean));
     queueMicrotask(() => { autoGrow(desc); autoGrow(prompt); });
     return d;
@@ -677,7 +746,7 @@
     return s;
   }
 
-  async function openSettings({ onboarding }) {
+  async function openSettings({ onboarding, tab } = {}) {
     const st = await call(api.setupStatus());
     const s = S.settings;
     const agentRow = (id, label, info) => {
@@ -690,33 +759,43 @@
           el('div', { class: 'l' }, el('b', { text: label }), el('span', { text: connected ? (stale ? 'Connected · update available' : 'Connected: skill and lifecycle hooks installed') : 'Not connected. One click installs the skill and hooks in your user settings.' }),
             id === 'codex' && connected ? el('span', { text: 'Codex asks you to trust hooks once: type /hooks in Codex and approve the Layover entries.' }) : null, info.hooksError ? el('span', { style: 'color:var(--danger)', text: 'Hooks file could not be read: ' + info.hooksError }) : null),
           connected ? el('button', { class: 'btn small ghost', onclick: async () => { await call(api.setupRemove(id)); info = (await call(api.setupStatus()))[id]; draw(); } }, 'Disconnect') : null,
-          el('button', { class: 'btn small' + (connected && !stale ? '' : ' primary'), onclick: async () => { try { const r = await call(api.setupInstall(id, {})); info = (await call(api.setupStatus()))[id]; draw(); toast({ text: `${label} connected.${r.notes?.length ? ' ' + r.notes[0] : ''}`, ttl: 8000 }); } catch (e) { toast({ text: e.message, ttl: 8000, cls: 'gold' }); } } }, connected ? (stale ? 'Update' : 'Reinstall') : 'Connect')].filter(Boolean));
+          el('button', { class: 'btn small' + (connected && !stale ? '' : ' primary'), onclick: async () => { try { const r = await call(api.setupInstall(id, {})); info = (await call(api.setupStatus()))[id]; draw(); toast({ text: label + ' connected.' + (r.notes?.length ? ' ' + r.notes[0] : ''), ttl: 8000 }); } catch (e) { toast({ text: e.message, ttl: 8000, cls: 'gold' }); } } }, connected ? (stale ? 'Update' : 'Reinstall') : 'Connect')].filter(Boolean));
       };
       draw(); return row;
     };
     const p = project();
-    const content = [
-      el('h2', { text: onboarding ? 'Welcome to Layover' : 'Settings' }),
-      onboarding ? el('p', { class: 't-body', text: 'Layover is the room you wait in while an agent works: a notebook for the project, threads of what each agent decides and asks, tickets for what comes next, and a break when you want one. Connect your agents so they can open it for you.' }) : null,
-      el('div', { class: 'sheet-sec' }, el('h3', { text: 'Agents' }), agentRow('claude', 'Claude Code', st.claude), agentRow('codex', 'Codex', st.codex),
-        el('p', { class: 't-small' }, 'Command agents use: ', el('code', { class: 'path', text: st.cli }), ' ', el('button', { class: 'btn small ghost', onclick: () => api.copy(st.cli) }, 'Copy'), st.cliExists ? null : el('span', { style: 'color:var(--danger)', text: ' (missing)' }))),
-    ];
-    if (!onboarding) content.push(
-      el('div', { class: 'sheet-sec' }, el('h3', { text: 'When an agent starts a turn' }),
-        seg([['focus', 'Bring Layover forward'], ['open', 'Open behind my work'], ['reveal', 'Only if already open'], ['never', 'Stay quiet']], s.openOnRunStart, v => { s.openOnRunStart = v; api.setSettings({ openOnRunStart: v }); }),
-        el('p', { class: 't-small', text: 'Only the start of a turn can bring Layover forward; items and completions never move the window. A switch to another workspace is offered, not forced, while you are typing.' }),
-        switchRow('Windows notification when a turn finishes', 'Silent toast; only when Layover is not in front.', s.notifyOnComplete, v => api.setSettings({ notifyOnComplete: v })),
-        switchRow('Keep running in the tray when the window is closed', 'Needed so agents can reach it.', s.closeToTray, v => api.setSettings({ closeToTray: v })),
-        switchRow('Tell the agent its run id', 'One short line per prompt so it can publish items without guessing. Off saves a few tokens.', s.hookContext, v => api.setSettings({ hookContext: v }))),
-      p ? el('div', { class: 'sheet-sec' }, el('h3', { text: 'This workspace' }),
-        el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'Ticket prefix' }), el('span', { text: 'Up to 4 capital letters or digits.' })), el('input', { class: 'input', style: 'width:90px', maxlength: '4', value: p.prefix, onchange: async e => { try { await call(api.setProjectMeta(p.id, { prefix: e.target.value.toUpperCase() })); } catch (err) { toast({ text: err.message, ttl: 5000 }); } } })),
-        el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'Colour' })), el('div', { class: 'row' }, ...['clay', 'gold', 'moss', 'teal', 'slate', 'plum'].map(c => el('button', { class: 'ws-tok', style: `background:var(--ws-${c});width:26px;height:26px;border:${c === p.color ? '2px solid var(--text)' : 'none'};cursor:pointer`, title: c, onclick: () => api.setProjectMeta(p.id, { color: c }) })))),
-        el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'Display name' })), el('input', { class: 'input', style: 'width:220px', value: p.displayName, placeholder: p.name, onchange: e => api.setProjectMeta(p.id, { name: e.target.value }) }))) : null,
-      el('div', { class: 'sheet-sec' }, el('h3', { text: 'Appearance' }), seg([['system', 'Match system'], ['light', 'Light'], ['dark', 'Dark']], s.theme, v => { s.theme = v; api.setSettings({ theme: v }); })),
-      el('div', { class: 'sheet-sec' }, el('h3', { text: 'About' }), el('p', { class: 't-small' }, `Layover ${s.version} · data in `, el('code', { class: 'path', text: s.dataDir }), ' ', el('button', { class: 'btn small ghost', onclick: () => api.openPath(s.dataDir) }, 'Open'), ' · local service on 127.0.0.1:' + s.port + '. Layover makes no model calls.'),
-        el('p', { class: 't-small' }, 'Shortcuts: ', el('kbd', { text: 'Ctrl' }), '+', el('kbd', { text: '1–4' }), ' views · ', el('kbd', { text: 'Ctrl' }), '+', el('kbd', { text: 'N' }), ' new ticket · ', el('kbd', { text: 'Ctrl' }), '+', el('kbd', { text: 'Shift' }), '+', el('kbd', { text: 'C' }), ' compact')));
-    content.push(el('div', { class: 'card-actions', style: 'justify-content:flex-end' }, el('button', { class: 'btn primary', onclick: async () => { if (onboarding) { S.settings.onboarded = true; await api.setSettings({ onboarded: true }); } closeOverlay(); } }, onboarding ? 'Done' : 'Close')));
-    sheet(content);
+    const panes = {
+      agents: () => [el('div', { class: 'sheet-sec' }, agentRow('claude', 'Claude Code', st.claude), agentRow('codex', 'Codex', st.codex),
+        el('p', { class: 't-small' }, 'Command agents use: ', el('code', { class: 'path', text: st.cli }), ' ', el('button', { class: 'btn small ghost', onclick: () => api.copy(st.cli) }, 'Copy'), st.cliExists ? null : el('span', { style: 'color:var(--danger)', text: ' (missing)' })))],
+      workspace: () => [p ? el('div', { class: 'sheet-sec' },
+        el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'Name' }), el('span', { text: 'Shown in the sidebar; the folder name otherwise.' })), el('input', { class: 'input', style: 'width:220px', value: p.displayName, placeholder: p.name, onchange: e => api.setProjectMeta(p.id, { name: e.target.value }) })),
+        el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'Colour' })), el('div', { class: 'row' }, ...['clay', 'gold', 'moss', 'teal', 'slate', 'plum'].map(c => el('button', { class: 'ws-tok', style: 'background:var(--ws-' + c + ');width:26px;height:26px;border:' + (c === p.color ? '2px solid var(--text)' : 'none') + ';cursor:pointer', title: c, onclick: () => api.setProjectMeta(p.id, { color: c }) })))),
+        el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'Key prefix' }), el('span', { text: 'Next entries are numbered like ' + p.prefix + '-1. Up to 4 capital letters or digits.' })), el('input', { class: 'input', style: 'width:90px', maxlength: '4', value: p.prefix, onchange: async e => { try { await call(api.setProjectMeta(p.id, { prefix: e.target.value.toUpperCase() })); } catch (err) { toast({ text: err.message, ttl: 5000 }); } } })),
+        el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'Folder' }), el('span', {}, el('code', { class: 'path', text: p.path || 'No folder yet' }))), p.path ? el('button', { class: 'btn small ghost', onclick: () => api.openPath(p.path) }, 'Open') : null),
+        el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'Hide this workspace' }), el('span', { text: 'Keeps its notes and history; it comes back when an agent works here again.' })), el('button', { class: 'btn small ghost danger', onclick: async () => { await api.setProjectMeta(p.id, { hidden: true }); closeOverlay(); S.state = await call(api.getState()); S.project = null; onState(); } }, 'Hide'))) : el('p', { class: 't-small', text: 'No workspace selected.' })],
+      preferences: () => [
+        el('div', { class: 'sheet-sec' }, el('h3', { text: 'When an agent starts a turn' }),
+          seg([['focus', 'Bring Layover forward'], ['open', 'Open behind my work'], ['reveal', 'Only if already open'], ['never', 'Stay quiet']], s.openOnRunStart, v => { s.openOnRunStart = v; api.setSettings({ openOnRunStart: v }); }),
+          el('p', { class: 't-small', text: 'Only the start of a turn can bring Layover forward; items and completions never move the window.' }),
+          switchRow('Windows notification when a turn finishes', 'Silent toast; only when Layover is not in front.', s.notifyOnComplete, v => api.setSettings({ notifyOnComplete: v })),
+          switchRow('Keep running in the tray when the window is closed', 'Needed so agents can reach it.', s.closeToTray, v => api.setSettings({ closeToTray: v })),
+          switchRow('Tell the agent its run id', 'One short line per prompt so it can publish items without guessing.', s.hookContext, v => api.setSettings({ hookContext: v }))),
+        el('div', { class: 'sheet-sec' }, el('h3', { text: 'Appearance' }), seg([['system', 'Match system'], ['light', 'Light'], ['dark', 'Dark']], s.theme, v => { s.theme = v; api.setSettings({ theme: v }); })),
+        el('div', { class: 'sheet-sec' }, el('p', { class: 't-small' }, 'Layover ' + s.version + ' · data in ', el('code', { class: 'path', text: s.dataDir }), ' ', el('button', { class: 'btn small ghost', onclick: () => api.openPath(s.dataDir) }, 'Open'), ' · local service on 127.0.0.1:' + s.port + '. Layover makes no model calls.'),
+          el('p', { class: 't-small' }, 'Press ', el('kbd', { text: '?' }), ' anywhere for keyboard shortcuts.'))],
+    };
+    if (onboarding) {
+      sheet([el('h2', { text: 'Welcome to Layover' }),
+        el('p', { class: 't-body', text: 'Layover is the room you wait in while an agent works: threads of what each agent decides and asks, a place for what comes next, notes, and a break when you want one. Connect your agents so they can open it for you.' }),
+        ...panes.agents(),
+        el('div', { class: 'card-actions', style: 'justify-content:flex-end' }, el('button', { class: 'btn primary', onclick: async () => { S.settings.onboarded = true; await api.setSettings({ onboarded: true }); closeOverlay(); } }, 'Done'))]);
+      return;
+    }
+    let current = tab || S.settingsTab || 'agents';
+    const body = el('div', { class: 'sheet-body' });
+    const tabs = seg([['agents', 'Agents'], ['workspace', 'Workspace'], ['preferences', 'Preferences']], current, v => { current = v; S.settingsTab = v; body.textContent = ''; body.append(...panes[v]()); });
+    body.append(...panes[current]());
+    sheet([el('div', { class: 'sheet-h' }, el('h2', { text: 'Settings' }), el('button', { class: 'icon-btn', 'aria-label': 'Close', onclick: closeOverlay }, svg(ICON.x, 14))), tabs, body]);
   }
 
   // ---------- toasts ----------

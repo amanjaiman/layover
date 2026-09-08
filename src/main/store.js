@@ -323,6 +323,7 @@ export class Store {
       e.status = t.status;
     }
     if (t.priority !== undefined) { if (!TICKET_PRIORITY.includes(Number(t.priority))) throw Error('Invalid priority'); e.priority = Number(t.priority); }
+    if (t.runs !== undefined) { if (!Array.isArray(t.runs)) throw Error('runs must be an array'); e.runs = [...new Set(t.runs.filter(isId))].slice(0, 50); }
     e.updatedAt = now;
     this.saveUser();
     return structuredClone(e);

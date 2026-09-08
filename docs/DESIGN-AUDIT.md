@@ -51,6 +51,8 @@
 
 Not recommended now: a second AI inside the app, a full transcript feed, badges or unread counts, or rich text in Notes. They would trade the calm for busyness the brief warns against.
 
-## Applied in this pass
+## Applied
 
-A1–A8, B1–B5, D1 (`n`, `r`, `e`, `j`/`k`, `Esc`, `[`, `?`), D2, D5, D6. C1–C5 and D3–D4 wait for a decision.
+0.3.1: A1–A8, B1–B5, D1 (`n`, `r`, `e`, `j`/`k`, `Esc`, `[`, `?`), D2, D5, D6.
+
+0.3.2, after the decisions: C1 (Archive/Restore per conversation, and quiet conversations move to Archive on their own after 30 minutes), C2 (tab renamed Next; statuses Up next / Someday / Done / Dropped; "New", "Add to Next"), C3 and C5 as recommended, C4 (workspace popover), D3 (a turn whose prompt carries a key links to the entry, moves it to In progress, and offers "Mark done" at completion), D4 (conversation menu). Second visual pass fixes: collapsed-rail selection, entry detail header rows, compact Settings labels, offer toasts dismissed on switch, and real-time updates (only typing in a field defers a refresh, retried within two seconds, scroll position kept). Settings became three tabs: Agents, Workspace, Preferences.

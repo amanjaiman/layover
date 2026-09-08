@@ -280,8 +280,8 @@ body.compact .cnav{ display:flex; gap:2px; padding:8px var(--s2); border-top:1px
    v0.3 — threads, tickets, full width, compact labels
    ========================================================== */
 .view-in{ max-width:none; }
-body:not(.compact) .s{ display:none; }
-body.compact .l{ display:none; }
+body:not(.compact) span.s{ display:none; }
+body.compact span.l, body.compact button.l{ display:none; }
 body.compact .head{ padding-top:6px; }
 body.compact .status{ font-size:12px; padding:4px 10px 4px 8px; }
 body.compact .btn.small{ padding:4px 8px; font-size:12px; }
@@ -407,3 +407,58 @@ body.rail-collapsed .rail-list{ padding:0 var(--s2); }
 /* shortcut sheet */
 .keys{ display:grid; grid-template-columns:auto 1fr; gap:8px var(--s3); align-items:center; font-size:14px; color:var(--text-2); }
 .keys kbd{ justify-self:start; }
+
+/* ==========================================================
+   v0.3.2 — archive, Next, settings tabs, rail polish
+   ========================================================== */
+/* collapsed rail: square selection, centered token, dot as a badge */
+body.rail-collapsed .ws{ width:44px; height:44px; margin:0 auto; padding:0; display:grid; place-items:center; border-radius:var(--r-md); }
+body.rail-collapsed .ws .dot{ right:5px; top:5px; }
+body.rail-collapsed .rail-list{ padding:0; gap:4px; }
+body.rail-collapsed .rail-foot{ padding:var(--s2) 6px; }
+body.rail-collapsed .rail-btn{ width:44px; height:36px; margin:0 auto; }
+/* thread header */
+.thread-title{ display:flex; align-items:center; gap:8px; min-width:0; }
+.thread-title b{ min-width:0; }
+.chip.link{ border:none; cursor:pointer; flex:none; font-family:var(--f-mono); }
+.chip.link:hover{ background:var(--accent-soft); }
+.menu-item svg{ flex:none; color:var(--text-faint); }
+/* ticket detail: header row then controls row, nothing escapes the card */
+.tk-detail{ overflow:hidden; }
+.tk-detail-h{ flex-wrap:nowrap; }
+.tk-detail-c{ display:flex; gap:8px; flex-wrap:wrap; }
+.tk-detail-c .input.small{ max-width:100%; }
+/* settings */
+.sheet-h{ display:flex; align-items:center; justify-content:space-between; gap:var(--s2); }
+.sheet > .seg{ justify-self:start; }
+.sheet-body{ display:grid; gap:var(--s4); min-height:220px; }
+.sheet-sec > .switch:first-child{ border-top:none; }
+.sheet .switch .input{ max-width:60%; }
+
+/* ==========================================================
+   v0.3.2 — archive, Next, settings tabs, rail polish
+   ========================================================== */
+/* collapsed rail: square selection, centered token, dot as a badge */
+body.rail-collapsed .ws{ width:44px; height:44px; margin:0 auto; padding:0; display:grid; place-items:center; border-radius:var(--r-md); }
+body.rail-collapsed .ws .dot{ right:5px; top:5px; }
+body.rail-collapsed .rail-list{ padding:0; gap:4px; }
+body.rail-collapsed .rail-foot{ padding:var(--s2) 6px; }
+body.rail-collapsed .rail-btn{ width:44px; height:36px; margin:0 auto; }
+/* thread header */
+.thread-title{ display:flex; align-items:center; gap:8px; min-width:0; }
+.thread-title b{ min-width:0; }
+.chip.link{ border:none; cursor:pointer; flex:none; font-family:var(--f-mono); }
+.chip.link:hover{ background:var(--accent-soft); }
+.menu-item svg{ flex:none; color:var(--text-faint); }
+/* ticket detail: header row then controls row, nothing escapes the card */
+.tk-detail{ overflow:hidden; }
+.tk-detail-h{ flex-wrap:nowrap; }
+.tk-detail-c{ display:flex; gap:8px; flex-wrap:wrap; }
+.tk-detail-c .input.small{ max-width:100%; }
+/* settings */
+.sheet-h{ display:flex; align-items:center; justify-content:space-between; gap:var(--s2); }
+.sheet > .seg{ justify-self:start; }
+.sheet-body{ display:grid; gap:var(--s4); min-height:220px; }
+.sheet-sec > .switch:first-child{ border-top:none; }
+.sheet .switch .input{ max-width:60%; }
+body.rail-collapsed .ws{ grid-template-columns:1fr; }
