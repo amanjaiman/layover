@@ -8,3 +8,6 @@ build/icon.ico
 .devdata/
 build/trayTemplate.png
 build/trayTemplate@2x.png
+
+# Local design explorations, not part of the product
+design/

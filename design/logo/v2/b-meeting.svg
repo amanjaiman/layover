@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <defs><linearGradient id="tile" x1="0" y1="0" x2=".35" y2="1">
-   <stop offset="0" stop-color="#17998E"/><stop offset="1" stop-color="#0A625D"/></linearGradient></defs>
-  <rect width="512" height="512" rx="114" fill="url(#tile)"/>
-  <g transform="translate(256 256) rotate(-45) scale(.72) translate(-256 -256)" fill="none" stroke-width="50" stroke-linecap="round">
-    <circle cx="176" cy="256" r="82" pathLength="360" stroke-dasharray="270 90" transform="rotate(-135 176 256)" stroke="#FFF"/>
-    <circle cx="336" cy="256" r="82" pathLength="360" stroke-dasharray="270 90" transform="rotate(45 336 256)" stroke="#F2B53C"/>
-  </g>
-</svg>
