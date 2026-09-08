@@ -19,6 +19,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }   # the notes step needs the previous tag
       - uses: actions/setup-node@v4
         with: { node-version: 24 }
       - run: npm ci --no-audit --no-fund
@@ -36,9 +37,17 @@ jobs:
           for a in arm64 x64; do for f in Layover-*-mac-$a.zip; do cp "$f" Layover-mac-$a.zip; done; done
           ls -la
           exit 0
+      - name: Release notes from the commits since the previous tag
+        shell: bash
+        run: |
+          set +e
+          prev=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null)
+          { if [ -n "$prev" ]; then git log --no-merges --format='- %s' "$prev..${GITHUB_REF_NAME}"; else git log --no-merges --format='- %s' -n 20; fi; } > release/NOTES.md
+          cat release/NOTES.md
+          exit 0
       - uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true   # the app shows the release body in its update sheet
+          body_path: release/NOTES.md    # the app shows the release body in its update sheet
           files: |
             release/Layover-Setup*.exe
             release/Layover-*mac*.zip
