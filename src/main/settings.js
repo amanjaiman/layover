@@ -18,7 +18,7 @@ export const DEFAULTS = {
 export function loadSettings(file = settingsFile) {
   let s = {};
   try { if (fs.existsSync(file)) s = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { s = {}; }
-  if (!s.version || s.version < 2) { if (s.openOnRunStart === 'reveal') s.openOnRunStart = 'focus'; s.version = 2; } // v1 default never surfaced a hook-launched app
+  if (!s.version || s.version < 2) { if (s.openOnRunStart === 'reveal' || s.openOnRunStart === 'open') s.openOnRunStart = 'focus'; s.version = 2; } // v1 had no "bring forward" option
   return merge(structuredClone(DEFAULTS), s);
 }
 

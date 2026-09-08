@@ -24,9 +24,14 @@ Both agents ran in scratch folders on this machine's own accounts. Each live run
 - Setup: merge into existing `settings.json` preserving foreign hooks, idempotent reinstall, stale path detection, removal leaving other hooks intact, refusing to overwrite malformed JSON, command quoting.
 - Service: token and Origin/Host enforcement, single and batch events, rejection, open routing.
 
+## Focus on turn start (v0.3)
+
+- A turn-start hook with the app running in the tray creates and shows the window; verified with the packaged shim (~195 ms).
+- Keyboard focus: with the window merely shown, Windows left focus with the terminal (measured with `GetForegroundWindow`: the Claude Code process kept it). v0.3 therefore attaches thread input to the foreground window and calls `SetForegroundWindow` from a short PowerShell helper, spawned by the app only when it is not already focused. **The end-to-end focus measurement for that helper was blocked by a locked desktop during this session** (no foreground window at all); it needs one check on an unlocked desktop: start a turn from a terminal and see Layover come forward with focus.
+
 ## Manual checks in the app (dev build, screenshots in this session)
 
-Workspace rail with colours and working dot; Now view with hero item, chips (*Waiting on you* vs *Assumption · continuing*), actions; onboarding sheet; dark theme via system. Spool ingest on launch (events written while the app was down appeared after it started). Single-instance handoff (`--open` from a second process reaches the running app). PATH added on first launch of the packaged app. Packaged CLI runs without Node installed on PATH.
+Workspace rail with colours and working dot; Now view as per-agent threads with turn dividers, highlighted latest item, inline reply, completion entry with return action; Tickets view (status groups, keys, priority, detail panel with description and prompt draft, Copy prompt) in expanded and compact layouts; onboarding sheet; light and dark themes. Spool ingest on launch (events written while the app was down appeared after it started). Single-instance handoff (`--open` from a second process reaches the running app). PATH added on first launch of the packaged app. Packaged CLI runs without Node installed on PATH.
 
 Not manually exercised end-to-end yet: compact mode window sizing, break reminders over a real interval, Windows toast click-through, notes conflict banner with two windows, the Codex write-back sheet against a live App Server (bridge code is the phase-one implementation, unit-level only here).
 

@@ -3,6 +3,7 @@
 import { app, BrowserWindow, Tray, Menu, nativeImage, nativeTheme, ipcMain, shell, clipboard, dialog, Notification } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { Store } from './store.js';
 import { Bridge } from './bridge.js';
@@ -163,8 +164,28 @@ function bringToFront() {
   win.focus();
   win.moveTop();
   setTimeout(() => { if (win && !win.isDestroyed()) win.setAlwaysOnTop(pinned, 'floating'); }, 250);
+  if (!win.isFocused()) nativeFocus();
   lastInteraction = Date.now();
   return { visible: true, focused: true };
+}
+
+/**
+ * Windows only grants SetForegroundWindow to the process that owns the foreground window (or one it
+ * started). Attaching our thread input to that window's thread for a moment is the documented way
+ * around it. Electron has no binding for it, so a short PowerShell helper does the three calls.
+ */
+let nativeFocusAt = 0;
+function nativeFocus() {
+  if (process.platform !== 'win32' || !win || Date.now() - nativeFocusAt < 1500) return;
+  nativeFocusAt = Date.now();
+  const buf = win.getNativeWindowHandle();
+  const hwnd = buf.length >= 8 ? buf.readBigUInt64LE(0).toString() : String(buf.readUInt32LE(0));
+  const script = `Add-Type -Namespace L -Name W -MemberDefinition '[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, IntPtr p); [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId(); [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint a, uint b, bool f); [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h); [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr h); [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n);'; $h=[IntPtr]::new([Int64]${hwnd}); $fg=[L.W]::GetForegroundWindow(); $ft=[L.W]::GetWindowThreadProcessId($fg,[IntPtr]::Zero); $ct=[L.W]::GetCurrentThreadId(); $a=[L.W]::AttachThreadInput($ft,$ct,$true); [void][L.W]::ShowWindow($h,9); [void][L.W]::BringWindowToTop($h); [void][L.W]::SetForegroundWindow($h); if($a){ [void][L.W]::AttachThreadInput($ft,$ct,$false) }`;
+  try {
+    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-Command', script], { windowsHide: true, stdio: 'ignore' });
+    child.on('error', e => log('native focus failed', e.message));
+    child.unref();
+  } catch (e) { log('native focus failed', e.message); }
 }
 
 /** Show the window without taking focus from whatever the user is doing. */
