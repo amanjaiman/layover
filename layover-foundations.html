@@ -67,6 +67,7 @@
   --ws-slate:  #4C6E9C;
   --ws-plum:   #8B5378;
   --ws-on:     #FFFFFF;
+  --knob:      #FFFFFF;
 
   /* --- elevation --- */
   --e0: none;
@@ -137,6 +138,7 @@
     --ws-slate:  #6D8FBE;
     --ws-plum:   #B0759C;
     --ws-on:     #14170F;
+    --knob:      #EDEEE9;
 
     --e1: 0 1px 2px rgba(0,0,0,.5);
     --e2: 0 2px 4px rgba(0,0,0,.4), 0 8px 16px -6px rgba(0,0,0,.55);
@@ -184,11 +186,131 @@
   --ws-slate:  #6D8FBE;
   --ws-plum:   #B0759C;
   --ws-on:     #14170F;
+  --knob:      #EDEEE9;
 
   --e1: 0 1px 2px rgba(0,0,0,.5);
   --e2: 0 2px 4px rgba(0,0,0,.4), 0 8px 16px -6px rgba(0,0,0,.55);
   --e3: 0 4px 10px rgba(0,0,0,.45), 0 20px 40px -12px rgba(0,0,0,.7);
   color-scheme: dark;
+}
+
+/* ==========================================================
+   ALTERNATE ACCENTS
+   The accent is the only interactive color, so swapping this
+   one group re-tints every component. Warm hues are excluded:
+   marigold owns "happening elsewhere" and rust owns danger, so
+   an accent from that half of the wheel would read as status.
+   Each accent mirrors the three theme states exactly.
+   ========================================================== */
+
+/* --- Ink (indigo ~232°) --- */
+:root[data-accent="ink"]{
+  --accent-wash:#EBEDF8; --accent-soft:#C8CDEC; --accent-mid:#7A85CE;
+  --accent:#3F4C9E; --accent-hover:#333E84; --accent-press:#28316A;
+  --accent-on:#FFFFFF; --accent-text:#333E84;
+}
+@media (prefers-color-scheme: dark){
+  :root[data-accent="ink"]:not([data-theme="light"]){
+    --accent-wash:#181B2C; --accent-soft:#272D4C; --accent-mid:#5B68B2;
+    --accent:#8F9AE9; --accent-hover:#A4AEEF; --accent-press:#B9C1F5;
+    --accent-on:#14162A; --accent-text:#A4AEEF;
+  }
+}
+:root[data-theme="dark"][data-accent="ink"]{
+  --accent-wash:#181B2C; --accent-soft:#272D4C; --accent-mid:#5B68B2;
+  --accent:#8F9AE9; --accent-hover:#A4AEEF; --accent-press:#B9C1F5;
+  --accent-on:#14162A; --accent-text:#A4AEEF;
+}
+
+/* --- Mulberry (plum ~333°) --- */
+:root[data-accent="mulberry"]{
+  --accent-wash:#F8EAF1; --accent-soft:#E9C9DB; --accent-mid:#C4779F;
+  --accent:#933D68; --accent-hover:#7C3357; --accent-press:#632945;
+  --accent-on:#FFFFFF; --accent-text:#7C3357;
+}
+@media (prefers-color-scheme: dark){
+  :root[data-accent="mulberry"]:not([data-theme="light"]){
+    --accent-wash:#271722; --accent-soft:#43263A; --accent-mid:#A85C86;
+    --accent:#DE93B8; --accent-hover:#E9A9C8; --accent-press:#F1BED7;
+    --accent-on:#2A1220; --accent-text:#E9A9C8;
+  }
+}
+:root[data-theme="dark"][data-accent="mulberry"]{
+  --accent-wash:#271722; --accent-soft:#43263A; --accent-mid:#A85C86;
+  --accent:#DE93B8; --accent-hover:#E9A9C8; --accent-press:#F1BED7;
+  --accent-on:#2A1220; --accent-text:#E9A9C8;
+}
+
+/* --- Ember (burnt orange ~20°) --- */
+:root[data-accent="ember"]{
+  --accent-wash:#FAEBE4; --accent-soft:#F0CDBC; --accent-mid:#C8794F;
+  --accent:#A04A22; --accent-hover:#853C1A; --accent-press:#6B3014;
+  --accent-on:#FFFFFF; --accent-text:#853C1A;
+}
+@media (prefers-color-scheme: dark){
+  :root[data-accent="ember"]:not([data-theme="light"]){
+    --accent-wash:#2B1A12; --accent-soft:#4A2C1D; --accent-mid:#B06A42;
+    --accent:#E8956A; --accent-hover:#F0A87F; --accent-press:#F5BA97;
+    --accent-on:#2A1409; --accent-text:#F0A87F;
+  }
+}
+:root[data-theme="dark"][data-accent="ember"]{
+  --accent-wash:#2B1A12; --accent-soft:#4A2C1D; --accent-mid:#B06A42;
+  --accent:#E8956A; --accent-hover:#F0A87F; --accent-press:#F5BA97;
+  --accent-on:#2A1409; --accent-text:#F0A87F;
+}
+
+/* Ember sits on danger's red-orange, so danger moves to a deeper crimson
+   while it is active. An accent may adjust a semantic color to stay clear
+   of it — it may never take a semantic color's job. */
+:root[data-accent="ember"]{ --danger:#9E2440; --danger-wash:#F9E4E9; }
+@media (prefers-color-scheme: dark){
+  :root[data-accent="ember"]:not([data-theme="light"]){ --danger:#F0879B; --danger-wash:#2E1620; }
+}
+:root[data-theme="dark"][data-accent="ember"]{ --danger:#F0879B; --danger-wash:#2E1620; }
+
+/* --- Oxblood (deep burgundy ~352°) --- */
+:root[data-accent="oxblood"]{
+  --accent-wash:#F9EAEC; --accent-soft:#EDC8CE; --accent-mid:#BF6E7C;
+  --accent:#8C2F42; --accent-hover:#742536; --accent-press:#5C1D2B;
+  --accent-on:#FFFFFF; --accent-text:#742536;
+}
+@media (prefers-color-scheme: dark){
+  :root[data-accent="oxblood"]:not([data-theme="light"]){
+    --accent-wash:#2A161A; --accent-soft:#47252C; --accent-mid:#A85A6B;
+    --accent:#E08C9E; --accent-hover:#EAA2B1; --accent-press:#F2B8C4;
+    --accent-on:#2A1017; --accent-text:#EAA2B1;
+  }
+}
+:root[data-theme="dark"][data-accent="oxblood"]{
+  --accent-wash:#2A161A; --accent-soft:#47252C; --accent-mid:#A85A6B;
+  --accent:#E08C9E; --accent-hover:#EAA2B1; --accent-press:#F2B8C4;
+  --accent-on:#2A1017; --accent-text:#EAA2B1;
+}
+
+/* --- Umber (low-chroma warm brown ~30°) --- */
+:root[data-accent="umber"]{
+  --accent-wash:#F4EEE6; --accent-soft:#DFD0BC; --accent-mid:#A98A63;
+  --accent:#6F5334; --accent-hover:#5C4429; --accent-press:#48351F;
+  --accent-on:#FFFFFF; --accent-text:#5C4429;
+}
+@media (prefers-color-scheme: dark){
+  :root[data-accent="umber"]:not([data-theme="light"]){
+    --accent-wash:#241E16; --accent-soft:#3D3427; --accent-mid:#927A57;
+    --accent:#CBAE84; --accent-hover:#D9BF98; --accent-press:#E4CFAE;
+    --accent-on:#221A0F; --accent-text:#D9BF98;
+  }
+}
+:root[data-theme="dark"][data-accent="umber"]{
+  --accent-wash:#241E16; --accent-soft:#3D3427; --accent-mid:#927A57;
+  --accent:#CBAE84; --accent-hover:#D9BF98; --accent-press:#E4CFAE;
+  --accent-on:#221A0F; --accent-text:#D9BF98;
+}
+
+/* Switch swatches — fixed across themes, like the workspace hues */
+:root{
+  --sw-teal:#2E9A92; --sw-ink:#6470C4; --sw-mulberry:#B45C8A;
+  --sw-ember:#BE5C2E; --sw-oxblood:#A03B50; --sw-umber:#8A6A44;
 }
 
 /* ---------------- base ---------------- */
@@ -330,6 +452,23 @@ a{ color: var(--accent-text); }
   font-family: var(--f-display); font-weight:600; font-size:16px;
 }
 .ws-name{ font-family: var(--f-mono); font-size:10.5px; color: var(--text-faint); }
+.accent-cards{ display:grid; grid-template-columns: repeat(auto-fit,minmax(230px,1fr)); gap: var(--s4); }
+.accent-card{ display:grid; gap: var(--s1); align-content:start; }
+.accent-band{ height: 42px; border-radius: var(--r-md); box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); margin-bottom: var(--s1); }
+.accent-card h5{ font-family: var(--f-display); font-weight:600; font-size:15px; display:flex; align-items:baseline; gap:8px; }
+.accent-card h5 span{ font-family: var(--f-mono); font-size:10.5px; color: var(--text-faint); font-weight:400; }
+.accent-card p{ font-size: 13px; color: var(--text-muted); line-height:1.55; }
+.accent-card .accent-v{ color: var(--text-faint); font-size:12.5px; }
+/* side-by-side test: accent against every status color at once */
+.clash{ display:flex; flex-wrap:wrap; gap:9px; align-items:center; }
+.clash-pill{ font-size:12.5px; font-weight:600; padding:7px 14px; border-radius:var(--r-full); line-height:1; white-space:nowrap; }
+.clash-accent{ background:var(--accent); color:var(--accent-on); }
+.clash-ring{ background:var(--surface); border:1px solid var(--accent-mid); box-shadow:0 0 0 3px var(--accent-wash); color:var(--text); }
+.clash-status{ background:var(--gold-wash); color:var(--gold-text); }
+.clash-ok{ background:var(--ok-wash); color:var(--ok); }
+.clash-danger{ background:var(--danger-wash); color:var(--danger); }
+.clash-link{ color:var(--accent-text); font-weight:600; font-size:13.5px; text-decoration:underline; text-underline-offset:3px; }
+.clash-sep{ width:1px; height:22px; background:var(--border-soft); }
 
 /* ---------------- type scale ---------------- */
 .scale{ display:grid; gap: 0; }
@@ -383,7 +522,7 @@ a{ color: var(--accent-text); }
 .motion-d{ font-size: 12.5px; color: var(--text-muted); }
 
 /* ---------------- controls ---------------- */
-/* segmented (used by the theme switch) */
+/* segmented (used by the theme + accent switches) */
 .seg{
   display:inline-flex; padding: 3px; gap:2px;
   background: var(--surface-2); border-radius: var(--r-full);
@@ -401,6 +540,18 @@ a{ color: var(--accent-text); }
 .theme-seg button{ padding: 6px 10px; color: var(--text-faint); }
 .theme-seg button[aria-checked="true"]{ color: var(--accent-text); }
 .theme-seg svg{ display:block; }
+.accent-seg{ padding: 3px; }
+.accent-seg button{ padding: 7px; display:grid; place-items:center; }
+.acc-dot{
+  width: 15px; height: 15px; border-radius: var(--r-full); display:block;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.14);
+  transition: transform var(--dur-quick) var(--ease-out);
+}
+.accent-seg button:hover .acc-dot{ transform: scale(1.12); }
+.accent-seg button[aria-checked="true"] .acc-dot{ box-shadow: inset 0 0 0 1px rgba(0,0,0,.14), 0 0 0 2px var(--surface), 0 0 0 3.5px currentColor; }
+.accent-seg button[aria-checked="true"]{ color: var(--accent-text); }
+.acc-div{ width:1px; align-self:stretch; background: var(--border); margin-inline: 3px; }
+@media (max-width: 900px){ .accent-seg{ display:none; } }
 .caption{ margin-top: var(--s3); font-size: 13px; color: var(--text-faint); }
 .caption b{ color: var(--text-muted); font-weight:600; }
 
@@ -418,6 +569,15 @@ a{ color: var(--accent-text); }
     <span class="ds-mark"><span class="ds-mark-o" aria-hidden="true"></span>Layover</span>
     <span class="ds-tag">Foundations</span>
     <span class="ds-ver">v0.6 · base 6</span>
+    <div class="seg accent-seg" role="radiogroup" aria-label="Accent color">
+      <button type="button" role="radio" aria-checked="true" data-accent-set="teal" title="Teal" aria-label="Teal accent"><span class="acc-dot" style="background:var(--sw-teal)"></span></button>
+      <button type="button" role="radio" aria-checked="false" data-accent-set="ink" title="Ink" aria-label="Ink accent"><span class="acc-dot" style="background:var(--sw-ink)"></span></button>
+      <button type="button" role="radio" aria-checked="false" data-accent-set="mulberry" title="Mulberry" aria-label="Mulberry accent"><span class="acc-dot" style="background:var(--sw-mulberry)"></span></button>
+      <span class="acc-div" aria-hidden="true"></span>
+      <button type="button" role="radio" aria-checked="false" data-accent-set="ember" title="Ember" aria-label="Ember accent"><span class="acc-dot" style="background:var(--sw-ember)"></span></button>
+      <button type="button" role="radio" aria-checked="false" data-accent-set="oxblood" title="Oxblood" aria-label="Oxblood accent"><span class="acc-dot" style="background:var(--sw-oxblood)"></span></button>
+      <button type="button" role="radio" aria-checked="false" data-accent-set="umber" title="Umber" aria-label="Umber accent"><span class="acc-dot" style="background:var(--sw-umber)"></span></button>
+    </div>
     <div class="seg theme-seg" role="radiogroup" aria-label="Color theme">
       <button type="button" role="radio" aria-checked="false" data-theme-set="light" title="Light" aria-label="Light">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -451,8 +611,8 @@ a{ color: var(--accent-text); }
       <a href="#elevation">Elevation</a>
       <a href="#motion">Motion</a>
     </div>
-
   </nav>
+
   <main class="ds-main">
 
     <section class="ds-intro">
@@ -515,6 +675,63 @@ a{ color: var(--accent-text); }
           <div class="sw"><div class="sw-chip" style="background:var(--accent)"></div><span class="sw-n">--accent</span><span class="sw-v">primary fill</span></div>
           <div class="sw"><div class="sw-chip" style="background:var(--accent-hover)"></div><span class="sw-n">--accent-hover</span><span class="sw-v">hover fill</span></div>
           <div class="sw"><div class="sw-chip" style="background:var(--accent-press)"></div><span class="sw-n">--accent-press</span><span class="sw-v">pressed</span></div>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="spec-h"><h4>Accent candidates</h4><span class="note">Switch them in the top bar — the whole page re-tints</span><span class="tok">[data-accent]</span></div>
+        <div class="stage">
+          <div class="accent-cards">
+            <div class="accent-card">
+              <div class="accent-band" style="background:var(--sw-teal)"></div>
+              <h5>Teal <span>180°</span></h5>
+              <p>Cool and quiet, and far enough from marigold that a live workspace never reads as a link. The most neutral of the three — it recedes, which is what an accent used on every row and every focus ring should do.</p>
+              <p class="accent-v">Sits closest to the warm-stone neutrals, so the interface reads as one temperature.</p>
+            </div>
+            <div class="accent-card">
+              <div class="accent-band" style="background:var(--sw-ink)"></div>
+              <h5>Ink <span>232°</span></h5>
+              <p>The largest separation from marigold on the wheel, so status and interaction can never be confused. Reads more formal and more familiar — closer to what people expect a work tool to look like.</p>
+              <p class="accent-v">Safest of the three, and the least distinctive. Cool against warm stone, so the page runs slightly cooler overall.</p>
+            </div>
+            <div class="accent-card">
+              <div class="accent-band" style="background:var(--sw-mulberry)"></div>
+              <h5>Mulberry <span>333°</span></h5>
+              <p>Warm-adjacent without being a status color. The most characterful of the cool set and the one least like other productivity tools — it makes the app feel personal rather than issued.</p>
+              <p class="accent-v">Needs discipline: at large fills it can tip decorative, so it stays on small surfaces and text.</p>
+            </div>
+            <div class="accent-card">
+              <div class="accent-band" style="background:var(--sw-ember)"></div>
+              <h5>Ember <span>20°</span></h5>
+              <p>The warmest thing the palette can hold. Genuinely inviting on stone, and the only option that feels like the same family as the neutrals rather than a guest in them.</p>
+              <p class="accent-v">The riskiest: it sits near danger's red-orange, so destructive actions lose some of their edge. Judge it on the strip below.</p>
+            </div>
+            <div class="accent-card">
+              <div class="accent-band" style="background:var(--sw-oxblood)"></div>
+              <h5>Oxblood <span>352°</span></h5>
+              <p>Warm and deep without being orange. Far enough from marigold that status stays legible, and dark enough that it never reads as an error state.</p>
+              <p class="accent-v">The strongest warm candidate. Its depth is the whole trick — lighten it and it becomes danger.</p>
+            </div>
+            <div class="accent-card">
+              <div class="accent-band" style="background:var(--sw-umber)"></div>
+              <h5>Umber <span>30°</span></h5>
+              <p>Nominally the same hue family as marigold, but at a fraction of the chroma. Low saturation is what keeps it out of the status role — it reads as a dark warm neutral that happens to be interactive.</p>
+              <p class="accent-v">Quietest of all six. Almost disappears, which may be exactly right for a color on every focus ring.</p>
+            </div>
+          </div>
+
+          <div class="spec-h" style="margin-top:var(--s5)"><h4>Collision test</h4><span class="note">Interactive on the left, status on the right — switch accents and watch this row</span></div>
+          <div class="clash">
+            <span class="clash-pill clash-accent">Save note</span>
+            <span class="clash-pill clash-ring">Focused field</span>
+            <a class="clash-link" href="#color">A link</a>
+            <span class="clash-sep"></span>
+            <span class="clash-pill clash-status">Working</span>
+            <span class="clash-pill clash-ok">Landed</span>
+            <span class="clash-pill clash-danger">Delete</span>
+          </div>
+
+          <p class="caption">An earlier version of this page ruled out the warm half of the wheel outright. That was too strong. Because <b>every status carries a word</b>, hue does not have to be unique to stay legible — the accent and the status colors sit in different structural positions, and people separate them by shape and placement first. The real conflicts are narrow: an accent within about 15° of marigold blurs <b>working</b>, and one sitting on danger's red-orange softens <b>delete</b>. Ember is included precisely because it fails the second test — the strip above lets you decide whether that matters more than what it gains.</p>
         </div>
       </div>
 
@@ -666,32 +883,68 @@ a{ color: var(--accent-text); }
 
 <script>
 (function(){
-  /* theme: System / Light / Dark.
-     "system" removes the stamp so prefers-color-scheme decides;
-     the other two stamp data-theme, which beats the media query both ways. */
+  /* One controller for both appearance settings. Every control that carries
+     data-theme-set or data-accent-set is wired, wherever it lives — the top-bar
+     switches and the Appearance panel stay in sync because they share this state. */
   var root = document.documentElement;
-  var themeSeg = document.querySelector('.theme-seg');
-  var KEY = 'layover-ds-theme';
+  var TKEY = 'layover-ds-theme';
+  var AKEY = 'layover-ds-accent';
 
-  function applyTheme(mode){
-    if(mode === 'system'){ root.removeAttribute('data-theme'); }
-    else { root.setAttribute('data-theme', mode); }
-    themeSeg.querySelectorAll('button').forEach(function(b){
-      b.setAttribute('aria-checked', b.dataset.themeSet === mode ? 'true' : 'false');
+  function sync(attrSel, prop, value){
+    document.querySelectorAll(attrSel).forEach(function(b){
+      b.setAttribute('aria-checked', b.dataset[prop] === value ? 'true' : 'false');
     });
   }
 
-  var stored = null;
-  try{ stored = localStorage.getItem(KEY); }catch(e){}
-  applyTheme(stored || root.getAttribute('data-theme') || 'system');
+  function applyTheme(mode, persist){
+    if(mode === 'system'){ root.removeAttribute('data-theme'); }
+    else { root.setAttribute('data-theme', mode); }
+    sync('[data-theme-set]', 'themeSet', mode);
+    if(persist){ try{ localStorage.setItem(TKEY, mode); }catch(e){} }
+  }
 
-  themeSeg.addEventListener('click', function(e){
-    var b = e.target.closest('button');
-    if(!b || !b.dataset.themeSet) return;
-    applyTheme(b.dataset.themeSet);
-    try{ localStorage.setItem(KEY, b.dataset.themeSet); }catch(e){}
+  function applyAccent(name, persist){
+    if(name === 'teal'){ root.removeAttribute('data-accent'); }
+    else { root.setAttribute('data-accent', name); }
+    sync('[data-accent-set]', 'accentSet', name);
+    if(persist){ try{ localStorage.setItem(AKEY, name); }catch(e){} }
+  }
+
+  var t = null, a = null;
+  try{ t = localStorage.getItem(TKEY); a = localStorage.getItem(AKEY); }catch(e){}
+  applyTheme(t || root.getAttribute('data-theme') || 'system', false);
+  applyAccent(a || root.getAttribute('data-accent') || 'teal', false);
+
+  document.addEventListener('click', function(e){
+    var th = e.target.closest('[data-theme-set]');
+    if(th){ applyTheme(th.dataset.themeSet, true); return; }
+    var ac = e.target.closest('[data-accent-set]');
+    if(ac){ applyAccent(ac.dataset.accentSet, true); return; }
+    var sw = e.target.closest('.toggle[role="switch"]');
+    if(sw){ sw.setAttribute('aria-checked', sw.getAttribute('aria-checked') === 'true' ? 'false' : 'true'); return; }
+    var sg = e.target.closest('.seg:not([role="radiogroup"]) button');
+    if(sg){
+      var g = sg.closest('.seg');
+      g.querySelectorAll('button').forEach(function(x){ x.setAttribute('aria-selected','false'); });
+      sg.setAttribute('aria-selected','true');
+    }
   });
 
+  /* tabs: swap panels */
+  document.querySelectorAll('.tabs').forEach(function(tabs){
+    tabs.addEventListener('click', function(e){
+      var b = e.target.closest('button');
+      if(!b || !b.dataset.tab) return;
+      tabs.querySelectorAll('button').forEach(function(x){
+        x.setAttribute('aria-selected','false');
+        var p = document.getElementById(x.dataset.tab);
+        if(p) p.hidden = true;
+      });
+      b.setAttribute('aria-selected','true');
+      var panel = document.getElementById(b.dataset.tab);
+      if(panel) panel.hidden = false;
+    });
+  });
 })();
 </script>
 </body>

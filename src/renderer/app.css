@@ -580,3 +580,87 @@ body.rail-collapsed .ws > span:nth-child(2){ display:none !important; }
 .tl-msg.queued{ border-left-style:dashed; background:transparent; }
 .tl-msg .tl-text{ font-size:14.5px; }
 .bubble.sent{ background:var(--accent-wash); }
+
+/* ==========================================================
+   Accents (from layover-foundations.html v0.7)
+   ========================================================== */
+/* --- Ink (indigo ~232°) --- */
+:root[data-accent="ink"]{
+  --accent-wash:#EBEDF8; --accent-soft:#C8CDEC; --accent-mid:#7A85CE;
+  --accent:#3F4C9E; --accent-hover:#333E84; --accent-press:#28316A;
+  --accent-on:#FFFFFF; --accent-text:#333E84;
+}
+:root[data-theme="dark"][data-accent="ink"]{
+  --accent-wash:#181B2C; --accent-soft:#272D4C; --accent-mid:#5B68B2;
+  --accent:#8F9AE9; --accent-hover:#A4AEEF; --accent-press:#B9C1F5;
+  --accent-on:#14162A; --accent-text:#A4AEEF;
+}
+
+/* --- Mulberry (plum ~333°) --- */
+:root[data-accent="mulberry"]{
+  --accent-wash:#F8EAF1; --accent-soft:#E9C9DB; --accent-mid:#C4779F;
+  --accent:#933D68; --accent-hover:#7C3357; --accent-press:#632945;
+  --accent-on:#FFFFFF; --accent-text:#7C3357;
+}
+:root[data-theme="dark"][data-accent="mulberry"]{
+  --accent-wash:#271722; --accent-soft:#43263A; --accent-mid:#A85C86;
+  --accent:#DE93B8; --accent-hover:#E9A9C8; --accent-press:#F1BED7;
+  --accent-on:#2A1220; --accent-text:#E9A9C8;
+}
+
+/* --- Ember (burnt orange ~20°) --- */
+:root[data-accent="ember"]{
+  --accent-wash:#FAEBE4; --accent-soft:#F0CDBC; --accent-mid:#C8794F;
+  --accent:#A04A22; --accent-hover:#853C1A; --accent-press:#6B3014;
+  --accent-on:#FFFFFF; --accent-text:#853C1A;
+}
+:root[data-theme="dark"][data-accent="ember"]{
+  --accent-wash:#2B1A12; --accent-soft:#4A2C1D; --accent-mid:#B06A42;
+  --accent:#E8956A; --accent-hover:#F0A87F; --accent-press:#F5BA97;
+  --accent-on:#2A1409; --accent-text:#F0A87F;
+}
+
+/* Ember sits on danger's red-orange, so danger moves to a deeper crimson
+   while it is active. An accent may adjust a semantic color to stay clear
+   of it — it may never take a semantic color's job. */
+:root[data-accent="ember"]{ --danger:#9E2440; --danger-wash:#F9E4E9; }
+:root[data-theme="dark"][data-accent="ember"]{ --danger:#F0879B; --danger-wash:#2E1620; }
+
+/* --- Oxblood (deep burgundy ~352°) --- */
+:root[data-accent="oxblood"]{
+  --accent-wash:#F9EAEC; --accent-soft:#EDC8CE; --accent-mid:#BF6E7C;
+  --accent:#8C2F42; --accent-hover:#742536; --accent-press:#5C1D2B;
+  --accent-on:#FFFFFF; --accent-text:#742536;
+}
+:root[data-theme="dark"][data-accent="oxblood"]{
+  --accent-wash:#2A161A; --accent-soft:#47252C; --accent-mid:#A85A6B;
+  --accent:#E08C9E; --accent-hover:#EAA2B1; --accent-press:#F2B8C4;
+  --accent-on:#2A1017; --accent-text:#EAA2B1;
+}
+
+/* --- Umber (low-chroma warm brown ~30°) --- */
+:root[data-accent="umber"]{
+  --accent-wash:#F4EEE6; --accent-soft:#DFD0BC; --accent-mid:#A98A63;
+  --accent:#6F5334; --accent-hover:#5C4429; --accent-press:#48351F;
+  --accent-on:#FFFFFF; --accent-text:#5C4429;
+}
+:root[data-theme="dark"][data-accent="umber"]{
+  --accent-wash:#241E16; --accent-soft:#3D3427; --accent-mid:#927A57;
+  --accent:#CBAE84; --accent-hover:#D9BF98; --accent-press:#E4CFAE;
+  --accent-on:#221A0F; --accent-text:#D9BF98;
+}
+
+/* Switch swatches — fixed across themes, like the workspace hues */
+:root{
+  --sw-teal:#2E9A92; --sw-ink:#6470C4; --sw-mulberry:#B45C8A;
+  --sw-ember:#BE5C2E; --sw-oxblood:#A03B50; --sw-umber:#8A6A44;
+}
+
+
+/* accent picker: dots in a segment, as in the foundations */
+.accent-seg{ padding:3px; gap:2px; }
+.accent-seg button{ padding:6px; height:auto; display:grid; place-items:center; }
+.acc-dot{ width:18px; height:18px; border-radius:var(--r-full); display:block; box-shadow:inset 0 0 0 1px rgba(0,0,0,.14); transition:transform var(--dur-quick) var(--ease-out); }
+.accent-seg button:hover .acc-dot{ transform:scale(1.12); }
+.accent-seg button[aria-checked="true"]{ background:transparent; box-shadow:none; }
+.accent-seg button[aria-checked="true"] .acc-dot{ box-shadow:inset 0 0 0 1px rgba(0,0,0,.14), 0 0 0 2px var(--surface), 0 0 0 3.5px var(--text); }

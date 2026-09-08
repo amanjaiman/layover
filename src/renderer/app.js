@@ -212,10 +212,16 @@
   }
   function visibleProjects() { return (S.state?.projects || []).filter(p => !p.hidden).sort((a, b) => b.lastActive - a.lastActive); }
   async function loadUser(id) { S.users[id] = await call(api.getUser(id)); return S.users[id]; }
+  const ACCENTS = [['teal', 'Teal', '#2E9A92'], ['ink', 'Ink', '#6470C4'], ['mulberry', 'Mulberry', '#B45C8A'], ['ember', 'Ember', '#BE5C2E'], ['oxblood', 'Oxblood', '#A03B50'], ['umber', 'Umber', '#8A6A44']];
   function applyTheme({ theme, dark }) {
     S.theme = theme;
     if (theme === 'dark' || (theme === 'system' && dark)) document.documentElement.setAttribute('data-theme', 'dark');
     else document.documentElement.removeAttribute('data-theme');
+    applyAccent(S.settings?.accent || 'teal');
+  }
+  function applyAccent(name) {
+    if (!name || name === 'teal') document.documentElement.removeAttribute('data-accent');
+    else document.documentElement.setAttribute('data-accent', name);
   }
   function restorePlace() { const u = user(); S.view = u?.place?.view && VIEWS.some(v => v[0] === u.place.view) ? u.place.view : 'now'; S.ticket = u?.place?.ticket || null; S.ticketFilter = u?.place?.ticketFilter || 'active'; }
   function savePlace(extra = {}) { if (S.project) api.setPlace(S.project, { view: S.view, ticket: S.ticket, ticketFilter: S.ticketFilter, ...extra }); }
@@ -484,7 +490,7 @@
       else tl.append(endEntry(e.run, who, quiet || e.run.id !== latest?.id, e.run.id === latest?.id ? t.ticket : null));
     }
     if (t.status === 'working' && !shown.some(e => e.kind === 'item' && e.item.runStatus === 'active')) tl.append(el('div', { class: 'tl-quiet', text: 'Working quietly.' }));
-    if (!quiet && (t.status === 'working' || t.status === 'attention' || t.status === 'completed')) tl.append(composer(t, who));
+    if (!quiet && t.latest?.status === 'active') tl.append(composer(t, who));
     card.append(el('div', { class: 'tl-wrap' }, tl));
     return card;
   }
@@ -493,6 +499,7 @@
     const resp = u?.responses?.[i.key];
     const who = AGENT[i.agent] || i.agent;
     const sent = (S.state.outbox || []).filter(m => m.itemKey === i.key && m.status !== 'cancelled').sort((a, b) => b.createdAt - a.createdAt)[0] || null;
+    const live = thread?.latest?.status === 'active';
     const row = el('div', { class: 'tl-item ' + i.kind + (hot ? ' hot' : ''), dataset: { key: i.key } });
     const chip = i.waiting && i.runStatus === 'active' ? el('span', { class: 'chip warn', text: 'Waiting on you' })
       : i.kind === 'decision' && i.runStatus === 'active' ? el('span', { class: 'chip' }, ...lbl('Assumption · continuing', 'Assumption')) : null;
@@ -504,10 +511,10 @@
     const drawResp = () => {
       respBox.textContent = '';
       const copyReply = (body) => { api.copy(`Regarding your ${i.kind}: "${i.text}"\n\n${body}`); toast({ text: 'Reply copied with the item it answers. Paste it into the agent.', ttl: 4000 }); };
-      if (!editing) { if (resp?.body) respBox.append(el('div', { class: 'bubble' + (sent ? ' sent' : '') }, el('div', { class: 'bubble-top' }, el('span', { class: 'bubble-who', text: sent && sent.text === resp.body ? 'You · ' + msgStatus(sent, thread) : 'You · saved here, not sent' }), el('span', { class: 'spacer' }), sent && sent.status === 'queued' && sent.text === resp.body ? el('button', { class: 'btn small ghost', onclick: async () => { await api.cancelMessage(sent.id); } }, 'Unsend') : el('button', { class: 'btn small primary', onclick: () => sendToAgent({ task: i.task, run: i.run, itemKey: i.key, text: resp.body }) }, svg(ICON.arrow, 12), ...lbl(`Send to ${who}`, 'Send')), el('button', { class: 'btn small ghost', onclick: () => copyReply(resp.body) }, svg(ICON.copy, 12), el('span', { class: 'l', text: 'Copy' })), el('button', { class: 'btn small ghost', onclick: () => { editing = true; drawResp(); } }, 'Edit')), el('div', { class: 'tl-text', text: resp.body }))); return; }
+      if (!editing) { if (resp?.body) respBox.append(el('div', { class: 'bubble' + (sent ? ' sent' : '') }, el('div', { class: 'bubble-top' }, el('span', { class: 'bubble-who', text: sent && sent.text === resp.body ? 'You · ' + msgStatus(sent, thread) : live ? 'You · saved here, not sent' : 'You · saved here · bring it when you return' }), el('span', { class: 'spacer' }), sent && sent.status === 'queued' && sent.text === resp.body ? el('button', { class: 'btn small ghost', onclick: async () => { await api.cancelMessage(sent.id); } }, 'Unsend') : live ? el('button', { class: 'btn small primary', onclick: () => sendToAgent({ task: i.task, run: i.run, itemKey: i.key, text: resp.body }) }, svg(ICON.arrow, 12), ...lbl(`Send to ${who}`, 'Send')) : null, el('button', { class: 'btn small ghost', onclick: () => copyReply(resp.body) }, svg(ICON.copy, 12), el('span', { class: 'l', text: 'Copy' })), el('button', { class: 'btn small ghost', onclick: () => { editing = true; drawResp(); } }, 'Edit')), el('div', { class: 'tl-text', text: resp.body }))); return; }
       const ta = el('textarea', { class: 'input', placeholder: i.kind === 'question' ? 'Your answer, for when you return to the agent…' : 'A thought, a concern, a reply…', 'aria-label': 'Your reply' });
       ta.value = resp?.body || '';
-      const meta = el('div', { class: 'resp-meta' }, el('span', { text: resp ? `Saved ${ago(resp.updatedAt)}` : 'Saved as you type' }), el('span', { class: 'spacer' }), el('button', { class: 'btn small ghost', onclick: () => { if (ta.value.trim()) copyReply(ta.value); } }, svg(ICON.copy, 12), el('span', { class: 'l', text: 'Copy' })), el('button', { class: 'btn small primary', onclick: async () => { if (!ta.value.trim()) return; save.flush(); await sendToAgent({ task: i.task, run: i.run, itemKey: i.key, text: ta.value }); editing = false; } }, svg(ICON.arrow, 12), ...lbl(`Send to ${who}`, 'Send')));
+      const meta = el('div', { class: 'resp-meta' }, el('span', { text: resp ? `Saved ${ago(resp.updatedAt)}` : 'Saved as you type' }), el('span', { class: 'spacer' }), el('button', { class: 'btn small ghost', onclick: () => { if (ta.value.trim()) copyReply(ta.value); } }, svg(ICON.copy, 12), el('span', { class: 'l', text: 'Copy' })), live ? el('button', { class: 'btn small primary', onclick: async () => { if (!ta.value.trim()) return; save.flush(); await sendToAgent({ task: i.task, run: i.run, itemKey: i.key, text: ta.value }); editing = false; } }, svg(ICON.arrow, 12), ...lbl(`Send to ${who}`, 'Send')) : null);
       const save = debounce(() => api.respond(S.project, i.key, ta.value).then(() => { const uu = user(); if (uu) { if (ta.value) uu.responses[i.key] = { body: ta.value, updatedAt: Date.now() }; else delete uu.responses[i.key]; } meta.firstChild.textContent = ta.value ? 'Saved just now' : 'Saved as you type'; }), 400);
       ta.addEventListener('input', () => { autoGrow(ta); save(); });
       registerFlush('resp:' + i.key, () => save.flush());
@@ -947,7 +954,9 @@
           switchRow('Windows notification when a turn finishes', 'Silent toast; only when Layover is not in front.', s.notifyOnComplete, v => api.setSettings({ notifyOnComplete: v })),
           switchRow('Keep running in the tray when the window is closed', 'Needed so agents can reach it.', s.closeToTray, v => api.setSettings({ closeToTray: v })),
           switchRow('Tell the agent its run id', 'One short line per prompt so it can publish items without guessing.', s.hookContext, v => api.setSettings({ hookContext: v }))),
-        el('div', { class: 'sheet-sec' }, el('h3', { text: 'Appearance' }), seg([['system', 'Match system'], ['light', 'Light'], ['dark', 'Dark']], s.theme, v => { s.theme = v; api.setSettings({ theme: v }); })),
+        el('div', { class: 'sheet-sec' }, el('h3', { text: 'Appearance' }), seg([['system', 'Match system'], ['light', 'Light'], ['dark', 'Dark']], s.theme, v => { s.theme = v; api.setSettings({ theme: v }); }),
+          el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'Accent' }), el('span', { text: 'The one interactive colour. Marigold stays for work happening elsewhere.' })),
+            (() => { const g = el('div', { class: 'seg accent-seg', role: 'radiogroup', 'aria-label': 'Accent' }); for (const [id, label, sw] of ACCENTS) g.append(el('button', { role: 'radio', 'aria-checked': (s.accent || 'teal') === id ? 'true' : 'false', title: label, 'aria-label': label + ' accent', onclick: () => { g.querySelectorAll('button').forEach(b => b.setAttribute('aria-checked', 'false')); g.querySelector(`[title="${label}"]`).setAttribute('aria-checked', 'true'); s.accent = id; applyAccent(id); api.setSettings({ accent: id }); } }, el('span', { class: 'acc-dot', style: 'background:' + sw }))); return g; })())),
         el('div', { class: 'sheet-sec' }, el('p', { class: 't-small' }, 'Layover ' + s.version + ' · data in ', el('code', { class: 'path', text: s.dataDir }), ' ', el('button', { class: 'btn small ghost', onclick: () => api.openPath(s.dataDir) }, 'Open'), ' · local service on 127.0.0.1:' + s.port + '. Layover makes no model calls.'),
           el('p', { class: 't-small' }, 'Press ', el('kbd', { text: '?' }), ' anywhere for keyboard shortcuts.'))],
     };
