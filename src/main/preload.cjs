@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('layover', {
   copy: (text) => ipcRenderer.invoke('clipboard:write', text),
   openPath: (p) => ipcRenderer.invoke('shell:openPath', p),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+  returnFocus: (taskId) => ipcRenderer.invoke('return:focus', taskId),
   bridgeTarget: (run) => ipcRenderer.invoke('bridge:target', run),
   bridgeSend: (payload) => ipcRenderer.invoke('bridge:send', payload),
   engaged: (flag) => ipcRenderer.send('ui:engaged', !!flag),

@@ -21,7 +21,7 @@ export function turnTitle(prompt) {
 }
 
 /** Turn a hook payload into {events, context, open}. `context` is printed to stdout when allowed. */
-export function mapHook(agent, input, { hookContext = true } = {}) {
+export function mapHook(agent, input, { hookContext = true, host = null } = {}) {
   if (!['claude', 'codex'].includes(agent)) throw Error('agent must be claude or codex');
   if (!input || typeof input !== 'object') throw Error('hook input must be JSON');
   const name = input.hook_event_name;
@@ -44,7 +44,7 @@ export function mapHook(agent, input, { hookContext = true } = {}) {
 
   switch (name) {
     case 'SessionStart':
-      events.push({ ...base, id: `session:${task}:${now}`, type: 'session', name: `${AGENT_LABEL[agent]} · ${projectName}`, source, sessionId: session });
+      events.push({ ...base, id: `session:${task}:${now}`, type: 'session', name: `${AGENT_LABEL[agent]} · ${projectName}`, source, sessionId: session, ...(host ? { host } : {}) });
       break;
     case 'UserPromptSubmit': {
       const r = run || `${task}:${now}`;

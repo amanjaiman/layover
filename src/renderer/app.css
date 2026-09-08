@@ -507,3 +507,8 @@ body.compact .break-timer{ gap:var(--s2); }
 .break > .section-h{ margin-bottom:0; }
 .seg{ flex:none; }
 .seg button{ white-space:nowrap; }
+.sheet{ overflow-x:hidden; }
+.sheet .seg{ flex-wrap:wrap; max-width:100%; }
+.sheet .switch{ flex-wrap:wrap; }
+.sheet .switch .input{ max-width:100%; }
+.tk-group{ padding-left:10px; }

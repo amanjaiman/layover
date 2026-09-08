@@ -75,7 +75,10 @@ async function runHook(agent) {
   let input;
   try { input = JSON.parse(raw || '{}'); } catch { process.stderr.write('layover hook: stdin was not JSON\n'); return; }
   const settings = readSettings();
-  const { events, context, open } = mapHook(agent, input, { hookContext: settings.hookContext !== false });
+  // Once per session, remember which window the agent lives in so "Return" can bring it forward.
+  let host = null;
+  if (input?.hook_event_name === 'SessionStart') { try { const { findHostWindow } = await import('./host.js'); host = findHostWindow(); } catch { host = null; } }
+  const { events, context, open } = mapHook(agent, input, { hookContext: settings.hookContext !== false, host });
   if (!events.length) return;
   const isStart = events.some(e => e.type === 'start');
   const wantsWindow = isStart && ['focus', 'open'].includes(settings.openOnRunStart || 'focus');

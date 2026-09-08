@@ -121,6 +121,11 @@ export class Store {
     if (e.type !== 'session' && (!Number.isSafeInteger(e.seq) || e.seq < 0)) throw Error('seq must be a nonnegative integer');
     for (const k of ['title', 'projectName', 'projectPath', 'source', 'name', 'sessionId', 'note']) text(e[k], MAX_META, k);
     if (e.type === 'start' && e.lifecycle !== undefined && !LIFECYCLES.has(e.lifecycle)) throw Error('Invalid lifecycle');
+    if (e.host !== undefined) {
+      const h = e.host;
+      if (!h || typeof h !== 'object' || !Number.isSafeInteger(h.pid) || typeof h.hwnd !== 'string' || !/^\d{1,20}$/.test(h.hwnd)) throw Error('Invalid host');
+      text(h.name, 80, 'host.name'); text(h.title, 200, 'host.title');
+    }
     if (e.type === 'end' && !TERMINAL.has(e.status)) throw Error('Invalid terminal status');
     if (e.type === 'item') {
       if (!isId(e.item)) throw Error('Invalid item id');
@@ -179,10 +184,10 @@ export class Store {
   ensureTask(e, received) {
     let t = this.tasks.get(e.task);
     if (!t) {
-      t = { id: e.task, project: e.project, agent: e.agent, name: e.name || e.title || e.task, source: e.source || '', sessionId: e.sessionId || '', createdAt: received, lastSeen: received };
+      t = { id: e.task, project: e.project, agent: e.agent, name: e.name || e.title || e.task, source: e.source || '', sessionId: e.sessionId || '', host: e.host || null, createdAt: received, lastSeen: received };
       this.tasks.set(t.id, t);
     } else {
-      if (e.type === 'session') { if (e.name) t.name = e.name; if (e.source) t.source = e.source; if (e.sessionId) t.sessionId = e.sessionId; }
+      if (e.type === 'session') { if (e.name) t.name = e.name; if (e.source) t.source = e.source; if (e.sessionId) t.sessionId = e.sessionId; if (e.host) t.host = e.host; }
       else if (e.type === 'start' && t.name === t.id && e.title) t.name = e.title;
       if (e.source && !t.source) t.source = e.source;
     }

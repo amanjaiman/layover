@@ -10,7 +10,7 @@
   const STATUS = { progress: 'In progress', todo: 'Up next', backlog: 'Someday', done: 'Done', cancelled: 'Dropped' };
   const STATUS_ORDER = ['progress', 'todo', 'backlog', 'done', 'cancelled'];
   const PRIORITY = ['No priority', 'Low', 'Medium', 'High', 'Urgent'];
-  const FILTERS = { active: ['progress', 'todo'], backlog: ['backlog'], done: ['done', 'cancelled'], all: STATUS_ORDER };
+  const FILTERS = { active: ['progress', 'todo', 'backlog'], done: ['done', 'cancelled'], all: STATUS_ORDER };
   const RECENT_MS = 30 * 60000;   // a quiet conversation stays in Now for 30 minutes, then moves to Archive on its own
   const STRETCHES = [
     ['Shoulders', 'Roll your shoulders back five times, slowly. Let your arms hang.'],
@@ -448,7 +448,7 @@
       el('span', { class: 'agent ' + agent, text: short }),
       el('div', { class: 'thread-t' }, el('div', { class: 'thread-title' }, el('b', { text: title }), t.ticket ? el('button', { class: 'chip accent link', title: t.ticket.title, onclick: () => { S.ticket = t.ticket.id; S.ticketFilter = 'all'; setView('tickets'); } }, ticketKey(t.ticket)) : null, collapsed && t.open ? el('span', { class: 'chip' + (t.waiting ? ' warn' : ''), text: `${t.open} open` }) : null), el('span', { text: `${who} · ${t.runs.length} turn${t.runs.length === 1 ? '' : 's'} · started ${clock(t.runs[0]?.startedAt || t.task.createdAt)}` })),
       statusChip,
-      el('button', { class: 'btn small ghost l', title: `How to return to ${who}`, onclick: () => returnSheet(latest || { agent, task: t.task.id, id: '', source: t.task.source }) }, 'Return', svg(ICON.arrow, 13)),
+      el('button', { class: 'btn small ghost l', title: t.task.host ? `Bring ${t.task.host.name} forward` : `How to return to ${who}`, onclick: () => returnTo(latest || { agent, task: t.task.id, id: '', source: t.task.source }) }, 'Return', svg(ICON.arrow, 13)),
       el('button', { class: 'icon-btn', title: 'More', 'aria-label': 'Conversation menu', onclick: e => threadMenu(e.currentTarget, t, who) }, svg('M3 8h.01M8 8h.01M13 8h.01', 16, 'stroke-width="2.4"'))));
     // timeline entries in time order
     const entries = [];
@@ -516,7 +516,7 @@
       : r.status === 'cancelled' ? `${who} was interrupted${r.endNote ? ' · ' + r.endNote : ''}`
       : `No recent signal from ${who}. It may still be thinking, or the session may have closed.`;
     const row = el('div', { class: 'tl-end ' + cls + (acked ? ' acked' : '') }, el('span', { class: 'dot ' + cls }), el('span', { class: 'tl-end-text' }, acked ? text : [el('b', { text: r.status === 'completed' ? 'Ready when you are. ' : '' }), text]), el('span', { class: 'tl-time', text: clock(r.endedAt || r.lastSeen) }));
-    if (!acked) row.append(el('span', { class: 'tl-end-actions' }, el('button', { class: 'btn small primary', onclick: () => returnSheet(r) }, ...lbl(`Return to ${who}`, 'Return'), svg(ICON.arrow, 12)),
+    if (!acked) row.append(el('span', { class: 'tl-end-actions' }, el('button', { class: 'btn small primary', onclick: () => returnTo(r) }, ...lbl(`Return to ${who}`, 'Return'), svg(ICON.arrow, 12)),
       ticket && ticket.status !== 'done' && r.status === 'completed' ? el('button', { class: 'btn small', onclick: () => setTicket(ticket, { status: 'done' }) }, svg(ICON.check, 12), ...lbl(`Mark ${ticketKey(ticket)} done`, 'Done')) : null,
       el('button', { class: 'btn small ghost', onclick: () => { ack(r.id); render(true); } }, ...lbl('Got it', 'OK'))));
     return row;
@@ -555,10 +555,11 @@
   function renderTickets(wrap) {
     const u = user(); if (!u) return;
     const all = u.tickets;
+    if (!FILTERS[S.ticketFilter] || S.ticketFilter === 'backlog' || S.ticketFilter === 'all') S.ticketFilter = 'active';
     const visible = all.filter(t => FILTERS[S.ticketFilter].includes(t.status));
     const bar = el('div', { class: 'tk-bar' },
       el('button', { class: 'btn primary', onclick: () => newTicket() }, svg(ICON.plus, 12), 'New'),
-      seg([['active', 'Active'], ['backlog', 'Someday'], ['done', 'Done'], ['all', 'All']], S.ticketFilter, v => { S.ticketFilter = v; savePlace(); render(true); }),
+      seg([['active', 'Active'], ['done', 'Done']], FILTERS[S.ticketFilter] && S.ticketFilter !== 'all' && S.ticketFilter !== 'backlog' ? S.ticketFilter : 'active', v => { S.ticketFilter = v; savePlace(); render(true); }),
       el('span', { class: 'spacer' }),
       el('span', { class: 't-small l', text: `${visible.length} of ${all.length}` }));
     const split = el('div', { class: 'tk-split' + (S.ticket ? ' has-detail' : '') });
@@ -567,7 +568,7 @@
     for (const st of STATUS_ORDER) {
       const rows = visible.filter(t => t.status === st).sort((a, b) => b.priority - a.priority || b.updatedAt - a.updatedAt);
       if (!rows.length) continue;
-      list.append(el('div', { class: 'tk-group' }, el('span', { class: 'tk-status ' + st }, STATUS_ICON[st]()), el('span', { text: STATUS[st] }), el('span', { class: 'faint', text: String(rows.length) })));
+      list.append(el('div', { class: 'tk-group' }, el('span', { text: STATUS[st] }), el('span', { class: 'faint', text: String(rows.length) })));
       for (const t of rows) list.append(ticketRow(t));
     }
     split.append(list);
@@ -713,7 +714,7 @@
     if (st) {
       const [name, text] = STRETCHES[b.stretch % STRETCHES.length];
       st.textContent = '';
-      st.append(el('span', { class: 't-eyebrow', text: name }), el('p', { text }), el('div', { class: 'card-actions' }, el('button', { class: 'btn small ghost', onclick: () => { b.stretch++; b.lastStretchAt = Date.now(); paintBreak(); } }, 'Another one'), b.timer ? el('span', { class: 't-small', text: 'Changes every minute while the timer runs' }) : null));
+      st.append(el('span', { class: 't-eyebrow', text: name }), el('p', { text }), el('div', { class: 'card-actions' }, el('button', { class: 'btn small ghost', onclick: () => { b.stretch++; b.lastStretchAt = Date.now(); paintBreak(); } }, 'Another one')));
     }
     for (const chip of document.querySelectorAll('.brk-chip')) chip.textContent = fmt(b.left);
   }
@@ -725,7 +726,7 @@
     if (S.reminderToast) { S.reminderToast.remove(); S.reminderToast = null; }
     b.timer = setInterval(() => {
       b.left--;
-      if (Date.now() - b.lastStretchAt >= 60000) { b.stretch++; b.lastStretchAt = Date.now(); }
+      if (Date.now() - b.lastStretchAt >= 30000) { b.stretch++; b.lastStretchAt = Date.now(); }
       if (b.left <= 0) { stopBreak(); toast({ text: 'Break’s over.', ttl: 8000 }); return; }
       paintBreak();
     }, 1000);
@@ -766,14 +767,28 @@
   function sheet(content) { closeOverlay(); const scrim = el('div', { class: 'scrim', onclick: e => { if (e.target === scrim) closeOverlay(); } }, el('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true' }, ...content)); $('#overlay').append(scrim); return scrim; }
   function closeOverlay() { $('#overlay').textContent = ''; }
 
+  /** Return to the agent: bring its window forward if we know it; otherwise explain how. */
+  async function returnTo(r) {
+    const t = S.state.tasks.find(x => x.id === r.task);
+    if (t?.host?.hwnd) {
+      try {
+        const res = await call(api.returnFocus(t.id));
+        if (res.ok) { if (r.id) ack(r.id); return; }
+        if (res.reason === 'gone') toast({ text: `That ${t.host.name} window is closed.`, ttl: 5000 });
+      } catch { /* fall through to the sheet */ }
+    }
+    returnSheet(r);
+  }
   function returnSheet(r) {
     const t = S.state.tasks.find(x => x.id === r.task); const who = AGENT[r.agent] || r.agent; const p = project();
+    const host = t?.host || null;
     const responses = Object.entries(user()?.responses || {}).filter(([k]) => k.startsWith((r.id || '§') + ':')).map(([, v]) => v.body).filter(Boolean);
     const source = r.source || t?.source || `Return to the ${who} window where this work started.`;
     const resume = source.match(/(claude --resume \S+|codex resume \S+)/)?.[1];
     sheet([
       el('h2', { text: `Back to ${who}` }),
-      el('p', { class: 't-body' }, 'Layover cannot bring another window to the front for you. Switch to the ', el('b', { text: who }), ' session below with ', el('kbd', { text: 'Alt' }), ' + ', el('kbd', { text: 'Tab' }), ', or resume it from a terminal in the project folder.'),
+      host ? el('p', { class: 't-body' }, 'This session lives in ', el('b', { text: host.title || host.name }), ' (', host.name, '). ', el('button', { class: 'btn small', onclick: async () => { const res = await call(api.returnFocus(t.id)); if (res.ok) closeOverlay(); else toast({ text: res.reason === 'gone' ? 'That window is closed.' : 'Windows would not hand it focus. Alt+Tab to it.', ttl: 5000 }); } }, 'Bring it forward'))
+        : el('p', { class: 't-body' }, 'Layover did not see which window this session started in. Switch to the ', el('b', { text: who }), ' session below with ', el('kbd', { text: 'Alt' }), ' + ', el('kbd', { text: 'Tab' }), ', or resume it from a terminal in the project folder.'),
       el('pre', { class: 'src', text: source }),
       el('div', { class: 'card-actions', style: 'margin-top:0' },
         resume ? el('button', { class: 'btn', onclick: () => { api.copy(resume); toast({ text: 'Resume command copied.', ttl: 3500 }); } }, svg(ICON.copy, 12), 'Copy resume command') : null,
@@ -847,7 +862,7 @@
         el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'Hide this workspace' }), el('span', { text: 'Keeps its notes and history; it comes back when an agent works here again.' })), el('button', { class: 'btn small ghost danger', onclick: async () => { await api.setProjectMeta(p.id, { hidden: true }); closeOverlay(); S.state = await call(api.getState()); S.project = null; onState(); } }, 'Hide'))) : el('p', { class: 't-small', text: 'No workspace selected.' })],
       preferences: () => [
         el('div', { class: 'sheet-sec' }, el('h3', { text: 'When an agent starts a turn' }),
-          seg([['focus', 'Bring Layover forward'], ['open', 'Open behind my work'], ['reveal', 'Only if already open'], ['never', 'Stay quiet']], s.openOnRunStart, v => { s.openOnRunStart = v; api.setSettings({ openOnRunStart: v }); }),
+          seg([['focus', 'Bring forward'], ['open', 'Behind my work'], ['reveal', 'Only if open'], ['never', 'Stay quiet']], s.openOnRunStart, v => { s.openOnRunStart = v; api.setSettings({ openOnRunStart: v }); }),
           el('p', { class: 't-small', text: 'Only the start of a turn can bring Layover forward; items and completions never move the window.' }),
           switchRow('Windows notification when a turn finishes', 'Silent toast; only when Layover is not in front.', s.notifyOnComplete, v => api.setSettings({ notifyOnComplete: v })),
           switchRow('Keep running in the tray when the window is closed', 'Needed so agents can reach it.', s.closeToTray, v => api.setSettings({ closeToTray: v })),

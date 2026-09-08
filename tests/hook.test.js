@@ -53,8 +53,10 @@ test('Notification permission prompts become waiting questions; other notificati
 });
 
 test('SessionStart registers the conversation; unknown events and missing session ids are ignored', () => {
-  const s = mapHook('codex', { ...common, hook_event_name: 'SessionStart' });
+  const s = mapHook('codex', { ...common, hook_event_name: 'SessionStart' }, { host: { pid: 12, hwnd: '99', name: 'WindowsTerminal', title: 'pwsh' } });
   assert.equal(s.events[0].type, 'session'); assert.equal(s.events[0].task, 'codex:abc');
+  assert.deepEqual(s.events[0].host, { pid: 12, hwnd: '99', name: 'WindowsTerminal', title: 'pwsh' });
+  assert.equal(mapHook('codex', { ...common, hook_event_name: 'SessionStart' }).events[0].host, undefined);
   assert.equal(mapHook('claude', { ...common, hook_event_name: 'PreToolUse' }).events.length, 0);
   assert.equal(mapHook('claude', { hook_event_name: 'Stop', cwd: 'C:\\x' }).events.length, 0);
   assert.throws(() => mapHook('gemini', common), /agent/);

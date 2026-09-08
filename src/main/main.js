@@ -180,12 +180,35 @@ function nativeFocus() {
   nativeFocusAt = Date.now();
   const buf = win.getNativeWindowHandle();
   const hwnd = buf.length >= 8 ? buf.readBigUInt64LE(0).toString() : String(buf.readUInt32LE(0));
-  const script = `Add-Type -Namespace L -Name W -MemberDefinition '[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, IntPtr p); [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId(); [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint a, uint b, bool f); [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h); [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr h); [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n);'; $h=[IntPtr]::new([Int64]${hwnd}); $fg=[L.W]::GetForegroundWindow(); $ft=[L.W]::GetWindowThreadProcessId($fg,[IntPtr]::Zero); $ct=[L.W]::GetCurrentThreadId(); $a=[L.W]::AttachThreadInput($ft,$ct,$true); [void][L.W]::ShowWindow($h,9); [void][L.W]::BringWindowToTop($h); [void][L.W]::SetForegroundWindow($h); if($a){ [void][L.W]::AttachThreadInput($ft,$ct,$false) }`;
-  try {
-    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-Command', script], { windowsHide: true, stdio: 'ignore' });
-    child.on('error', e => log('native focus failed', e.message));
-    child.unref();
-  } catch (e) { log('native focus failed', e.message); }
+  focusHwnd(hwnd).catch(e => log('native focus failed', e.message));
+}
+
+const FOCUS_DEFS = '[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, IntPtr p); [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId(); [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint a, uint b, bool f); [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h); [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr h); [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n); [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h); [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h); [DllImport("user32.dll")] public static extern void keybd_event(byte k, byte s, uint f, UIntPtr e);';
+
+/**
+ * Bring any top-level window forward by handle. Resolves {ok, reason}. The helper is a child of
+ * Layover, so while Layover is in front (the user just clicked) Windows lets it hand focus over;
+ * if that is refused, the Alt-nudge releases the foreground lock the way AutoHotkey does.
+ */
+function focusHwnd(hwnd) {
+  if (!/^\d{1,20}$/.test(String(hwnd))) return Promise.resolve({ ok: false, reason: 'bad handle' });
+  const script = `Add-Type -Namespace L -Name W -MemberDefinition '${FOCUS_DEFS}'; $h=[IntPtr]::new([Int64]${hwnd}); if(-not [L.W]::IsWindow($h)){ 'gone'; exit 0 }; if([L.W]::IsIconic($h)){ [void][L.W]::ShowWindow($h,9) } else { [void][L.W]::ShowWindow($h,5) }; if([L.W]::GetForegroundWindow() -eq $h){ 'ok'; exit 0 }; $fg=[L.W]::GetForegroundWindow(); $ft=[L.W]::GetWindowThreadProcessId($fg,[IntPtr]::Zero); $ct=[L.W]::GetCurrentThreadId(); $a=[L.W]::AttachThreadInput($ft,$ct,$true); [void][L.W]::BringWindowToTop($h); $ok=[L.W]::SetForegroundWindow($h); if($a){ [void][L.W]::AttachThreadInput($ft,$ct,$false) }; if(-not $ok){ [L.W]::keybd_event(0x12,0,0,[UIntPtr]::Zero); [L.W]::keybd_event(0x12,0,2,[UIntPtr]::Zero); [void][L.W]::BringWindowToTop($h); $ok=[L.W]::SetForegroundWindow($h) }; Start-Sleep -Milliseconds 120; if([L.W]::GetForegroundWindow() -eq $h -or $ok){ 'ok' } else { 'refused' }`;
+  return new Promise((resolve) => {
+    let out = '';
+    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-Command', script], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+    child.stdout.on('data', d => { out += d; });
+    child.on('error', e => resolve({ ok: false, reason: e.message }));
+    child.on('close', () => { const r = out.trim(); resolve({ ok: r === 'ok', reason: r || 'no result' }); });
+  });
+}
+
+/** "Return to the agent": focus the window the session started in, if we know it and it still exists. */
+async function returnToHost(taskId) {
+  const t = store.tasks.get(taskId);
+  if (!t?.host?.hwnd) return { ok: false, reason: 'unknown' };
+  const r = await focusHwnd(t.host.hwnd);
+  log('return to host', t.host.name, r);
+  return { ...r, host: t.host };
 }
 
 /** Show the window without taking focus from whatever the user is doing. */
@@ -299,6 +322,7 @@ handle('window:mode', (mode) => { setWindowMode(mode); return mode; });
 handle('clipboard:write', (text) => { clipboard.writeText(String(text ?? '')); return true; });
 handle('shell:openPath', (p) => shell.openPath(String(p)));
 handle('shell:openExternal', (url) => { const u = new URL(String(url)); if (!['https:', 'http:'].includes(u.protocol)) throw Error('Only web links can be opened'); return shell.openExternal(u.href); });
+handle('return:focus', (taskId) => returnToHost(String(taskId)));
 handle('bridge:target', (run) => bridge.target({ run }));
 handle('bridge:send', (payload) => bridge.send(payload));
 ipcMain.on('ui:engaged', (_e, flag) => { uiEngaged = !!flag; if (flag) lastInteraction = Date.now(); });

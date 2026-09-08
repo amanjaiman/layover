@@ -105,6 +105,14 @@ test('notification items resolve themselves when the run ends', () => {
   s.close();
 });
 
+test('a session can record the host window; a bad host is rejected', () => {
+  const s = new Store(tmp());
+  s.event({ ...base, id: 's1', type: 'session', name: 'Claude Code · Demo', host: { pid: 5, hwnd: '4242', name: 'Code', title: 'demo - VS Code' } });
+  assert.equal(s.state().tasks[0].host.hwnd, '4242');
+  assert.throws(() => s.event({ ...base, id: 's2', type: 'session', host: { pid: 'x', hwnd: 'nope' } }), /host/);
+  s.close();
+});
+
 test('validation rejects bad payloads before anything is written', () => {
   const dir = tmp();
   const s = new Store(dir);
