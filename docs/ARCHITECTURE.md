@@ -28,7 +28,7 @@ Layover is three pieces that share one event contract. The UI never talks to an 
 | `skills/layover/SKILL.md` | The agent skill; `__CLI__` is resolved at install | text |
 | `bin/layover.cmd` | Shim: runs the CLI on the app's Node in a packaged install, on `node` in a checkout | cmd |
 
-Packaged layout: `<install>\Layover.exe`, `<install>\bin\layover.cmd`, `<install>\resources\src\**` (unpacked copy of the CLI and its imports), `<install>\resources\skills\layover\SKILL.md`, `<install>\resources\app.asar` (the app).
+Packaged layout, Windows: `<install>\Layover.exe`, `<install>\bin\layover.cmd` (+ `layover-fast.cmd`), `<install>\resources\src\**` (unpacked copy of the CLI and its imports), `<install>\resources\skills\layover\SKILL.md`, `<install>\resources\app.asar` (the app). macOS: `Layover.app/Contents/MacOS/Layover`, `Contents/bin/layover` (+ `layover-fast`), `Contents/Resources/src/**`, `Contents/Resources/skills/**`, `Contents/Resources/app.asar`. The CLI finds the app as `../../../MacOS/Layover` or `../../../Layover.exe` from its own folder; the app finds the CLI as `<resourcesPath>/../bin/`. Data lives in `%LOCALAPPDATA%\Layover` or `~/Library/Application Support/Layover`. Installers: `scripts/install.ps1` and `scripts/install.sh` download the latest GitHub release built by `.github/workflows/release.yml` (NSIS on a Windows runner; zip and dmg on a macOS runner, since electron-builder refuses to package macOS elsewhere).
 
 ## Identity
 
