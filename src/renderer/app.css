@@ -682,3 +682,9 @@ body.rail-collapsed .ws > span:nth-child(2){ display:none !important; }
 .theme-seg button{ padding:0; width:34px; height:28px; display:grid; place-items:center; color:var(--text-faint); }
 .theme-seg button[aria-checked="true"]{ color:var(--accent-text); }
 .theme-seg svg{ display:block; }
+/* real brand marks: Claude in its terracotta, OpenAI in ink on stone */
+.agent-ic svg{ width:15px; height:15px; }
+.agent-ic.sm svg{ width:10px; height:10px; }
+.agent-ic.claude{ --agent-bg:#F5E9E1; color:#D97757; }
+.agent-ic.codex{ --agent-bg:var(--surface-sunk); color:var(--text); }
+:root[data-theme="dark"] .agent-ic.claude{ --agent-bg:#3A2418; color:#E8916B; }

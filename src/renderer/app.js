@@ -60,10 +60,11 @@
   /** Circular agent mark: an eight-ray asterisk for Claude, a six-petal knot for Codex. Names stay in the tooltip. */
   function agentIcon(agent, size = 26) {
     const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    s.setAttribute('viewBox', '0 0 16 16'); s.setAttribute('aria-hidden', 'true');
-    if (agent === 'claude') s.innerHTML = '<path d="M8 1.6v12.8M1.6 8h12.8M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>';
-    else if (agent === 'codex') s.innerHTML = [0, 60, 120].map(a => '<rect x="6.6" y="1.6" width="2.8" height="12.8" rx="1.4" fill="currentColor" transform="rotate(' + a + ' 8 8)"/>').join('') + '<circle cx="8" cy="8" r="2.1" fill="var(--agent-bg)"/>';
-    else s.innerHTML = '<circle cx="8" cy="8" r="3" fill="currentColor"/>';
+    s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
+    const brand = window.BRAND_ICONS || {};
+    if (agent === 'claude' && brand.claude) s.innerHTML = '<path d="' + brand.claude + '" fill="currentColor"/>';
+    else if (agent === 'codex' && brand.openai) s.innerHTML = '<path d="' + brand.openai + '" fill="currentColor"/>';
+    else s.innerHTML = '<circle cx="12" cy="12" r="4.5" fill="currentColor"/>';
     return el('span', { class: 'agent-ic ' + agent + (size <= 18 ? ' sm' : ''), title: AGENT[agent] || agent, role: 'img', 'aria-label': AGENT[agent] || agent }, s);
   }
   const lbl = (long, short) => [el('span', { class: 'l', text: long }), el('span', { class: 's', text: short })];
