@@ -49,6 +49,10 @@ Publish only consequential context, and keep each item under a few sentences. Go
 
 Publish an item at the moment it becomes true, in its own short shell call, rather than batching everything at the end. Put user-facing text in `--text`; do not interpolate untrusted content into other arguments. For text with quotes or newlines, write a JSON event to a file and use `layover event --file <path>`.
 
+## Messages from the user
+
+The user can reply from Layover. Their message reaches you through your own hooks as text that starts with "The user sent you a message through Layover". Treat it as their instruction, acknowledge it briefly in your reply, and if it answers an item you published, resolve that item (`--status resolved`).
+
 ## Behaviour and honesty
 
 - `layover open [--path <folder>]` reveals the app for that workspace without stealing focus. Only do this when the user asks or when a hook has not already opened it.

@@ -24,6 +24,18 @@ Both agents ran in scratch folders on this machine's own accounts. Each live run
 - Setup: merge into existing `settings.json` preserving foreign hooks, idempotent reinstall, stale path detection, removal leaving other hooks intact, refusing to overwrite malformed JSON, command quoting.
 - Service: token and Origin/Host enforcement, single and batch events, rejection, open routing.
 
+## Replies reach the agent (0.4.0, verified live with Claude Code)
+
+A message sent from Layover is queued for that conversation and handed over by the agent's own hooks at its next pause. Three real `claude -p` turns on this machine, each asked to answer "DONE", each answered "PINEAPPLE" after a message queued from Layover told it to:
+
+| Moment | Mechanism | Test | Result |
+|---|---|---|---|
+| Mid-turn | `PostToolUse` hook returns `hookSpecificOutput.additionalContext` | Turn waits ~11 s in a Bash tool call; message queued at 5 s | PINEAPPLE · status `delivered · mid-turn` |
+| Turn end | `Stop` hook returns `{"decision":"block","reason":…}`; the agent continues with the message | Tool-free turn; message queued 0.1 s after the run started | PINEAPPLE, 2 turns · `delivered · turn-end` |
+| Next prompt | `UserPromptSubmit` stdout context | Message queued before the prompt hook fired | PINEAPPLE · `delivered · next-prompt` |
+
+Cost: the `PostToolUse` hook is a `.cmd` that checks for `data/outbox.flag` and exits (a few ms) unless something is queued, so tool calls are not slowed while the outbox is empty. Codex has the same hook events and schema, so the same code is installed for it, but the Codex paths were **not** exercised live in this session. Limits: a stopped interactive session cannot be woken from outside; Layover says the message goes with your next prompt. Delivery means the text reached the model as context or instruction, not that it was followed; the model acknowledges it in its reply.
+
 ## Focus on turn start (v0.3)
 
 - A turn-start hook with the app running in the tray creates and shows the window; verified with the packaged shim (~195 ms).
