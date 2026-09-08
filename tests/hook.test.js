@@ -17,6 +17,7 @@ test('turn titles are short, tag-free, and name system-generated turns', () => {
   assert.equal(turnTitle('Great start, and I mostly love the look of the app. Couple problems I am noticing: 1. Claude...'), 'Great start, and I mostly love the look of the app.');
   assert.equal(turnTitle('## Fix the **build**\n```js\nx\n```'), 'Fix the build');
   assert.equal(turnTitle('x'.repeat(200)).length, 80);
+  assert.equal(turnTitle('<scheduled-task name="daily-briefing" id="t_1" cron="0 9 * * *" description="Summarise overnight activity and open PRs for the team">\nRun the daily briefing</scheduled-task>'), 'Scheduled task · daily-briefing');
   assert.equal(turnTitle(''), '');
 });
 import { projectIdFromPath } from '../src/main/paths.js';

@@ -349,7 +349,7 @@
   function renderRail() {
     const list = $('#ws-list'); list.textContent = '';
     const ps = visibleProjects();
-    if (!ps.length) list.append(el('p', { class: 't-small', style: 'padding:8px 10px' }, 'No workspaces yet. An agent will create one when it starts, or add one yourself.'));
+    if (!ps.length) list.append(el('p', { class: 't-small', style: 'padding:8px 10px' }, 'No workspaces yet'));
     for (const p of ps) {
       const st = projectStatus(p.id);
       list.append(el('button', { class: 'ws', role: 'listitem', 'aria-current': p.id === S.project ? 'true' : 'false', onclick: () => switchProject(p.id), title: p.path || '' },

@@ -13,8 +13,10 @@ function oneLine(s, max = 90) {
 export function turnTitle(prompt) {
   const raw = String(prompt || '').trim();
   if (!raw) return '';
+  const sched = raw.match(/^\s*<scheduled-task\b[^>]*?\bname="([^"]+)"/i);
+  if (sched) return oneLine(`Scheduled task · ${sched[1]}`, 80);
   if (/^\s*<(task-notification|system-reminder|ci-monitor-event|command-name)/i.test(raw)) return 'Follow-up from a background task';
-  let t = raw.replace(/<[^>]{1,80}>/g, ' ').replace(/```[\s\S]*?```/g, ' ').replace(/^[#>*\-\s]+/, '').replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim();
+  let t = raw.replace(/<[^>]*>/g, ' ').replace(/```[\s\S]*?```/g, ' ').replace(/^[#>*\-\s]+/, '').replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim();
   const m = t.match(/^(.{12,80}?[.!?])(\s|$)/);
   if (m) t = m[1];
   return oneLine(t, 80);
