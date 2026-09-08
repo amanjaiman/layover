@@ -26,7 +26,7 @@ Uninstall from Windows Settings, or run `Uninstall Layover.exe`. Your data in `%
 - **Next**: what you want to do next, Linear-style underneath but calm on the surface. Groups: In progress, Up next, Someday, Done, Dropped. Each entry has a key like `LAY-12`, a priority, a description, and a **prompt draft**. *Copy prompt* packages title, description and draft for the agent, key included; when an agent starts a turn with that key in the prompt, the entry moves to In progress, the thread shows the key, and the completion row offers *Mark done*. `n` or `Ctrl+N` creates one; the prefix is editable in Settings → Workspace.
 - **Notes**: the project's running notes. Autosaved, with conflict protection.
 - **Break**: stretch prompts, a timer, and optional reminders (suggest, or enter the break automatically once you stop typing).
-- **Return to the agent**: shows the session and a copyable resume command; Layover never pretends it can focus another window.
+- **Return to the agent**: brings forward the window the session started in (terminal, VS Code, the Claude desktop app), which the hook recorded at session start. If that window is gone or unknown, a sheet shows the session and a copyable resume command instead.
 - **Compact companion**: the same app at 400×580, floating, with a workspace picker and short labels. `Ctrl+Shift+C`.
 - **Keyboard**: `n` new in Next, `r` reply to the latest item, `j`/`k` move through Next, `e` edit, `Esc` close, `[` collapse the sidebar, `?` the full list. `Ctrl+1…4` switch views.
 
