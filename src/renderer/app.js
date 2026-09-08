@@ -200,6 +200,8 @@
     api.on('settings', s => { S.settings = { ...S.settings, ...s }; });
     api.on('window-mode', m => { S.mode = m; document.body.classList.toggle('compact', m === 'compact'); render(true); });
     api.on('run-ended', onRunEnded);
+    api.on('platform', ({ platform }) => { document.body.classList.toggle('mac', platform === 'darwin'); S.platform = platform; });
+    api.on('open-settings', () => openSettings({}));
     setInterval(tick, 30000);
     document.addEventListener('keydown', onKey);
     ['keydown', 'pointerdown', 'input'].forEach(evn => document.addEventListener(evn, () => { S.lastInteraction = Date.now(); api.engaged(true); }, { passive: true }));
@@ -997,6 +999,7 @@
           el('p', { class: 't-small', text: 'Only the start of a turn can bring Layover forward; items and completions never move the window.' }),
           switchRow('Windows notification when a turn finishes', 'Silent toast; only when Layover is not in front.', s.notifyOnComplete, v => api.setSettings({ notifyOnComplete: v })),
           switchRow('Keep running in the tray when the window is closed', 'Needed so agents can reach it.', s.closeToTray, v => api.setSettings({ closeToTray: v })),
+          switchRow(S.platform === 'darwin' ? 'Menu bar icon opens the compact companion' : 'Tray icon opens the compact companion', 'A popover under the icon that closes when you click away. Off: the icon opens the main window.', s.trayPopover, v => api.setSettings({ trayPopover: v })),
           switchRow('Tell the agent its run id', 'One short line per prompt so it can publish items without guessing.', s.hookContext, v => api.setSettings({ hookContext: v }))),
         el('div', { class: 'sheet-sec' }, el('h3', { text: 'Appearance' }), el('div', { class: 'appearance' },
           (() => {

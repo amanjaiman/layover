@@ -1,0 +1,9 @@
+#!/bin/sh
+# Layover CLI shim for macOS/Linux. Inside the app bundle this runs the app's own Node runtime;
+# in a checkout it uses node. Layout: Layover.app/Contents/bin/layover (this file),
+# Contents/MacOS/Layover (the app), Contents/Resources/src/cli/layover.js (the CLI).
+here="$(cd "$(dirname "$0")" && pwd)"
+if [ -x "$here/../MacOS/Layover" ]; then
+  ELECTRON_RUN_AS_NODE=1 exec "$here/../MacOS/Layover" "$here/../Resources/src/cli/layover.js" "$@"
+fi
+exec node "$here/../src/cli/layover.js" "$@"

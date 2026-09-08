@@ -6,7 +6,25 @@ Layover makes **no model calls**. It runs entirely on your machine: an Electron 
 
 Windows is the first platform. macOS is next; nothing in `src/` is Windows-only except the `.cmd` shim and the PATH helper.
 
-## Install (Windows)
+## Install
+
+One command, like most developer tools. Both scripts download the latest GitHub release, install per-user, connect Claude Code and Codex, and open the app.
+
+Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/amanjaiman/layover/main/scripts/install.ps1 | iex
+```
+
+macOS:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/amanjaiman/layover/main/scripts/install.sh | sh
+```
+
+The macOS build is unsigned; the script clears the quarantine flag so Gatekeeper lets it run. On macOS the compact companion also lives in the menu bar: click the Layover icon for a popover that closes when you click away (Settings → Preferences). Releases are built by the GitHub workflow on a tag push (`git tag v0.5.0 && git push --tags`); macOS artifacts come from a macOS runner.
+
+### Manual install (Windows)
 
 1. Run `release/Layover-Setup-<version>.exe` (per-user, no admin). It installs to `%LOCALAPPDATA%\Programs\layover`, adds a Start Menu entry, and on first launch puts `layover` on your user PATH.
 2. Layover opens. Click **Connect** for Claude Code and/or Codex. That writes:

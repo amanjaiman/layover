@@ -1,0 +1,6 @@
+#!/bin/sh
+# Cheap hook entry for events that fire often (after every tool call). Exit at once unless a
+# message from the user is queued; otherwise behave exactly like layover.
+flag="${LAYOVER_DATA:-$HOME/Library/Application Support/Layover}/data/outbox.flag"
+[ -f "$flag" ] || [ -f "${XDG_DATA_HOME:-$HOME/.local/share}/Layover/data/outbox.flag" ] || exit 0
+exec "$(dirname "$0")/layover" "$@"

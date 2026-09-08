@@ -1,0 +1,38 @@
+# Builds installers on a tag push (v0.5.0) and attaches them to a GitHub release, plus stable
+# "latest" names the install scripts download. macOS artifacts are built on a macOS runner.
+name: release
+on:
+  push:
+    tags: ['v*']
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            cmd: npx electron-builder --win nsis
+          - os: macos-latest
+            cmd: npx electron-builder --mac zip dmg --arm64 --x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24 }
+      - run: npm ci --no-audit --no-fund
+      - run: npm run icon
+      - run: ${{ matrix.cmd }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Stable names for the install scripts
+        shell: bash
+        run: |
+          cd release
+          for f in Layover-Setup-*.exe; do [ -f "$f" ] && cp "$f" Layover-Setup.exe; done
+          for a in arm64 x64; do f=$(ls Layover-*-mac-$a.zip 2>/dev/null | head -1); [ -n "$f" ] && cp "$f" Layover-mac-$a.zip; done
+          ls -la
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/Layover-Setup*.exe
+            release/Layover-*mac*.zip
+            release/Layover-*mac*.dmg

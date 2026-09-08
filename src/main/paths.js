@@ -7,9 +7,12 @@ export const APP_ID = 'layover';
 export const APP_NAME = 'Layover';
 export const PROTOCOL_VERSION = 2;
 
-export const dataRoot = path.resolve(
-  process.env.LAYOVER_DATA || path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), '.local', 'share'), 'Layover')
-);
+function defaultDataRoot() {
+  if (process.platform === 'win32') return path.join(process.env.LOCALAPPDATA || os.homedir(), 'Layover');
+  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', 'Layover');
+  return path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'Layover');
+}
+export const dataRoot = path.resolve(process.env.LAYOVER_DATA || defaultDataRoot());
 export const dataDir = path.join(dataRoot, 'data');
 export const tokenFile = path.join(dataRoot, 'token');
 export const settingsFile = path.join(dataRoot, 'settings.json');

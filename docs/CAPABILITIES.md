@@ -55,4 +55,4 @@ Not manually exercised end-to-end yet: compact mode window sizing, break reminde
 - **Write-back** exists only for a Codex thread explicitly bound to a local App Server endpoint; no Claude write-back. Saved replies are copied by hand.
 - **Codex hooks need one-time trust** in the Codex UI; until then Codex runs are invisible (the skill still works if invoked).
 - **Unsigned installer**: SmartScreen will warn. Per-user install, no admin.
-- **macOS**: not built. The code avoids Windows-only APIs except the `.cmd` shim and the PATH helper.
+- **macOS** (0.5.0): every platform branch exists (data dir under `~/Library/Application Support/Layover`, `Contents/bin/layover` shim on the app's own Node, `hiddenInset` traffic lights, app menu, menu-bar template icon, popover companion, `osascript` host detection and activation, sh hook quoting, `install.sh`), and the release workflow builds zip and dmg on a macOS runner. **None of it has run on a Mac yet**: this session had no macOS machine, so the first macOS run needs a human on a Mac. Expect small fixes there (Gatekeeper, hook shell quirks, Accessibility permission for `osascript` activation).

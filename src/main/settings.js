@@ -11,6 +11,7 @@ export const DEFAULTS = {
   openOnRunStart: 'focus',         // focus: bring Layover forward | open: show it behind your work | reveal: only if already open | never
   notifyOnComplete: true,          // Windows toast when a run finishes
   closeToTray: true,               // closing the window keeps Layover in the tray
+  trayPopover: process.platform === 'darwin', // tray / menu-bar click opens the compact companion as a popover
   hookContext: true,               // hooks print one short line so the agent knows the run id
   breakReminder: { enabled: false, minutes: 30, mode: 'suggest' }, // suggest | auto
   window: { mode: 'expanded' },
@@ -45,7 +46,7 @@ export function validateSettings(patch) {
   if (patch.theme !== undefined) { if (!['system', 'light', 'dark'].includes(patch.theme)) throw Error('Invalid theme'); out.theme = patch.theme; }
   if (patch.accent !== undefined) { if (!['teal', 'ink', 'mulberry', 'ember', 'oxblood', 'umber'].includes(patch.accent)) throw Error('Invalid accent'); out.accent = patch.accent; }
   if (patch.openOnRunStart !== undefined) { if (!['focus', 'open', 'reveal', 'never'].includes(patch.openOnRunStart)) throw Error('Invalid openOnRunStart'); out.openOnRunStart = patch.openOnRunStart; }
-  for (const k of ['notifyOnComplete', 'closeToTray', 'hookContext', 'onboarded']) if (patch[k] !== undefined) out[k] = !!patch[k];
+  for (const k of ['notifyOnComplete', 'closeToTray', 'hookContext', 'onboarded', 'trayPopover']) if (patch[k] !== undefined) out[k] = !!patch[k];
   if (patch.breakReminder !== undefined) {
     const b = patch.breakReminder || {};
     out.breakReminder = {};

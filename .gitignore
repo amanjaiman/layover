@@ -6,3 +6,5 @@ release/
 build/icon.png
 build/icon.ico
 .devdata/
+build/trayTemplate.png
+build/trayTemplate@2x.png

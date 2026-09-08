@@ -688,3 +688,9 @@ body.rail-collapsed .ws > span:nth-child(2){ display:none !important; }
 .agent-ic.claude{ --agent-bg:#F5E9E1; color:#D97757; }
 .agent-ic.codex{ --agent-bg:var(--surface-sunk); color:var(--text); }
 :root[data-theme="dark"] .agent-ic.claude{ --agent-bg:#3A2418; color:#E8916B; }
+
+/* macOS: room for the traffic lights, which sit over the rail's top-left */
+body.mac .rail-top{ padding-left:82px; }
+body.mac.rail-collapsed .rail-top{ padding-left:0; padding-top:38px; }
+body.mac.compact .top{ padding-left:82px; padding-right:var(--s3); }
+body.mac .top{ padding-right:var(--s3); }

@@ -63,6 +63,27 @@ function ico(sizes) {
   return Buffer.concat([header, ...entries, ...blobs]);
 }
 
+/** Monochrome ring + dot for the macOS menu bar (template image: black on transparent). */
+function trayPng(size) {
+  const px = new Uint8ClampedArray(size * size * 4);
+  const c = size / 2, R = size * 0.34, W = size * 0.11, dr = size * 0.09, dx = c + size * 0.24, dy = c - size * 0.24, SS = 4;
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    let ring = 0, dot = 0;
+    for (let sy = 0; sy < SS; sy++) for (let sx = 0; sx < SS; sx++) {
+      const X = x + (sx + .5) / SS - c, Y = y + (sy + .5) / SS - c, d = Math.hypot(X, Y);
+      if (Math.abs(d - R) <= W / 2) ring++;
+      if (Math.hypot(x + (sx + .5) / SS - dx, y + (sy + .5) / SS - dy) <= dr) dot++;
+    }
+    const i = (y * size + x) * 4, a = Math.min(255, 255 * (ring + dot) / (SS * SS));
+    px[i] = 0; px[i + 1] = 0; px[i + 2] = 0; px[i + 3] = a;
+  }
+  const raw = Buffer.alloc((size * 4 + 1) * size);
+  for (let y = 0; y < size; y++) { raw[y * (size * 4 + 1)] = 0; raw.set(px.subarray(y * size * 4, (y + 1) * size * 4), y * (size * 4 + 1) + 1); }
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(size, 0); ihdr.writeUInt32BE(size, 4); ihdr[8] = 8; ihdr[9] = 6;
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw, { level: 9 })), chunk('IEND', Buffer.alloc(0))]);
+}
+fs.writeFileSync(path.join(here, 'trayTemplate.png'), trayPng(16));
+fs.writeFileSync(path.join(here, 'trayTemplate@2x.png'), trayPng(32));
 fs.writeFileSync(path.join(here, 'icon.png'), png(512));
 fs.writeFileSync(path.join(here, 'icon.ico'), ico([16, 24, 32, 48, 64, 128, 256]));
 console.log('wrote build/icon.png and build/icon.ico');

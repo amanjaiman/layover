@@ -10,7 +10,11 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 /** Where the desktop app lives relative to this CLI file (packaged: resources/src/cli -> Layover.exe). */
 export function appLauncher() {
   if (process.env.LAYOVER_EXE) return { exe: process.env.LAYOVER_EXE, args: [] };
-  const packaged = path.resolve(here, '..', '..', '..', process.platform === 'win32' ? 'Layover.exe' : 'layover');
+  // Packaged layouts: Windows <install>/resources/src/cli -> <install>/Layover.exe;
+  // macOS Layover.app/Contents/Resources/src/cli -> Contents/MacOS/Layover.
+  const packaged = process.platform === 'darwin'
+    ? path.resolve(here, '..', '..', '..', 'MacOS', 'Layover')
+    : path.resolve(here, '..', '..', '..', process.platform === 'win32' ? 'Layover.exe' : 'layover');
   if (fs.existsSync(packaged)) return { exe: packaged, args: [] };
   const repo = path.resolve(here, '..', '..');
   const electron = path.join(repo, 'node_modules', 'electron', 'dist', process.platform === 'win32' ? 'electron.exe' : 'electron');

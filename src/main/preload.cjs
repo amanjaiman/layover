@@ -1,7 +1,7 @@
 // Narrow, typed bridge between the renderer and the main process. No Node access in the page.
 const { contextBridge, ipcRenderer } = require('electron');
 
-const PUSH = new Set(['state', 'open-request', 'theme', 'settings', 'window-mode', 'run-ended', 'reveal', 'setup']);
+const PUSH = new Set(['state', 'open-request', 'theme', 'settings', 'window-mode', 'run-ended', 'reveal', 'setup', 'platform', 'open-settings']);
 
 contextBridge.exposeInMainWorld('layover', {
   getState: () => ipcRenderer.invoke('state:get'),

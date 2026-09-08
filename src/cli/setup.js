@@ -26,8 +26,9 @@ export function locations(agent) {
  * PowerShell, cmd and bash alike, so that is the preferred form; paths with spaces get shell-specific quoting.
  */
 export function hookCommand(cliPath, agent) {
-  const p = cliPath.replace(/\\/g, '/');
+  const p = process.platform === 'win32' ? cliPath.replace(/\\/g, '/') : cliPath;
   if (!/[\s'"]/.test(p)) return `${p} hook ${agent}`;
+  if (process.platform !== 'win32') return `'${p.replace(/'/g, "'\\''")}' hook ${agent}`; // sh quoting
   return agent === 'codex' ? `& '${p.replace(/'/g, "''")}' hook codex` : `"${p}" hook ${agent}`;
 }
 

@@ -1,6 +1,6 @@
 // Layover desktop app: hosts the store and the loopback service, owns the window and tray.
 // Nothing here calls a model. Incoming events never steal focus or switch an engaged user's workspace.
-import { app, BrowserWindow, Tray, Menu, nativeImage, nativeTheme, ipcMain, shell, clipboard, dialog, Notification } from 'electron';
+import { app, BrowserWindow, Tray, Menu, nativeImage, nativeTheme, ipcMain, shell, clipboard, dialog, Notification, screen } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -48,7 +48,8 @@ if (!app.requestSingleInstanceLock({ argv })) {
 }
 
 
-const cliCommand = () => app.isPackaged ? path.join(path.dirname(process.execPath), 'bin', process.platform === 'win32' ? 'layover.cmd' : 'layover') : path.join(repoRoot, 'bin', process.platform === 'win32' ? 'layover.cmd' : 'layover');
+// Packaged: the bin folder sits beside resources (Windows <install>/bin, macOS Layover.app/Contents/bin).
+const cliCommand = () => app.isPackaged ? path.join(process.resourcesPath, '..', 'bin', process.platform === 'win32' ? 'layover.cmd' : 'layover') : path.join(repoRoot, 'bin', process.platform === 'win32' ? 'layover.cmd' : 'layover');
 
 async function boot() {
   app.setAppUserModelId('com.layover.app');
@@ -65,8 +66,16 @@ async function boot() {
     if (change.ended) onRunEnded(change.ended);
   });
   await app.whenReady();
-  if (app.isPackaged) { try { log('path', setup.ensureUserPath(path.dirname(cliCommand()))); } catch (e) { log('path setup failed', e.message); } }
+  if (app.isPackaged && process.platform === 'win32') { try { log('path', setup.ensureUserPath(path.dirname(cliCommand()))); } catch (e) { log('path setup failed', e.message); } }
+  if (process.platform === 'darwin') {
+    // A standard app menu so Cmd+Q / Cmd+C / Cmd+V and the app name behave as on any Mac app.
+    Menu.setApplicationMenu(Menu.buildFromTemplate([
+      { label: APP_NAME, submenu: [{ role: 'about' }, { type: 'separator' }, { label: 'Settings…', accelerator: 'Cmd+,', click: () => { reveal({ focus: true }); broadcast('open-settings', {}); } }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { type: 'separator' }, { role: 'quit' }] },
+      { role: 'editMenu' }, { role: 'windowMenu' },
+    ]));
+  }
   createTray();
+  if (flag('--popover') && !app.isPackaged) setTimeout(togglePopover, 800); // dev: exercise the tray popover without a click
   const openReq = flagValue('--open');
   if (!flag('--background')) createWindow({ show: true });
   if (openReq) await handleOpen(safeJson(openReq), { explicit: true });
@@ -107,8 +116,9 @@ function createWindow({ show }) {
     minWidth: size.minWidth, minHeight: size.minHeight,
     show: false, backgroundColor: c.bg, title: APP_NAME,
     icon: iconPath('png'),
-    titleBarStyle: 'hidden',
-    titleBarOverlay: { color: c.overlay, symbolColor: c.symbol, height: 42 },
+    // Windows: hidden title bar with the native caption buttons overlaid. macOS: inset traffic lights.
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
+    ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 14, y: 13 } } : { titleBarOverlay: { color: c.overlay, symbolColor: c.symbol, height: 42 } }),
     webPreferences: { preload: path.join(here, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: true },
   });
   win.removeMenu();
@@ -119,7 +129,9 @@ function createWindow({ show }) {
   win.on('focus', () => { lastInteraction = Date.now(); });
   win.webContents.on('will-navigate', e => e.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  win.webContents.on('did-finish-load', () => { applyTheme(); win.webContents.send('window-mode', mode); });
+  win.webContents.on('did-finish-load', () => { applyTheme(); win.webContents.send('window-mode', settings.window.mode || 'expanded'); win.webContents.send('platform', { platform: process.platform }); });
+  // Popover mode: the compact companion hides again when it loses focus, like a menu-bar app.
+  win.on('blur', () => { if (settings.trayPopover && settings.window.mode === 'compact' && win && !win.webContents.isDevToolsOpened() && popoverShown) { popoverShown = false; win.hide(); } });
   const shot = flagValue('--screenshot');
   if (shot && !app.isPackaged) win.webContents.once('did-finish-load', () => setTimeout(async () => { try { win.show(); win.moveTop(); await new Promise(r => setTimeout(r, 600)); const img = await win.webContents.capturePage(); fs.writeFileSync(shot, img.toPNG()); log('screenshot', shot); } catch (e) { log('screenshot failed', e.message); } }, Number(flagValue('--screenshot-delay') || 1500)));
   return win;
@@ -206,9 +218,22 @@ function focusHwnd(hwnd) {
 async function returnToHost(taskId) {
   const t = store.tasks.get(taskId);
   if (!t?.host?.hwnd) return { ok: false, reason: 'unknown' };
-  const r = await focusHwnd(t.host.hwnd);
+  const r = process.platform === 'darwin' ? await activateMac(t.host) : await focusHwnd(t.host.hwnd);
   log('return to host', t.host.name, r);
   return { ...r, host: t.host };
+}
+
+/** macOS: activate the recorded app by bundle id (stored in host.title) or pid. */
+function activateMac(host) {
+  return new Promise((resolve) => {
+    const script = host.title ? `tell application id "${host.title.replace(/"/g, '')}" to activate`
+      : `tell application "System Events" to set frontmost of (first process whose unix id is ${Number(host.pid)}) to true`;
+    const child = spawn('osascript', ['-e', script], { stdio: ['ignore', 'ignore', 'pipe'] });
+    let err = '';
+    child.stderr.on('data', d => { err += d; });
+    child.on('error', e => resolve({ ok: false, reason: e.message }));
+    child.on('close', code => resolve(code === 0 ? { ok: true, reason: 'ok' } : { ok: false, reason: /can’t get|not running|-600/.test(err) ? 'gone' : 'refused' }));
+  });
 }
 
 /** Show the window without taking focus from whatever the user is doing. */
@@ -277,14 +302,44 @@ function iconPath(ext) {
   return candidates.find(p => fs.existsSync(p)) || candidates[0];
 }
 
+let popoverShown = false;
 function createTray() {
   try {
-    const img = nativeImage.createFromPath(iconPath('png')).resize({ width: 16, height: 16 });
+    // macOS menu bar wants a monochrome template image; Windows gets the colour mark.
+    const template = path.join(path.dirname(iconPath('png')), 'trayTemplate.png');
+    const img = process.platform === 'darwin' && fs.existsSync(template) ? nativeImage.createFromPath(template) : nativeImage.createFromPath(iconPath('png')).resize({ width: 16, height: 16 });
+    if (process.platform === 'darwin') img.setTemplateImage(true);
     tray = new Tray(img);
     tray.setToolTip(APP_NAME);
-    tray.on('click', () => reveal({ focus: true }));
+    tray.on('click', () => { if (settings.trayPopover) togglePopover(); else reveal({ focus: true }); });
     updateTray();
   } catch (e) { log('tray unavailable', e.message); }
+}
+
+/** The compact companion as a popover anchored to the tray / menu bar icon. */
+function togglePopover() {
+  if (!win) createWindow({ show: false });
+  if (popoverShown && win.isVisible()) { popoverShown = false; win.hide(); return; }
+  if (settings.window.mode !== 'compact') setWindowMode('compact');
+  let b = tray.getBounds();
+  const cb = settings.window.bounds?.compact;
+  const size = [cb?.width || SIZES.compact.width, cb?.height || SIZES.compact.height]; // the resize above is still in flight
+  const display = screen.getDisplayNearestPoint({ x: b.x, y: b.y });
+  const area = display.workArea;
+  // Windows hides new tray icons in the overflow flyout and then reports no usable bounds; anchor to the taskbar corner instead.
+  const usable = b.width > 0 && b.height > 0 && b.x >= area.x - 4 && b.x <= area.x + area.width + 4 && (b.y <= area.y + 8 || b.y >= area.y + area.height - 8);
+  if (!usable) b = process.platform === 'darwin' ? { x: area.x + area.width - 30, y: area.y - 22, width: 22, height: 22 } : { x: area.x + area.width - 30, y: area.y + area.height, width: 24, height: 24 };
+  log('popover anchor', { tray: tray.getBounds(), used: b, area });
+  let x = Math.round(b.x + b.width / 2 - size[0] / 2);
+  let y = process.platform === 'darwin' ? b.y + b.height + 6 : (b.y > area.y + area.height / 2 ? b.y - size[1] - 8 : b.y + b.height + 8);
+  x = Math.max(area.x + 8, Math.min(x, area.x + area.width - size[0] - 8));
+  y = Math.max(area.y + 8, Math.min(y, area.y + area.height - size[1] - 8));
+  // One bounds call so the resize from setWindowMode and this move cannot race each other.
+  win.setBounds({ x, y, width: size[0], height: size[1] }, false);
+  win.setAlwaysOnTop(true, 'pop-up-menu');
+  win.show(); win.focus();
+  popoverShown = true;
+  log('popover shown at', win.getBounds());
 }
 
 function updateTray() {
