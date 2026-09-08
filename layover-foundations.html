@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Layover Foundations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:ital,wght@0,400..700;1,400..600&family=Figtree:ital,wght@0,300..800;1,300..600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Baseline the Artifact host normally supplies. */
+  body{ margin:0; }
+  img{ max-width:100%; }
+  [hidden]{ display:none !important; }
+</style>
+</head>
+<body>
+
+<style>
+/* ==========================================================
+   LAYOVER — Foundations
+   Base unit 6. Type scale of 7. Round by default.
+   ========================================================== */
+
+:root{
+  /* --- surface + neutral ramp (warm stone, biased toward teal) --- */
+  --bg:            #F6F5F2;
+  --surface:       #FFFFFF;
+  --surface-2:     #EFEEE9;
+  --surface-sunk:  #E9E8E2;
+  --border-soft:   #E4E2DA;
+  --border:        #D4D2C9;
+  --border-strong: #B9B7AC;
+  --text-faint:    #78766D;
+  --text-muted:    #605E56;
+  --text-2:        #43413B;
+  --text:          #202420;
+
+  /* --- accent: teal --- */
+  --accent-wash:   #E4F0EE;
+  --accent-soft:   #BEDCD7;
+  --accent-mid:    #4E9E96;
+  --accent:        #0F736D;
+  --accent-hover:  #0A5F5A;
+  --accent-press:  #074B47;
+  --accent-on:     #FFFFFF;
+  --accent-text:   #0A5F5A;
+
+  /* --- working state: marigold --- */
+  --gold-wash:     #F8ECD4;
+  --gold:          #C8871B;
+  --gold-text:     #8A5C0F;
+
+  /* --- semantic --- */
+  --ok:            #2F7D4F;
+  --ok-wash:       #E2F0E7;
+  --warn:          #A8701A;
+  --warn-wash:     #F8ECD4;
+  --danger:        #B24232;
+  --danger-wash:   #F8E5E1;
+
+  /* --- workspace identity hues (6) --- */
+  --ws-clay:   #B05C43;
+  --ws-gold:   #C8871B;
+  --ws-moss:   #5A7D3A;
+  --ws-teal:   #14807A;
+  --ws-slate:  #4C6E9C;
+  --ws-plum:   #8B5378;
+  --ws-on:     #FFFFFF;
+
+  /* --- elevation --- */
+  --e0: none;
+  --e1: 0 1px 2px rgba(32,36,32,.06), 0 1px 1px rgba(32,36,32,.04);
+  --e2: 0 2px 4px rgba(32,36,32,.05), 0 6px 12px -4px rgba(32,36,32,.09);
+  --e3: 0 4px 8px rgba(32,36,32,.05), 0 18px 36px -10px rgba(32,36,32,.16);
+
+  /* --- type --- */
+  --f-display: 'Familjen Grotesk', 'Figtree', ui-sans-serif, system-ui, sans-serif;
+  --f-ui: 'Figtree', ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+  --f-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* --- space: base 6 --- */
+  --s1: 6px;  --s2: 12px; --s3: 18px; --s4: 24px;
+  --s5: 36px; --s6: 48px; --s7: 72px;
+
+  /* --- radius: round by default --- */
+  --r-sm: 6px; --r-md: 12px; --r-lg: 18px; --r-xl: 24px; --r-full: 999px;
+
+  /* --- motion --- */
+  --dur-quick: 120ms;
+  --dur-calm:  240ms;
+  --dur-slow:  480ms;
+  --ease-out:  cubic-bezier(.2,.8,.3,1);
+  --ease-soft: cubic-bezier(.4,.14,.3,1);
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:            #151714;
+    --surface:       #1D201C;
+    --surface-2:     #23261F;
+    --surface-sunk:  #111310;
+    --border-soft:   #272B25;
+    --border:        #363A31;
+    --border-strong: #4E5348;
+    --text-faint:    #7E8278;
+    --text-muted:    #9A9E93;
+    --text-2:        #C0C4B9;
+    --text:          #EDEEE9;
+
+    --accent-wash:   #142825;
+    --accent-soft:   #1E4340;
+    --accent-mid:    #2E8880;
+    --accent:        #45BDB2;
+    --accent-hover:  #5FCEC4;
+    --accent-press:  #7ADCD3;
+    --accent-on:     #0B211E;
+    --accent-text:   #6FD3C8;
+
+    --gold-wash:     #2E2413;
+    --gold:          #E5A93F;
+    --gold-text:     #E9B65B;
+
+    --ok:            #63BE7E;
+    --ok-wash:       #16281D;
+    --warn:          #D99B33;
+    --warn-wash:     #2E2413;
+    --danger:        #E8806B;
+    --danger-wash:   #2E1A16;
+
+    --ws-clay:   #C97256;
+    --ws-gold:   #DFA23A;
+    --ws-moss:   #7DA155;
+    --ws-teal:   #3EA79E;
+    --ws-slate:  #6D8FBE;
+    --ws-plum:   #B0759C;
+    --ws-on:     #14170F;
+
+    --e1: 0 1px 2px rgba(0,0,0,.5);
+    --e2: 0 2px 4px rgba(0,0,0,.4), 0 8px 16px -6px rgba(0,0,0,.55);
+    --e3: 0 4px 10px rgba(0,0,0,.45), 0 20px 40px -12px rgba(0,0,0,.7);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:            #151714;
+  --surface:       #1D201C;
+  --surface-2:     #23261F;
+  --surface-sunk:  #111310;
+  --border-soft:   #272B25;
+  --border:        #363A31;
+  --border-strong: #4E5348;
+  --text-faint:    #7E8278;
+  --text-muted:    #9A9E93;
+  --text-2:        #C0C4B9;
+  --text:          #EDEEE9;
+
+  --accent-wash:   #142825;
+  --accent-soft:   #1E4340;
+  --accent-mid:    #2E8880;
+  --accent:        #45BDB2;
+  --accent-hover:  #5FCEC4;
+  --accent-press:  #7ADCD3;
+  --accent-on:     #0B211E;
+  --accent-text:   #6FD3C8;
+
+  --gold-wash:     #2E2413;
+  --gold:          #E5A93F;
+  --gold-text:     #E9B65B;
+
+  --ok:            #63BE7E;
+  --ok-wash:       #16281D;
+  --warn:          #D99B33;
+  --warn-wash:     #2E2413;
+  --danger:        #E8806B;
+  --danger-wash:   #2E1A16;
+
+  --ws-clay:   #C97256;
+  --ws-gold:   #DFA23A;
+  --ws-moss:   #7DA155;
+  --ws-teal:   #3EA79E;
+  --ws-slate:  #6D8FBE;
+  --ws-plum:   #B0759C;
+  --ws-on:     #14170F;
+
+  --e1: 0 1px 2px rgba(0,0,0,.5);
+  --e2: 0 2px 4px rgba(0,0,0,.4), 0 8px 16px -6px rgba(0,0,0,.55);
+  --e3: 0 4px 10px rgba(0,0,0,.45), 0 20px 40px -12px rgba(0,0,0,.7);
+  color-scheme: dark;
+}
+
+/* ---------------- base ---------------- */
+*,*::before,*::after{ box-sizing:border-box; }
+body{
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--f-ui);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+h1,h2,h3,h4,h5,p,ul,ol,figure{ margin:0; }
+ul{ padding:0; list-style:none; }
+a{ color: var(--accent-text); }
+:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-sm); }
+
+/* ---------------- page shell ---------------- */
+.ds-top{
+  position: sticky; top:0; z-index: 60;
+  background: color-mix(in oklab, var(--bg) 88%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-soft);
+}
+.ds-top-in{
+  max-width: 1320px; margin:0 auto; padding: 0 var(--s4);
+  height: 60px; display:flex; align-items:center; gap: var(--s3);
+}
+.ds-mark{ display:flex; align-items:center; gap: 10px; font-family: var(--f-display); font-weight:600; font-size:17px; letter-spacing:-.01em; }
+.ds-mark-o{
+  width:20px; height:20px; border-radius: var(--r-full);
+  border: 2px solid var(--accent); position:relative; flex:none;
+}
+.ds-mark-o::after{
+  content:""; position:absolute; top:2px; right:2px; width:5px; height:5px;
+  border-radius: var(--r-full); background: var(--gold);
+}
+.ds-tag{
+  font-family: var(--f-mono); font-size: 11px; color: var(--text-muted);
+  border:1px solid var(--border); border-radius: var(--r-full); padding: 3px 10px;
+}
+.ds-ver{ margin-left:auto; font-family: var(--f-mono); font-size:11px; color: var(--text-faint); }
+@media (max-width: 680px){
+  .ds-ver{ display:none; }
+  .ds-tag{ margin-left:auto; }
+}
+@media (max-width: 460px){ .ds-tag{ display:none; } .ds-mark{ margin-right:auto; } }
+
+.ds-shell{
+  max-width: 1320px; margin: 0 auto; padding: 0 var(--s4);
+  display: grid; grid-template-columns: 208px minmax(0,1fr); gap: var(--s7);
+  align-items: start;
+}
+.ds-rail{ position: sticky; top: 84px; padding-block: var(--s6); display:grid; gap: var(--s4); }
+.ds-rail-group{ display:grid; gap: 2px; }
+.ds-rail-h{
+  font-family: var(--f-mono); font-size: 10px; letter-spacing:.12em; text-transform:uppercase;
+  color: var(--text-faint); padding: 0 10px var(--s1);
+}
+.ds-rail a{
+  display:block; padding: 6px 10px; border-radius: var(--r-sm);
+  font-size: 14px; color: var(--text-muted); text-decoration:none;
+  transition: background var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out);
+}
+.ds-rail a:hover{ background: var(--surface-2); color: var(--text); }
+@media (max-width: 1040px){
+  .ds-shell{ grid-template-columns: 1fr; gap: 0; }
+  .ds-rail{ position: static; padding-block: var(--s4) 0; grid-auto-flow: column; overflow-x:auto; gap: var(--s4); }
+  .ds-rail-group{ grid-auto-flow: column; gap: 2px; }
+  .ds-rail-h{ display:none; }
+  .ds-rail a{ white-space: nowrap; }
+}
+.ds-main{ padding-block: var(--s6) var(--s7); min-width:0; }
+
+/* ---------------- type ---------------- */
+.t-eyebrow{
+  font-family: var(--f-mono); font-size:10.5px; letter-spacing:.14em;
+  text-transform:uppercase; color: var(--text-faint);
+}
+.t-display{ font-family: var(--f-display); font-weight:600; letter-spacing:-.022em; line-height:1.08; text-wrap:balance; }
+.t-h2{ font-family: var(--f-display); font-weight:600; font-size: 27px; letter-spacing:-.016em; line-height:1.2; }
+.t-h3{ font-family: var(--f-display); font-weight:600; font-size: 18px; letter-spacing:-.008em; }
+.t-body{ font-size: 15px; color: var(--text-2); max-width: 66ch; line-height:1.65; }
+.t-small{ font-size: 13.5px; color: var(--text-muted); line-height:1.6; }
+.mono{ font-family: var(--f-mono); font-size: 12px; }
+
+/* ---------------- intro ---------------- */
+.ds-intro{ padding-bottom: var(--s6); border-bottom: 1px solid var(--border-soft); }
+.ds-intro h1{ font-size: clamp(34px, 4.6vw, 52px); margin-top: var(--s2); }
+.ds-intro .t-body{ margin-top: var(--s3); font-size: 16.5px; }
+.principles{ display:grid; grid-template-columns: repeat(3, 1fr); gap: var(--s5); margin-top: var(--s6); }
+.principles > div{ display:grid; gap: var(--s1); align-content:start; }
+.principles .pn{
+  width: 24px; height:24px; border-radius: var(--r-full);
+  background: var(--accent-wash); color: var(--accent-text);
+  display:grid; place-items:center; font-family: var(--f-mono); font-size:11px;
+  margin-bottom: var(--s1);
+}
+@media (max-width: 800px){ .principles{ grid-template-columns:1fr; gap: var(--s4); } }
+
+/* ---------------- section frame ---------------- */
+.sec{ padding-block: var(--s7); border-bottom: 1px solid var(--border-soft); scroll-margin-top: 84px; }
+.sec-head{ display:grid; gap: var(--s2); max-width: 68ch; margin-bottom: var(--s5); }
+.sec-num{ display:flex; align-items:center; gap: 10px; }
+.sec-num .t-eyebrow{ letter-spacing:.16em; }
+.sec-num::after{ content:""; flex:1; height:1px; background: var(--border-soft); }
+
+/* spec block: the recurring container for every specimen */
+.spec{ margin-top: var(--s5); }
+.spec-h{
+  display:flex; align-items:baseline; gap: var(--s2); flex-wrap:wrap;
+  padding-bottom: var(--s2); border-bottom: 1px solid var(--border-soft); margin-bottom: var(--s4);
+}
+.spec-h h4{ font-family: var(--f-display); font-weight:600; font-size: 15px; letter-spacing:-.005em; }
+.spec-h .note{ font-size: 13px; color: var(--text-muted); }
+.spec-h .tok{ margin-left:auto; font-family: var(--f-mono); font-size: 11px; color: var(--text-faint); }
+.stage{
+  background: var(--surface); border:1px solid var(--border-soft); border-radius: var(--r-lg);
+  padding: var(--s4);
+}
+.stage.sunk{ background: var(--surface-sunk); border-color: transparent; }
+.row{ display:flex; flex-wrap:wrap; gap: var(--s2); align-items:center; }
+.row.wide{ gap: var(--s4); }
+.stack{ display:grid; gap: var(--s2); }
+
+/* ---------------- color ---------------- */
+.ramp{ display:grid; grid-template-columns: repeat(auto-fit, minmax(112px,1fr)); gap: var(--s2); }
+.sw{ display:grid; gap: 7px; }
+.sw-chip{
+  height: 60px; border-radius: var(--r-md); border:1px solid rgba(128,128,128,.16);
+}
+.sw-n{ font-family: var(--f-mono); font-size: 11px; color: var(--text-2); }
+.sw-v{ font-family: var(--f-mono); font-size: 10.5px; color: var(--text-faint); }
+.ws-row{ display:flex; flex-wrap:wrap; gap: var(--s4); }
+.ws-item{ display:grid; justify-items:center; gap: 8px; }
+.ws-tok{
+  width: 42px; height:42px; border-radius: var(--r-md);
+  display:grid; place-items:center; color: var(--ws-on);
+  font-family: var(--f-display); font-weight:600; font-size:16px;
+}
+.ws-name{ font-family: var(--f-mono); font-size:10.5px; color: var(--text-faint); }
+
+/* ---------------- type scale ---------------- */
+.scale{ display:grid; gap: 0; }
+.scale-row{
+  display:grid; grid-template-columns: 92px minmax(0,1fr) 150px; gap: var(--s4);
+  align-items: baseline; padding-block: var(--s3); border-top:1px solid var(--border-soft);
+}
+.scale-row:first-child{ border-top:none; }
+.scale-k{ font-family: var(--f-mono); font-size: 11px; color: var(--text-faint); }
+.scale-spec{ font-family: var(--f-mono); font-size: 11px; color: var(--text-faint); text-align:right; font-variant-numeric: tabular-nums; }
+.scale-x{ min-width:0; }
+@media (max-width:760px){
+  .scale-row{ grid-template-columns: 1fr; gap: var(--s1); }
+  .scale-spec{ text-align:left; }
+}
+.sp-1{ font-family: var(--f-display); font-weight:600; font-size:46px; letter-spacing:-.024em; line-height:1.06; }
+.sp-2{ font-family: var(--f-display); font-weight:600; font-size:31px; letter-spacing:-.018em; line-height:1.16; }
+.sp-3{ font-family: var(--f-display); font-weight:600; font-size:21px; letter-spacing:-.01em; line-height:1.3; }
+.sp-4{ font-family: var(--f-ui); font-weight:600; font-size:16px; line-height:1.45; }
+.sp-5{ font-family: var(--f-ui); font-weight:400; font-size:15px; line-height:1.65; color: var(--text-2); }
+.sp-6{ font-family: var(--f-ui); font-weight:400; font-size:13.5px; line-height:1.6; color: var(--text-muted); }
+.sp-7{ font-family: var(--f-mono); font-weight:500; font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color: var(--text-faint); }
+
+/* ---------------- space + radius ---------------- */
+.space-grid{ display:grid; gap: var(--s2); }
+.space-row{ display:grid; grid-template-columns: 54px 1fr 64px; gap: var(--s3); align-items:center; }
+.space-bar{ height: 14px; border-radius: 3px; background: var(--accent-soft); }
+.space-k{ font-family: var(--f-mono); font-size:11px; color: var(--text-2); }
+.space-v{ font-family: var(--f-mono); font-size:11px; color: var(--text-faint); text-align:right; font-variant-numeric:tabular-nums; }
+.rad-row{ display:flex; flex-wrap:wrap; gap: var(--s3); }
+.rad-item{ display:grid; justify-items:center; gap: 8px; }
+.rad-box{
+  width: 68px; height:68px; background: var(--accent-wash);
+  border:1.5px solid var(--accent-mid);
+}
+.elev-row{ display:grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: var(--s3); }
+.elev-card{
+  background: var(--surface); border:1px solid var(--border-soft);
+  border-radius: var(--r-md); padding: var(--s3); display:grid; gap: 4px; min-height: 96px; align-content:end;
+}
+.elev-card .ek{ font-family: var(--f-mono); font-size:11px; color: var(--text-2); }
+.elev-card .ev{ font-size: 12px; color: var(--text-faint); }
+
+/* motion */
+.motion-grid{ display:grid; grid-template-columns: repeat(auto-fit,minmax(190px,1fr)); gap: var(--s4); }
+.motion-item{ display:grid; gap: var(--s2); }
+.motion-svg{ width:100%; height: 76px; border:1px solid var(--border-soft); border-radius: var(--r-md); background: var(--surface); }
+.motion-svg path.curve{ fill:none; stroke: var(--accent); stroke-width:2; }
+.motion-svg path.diag{ fill:none; stroke: var(--border); stroke-width:1; stroke-dasharray:3 3; }
+.motion-k{ font-family: var(--f-mono); font-size:11px; color: var(--text-2); }
+.motion-d{ font-size: 12.5px; color: var(--text-muted); }
+
+/* ---------------- controls ---------------- */
+/* segmented (used by the theme switch) */
+.seg{
+  display:inline-flex; padding: 3px; gap:2px;
+  background: var(--surface-2); border-radius: var(--r-full);
+}
+.seg button{
+  font-family: var(--f-ui); font-size:13px; font-weight:600; color: var(--text-muted);
+  background: transparent; border:none; cursor:pointer;
+  padding: 7px 15px; border-radius: var(--r-full);
+  transition: background var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out);
+}
+.seg button:hover{ color: var(--text); }
+.seg button[aria-selected="true"],
+.seg button[aria-checked="true"]{ background: var(--surface); color: var(--text); box-shadow: var(--e1); }
+.theme-seg{ padding: 3px; }
+.theme-seg button{ padding: 6px 10px; color: var(--text-faint); }
+.theme-seg button[aria-checked="true"]{ color: var(--accent-text); }
+.theme-seg svg{ display:block; }
+.caption{ margin-top: var(--s3); font-size: 13px; color: var(--text-faint); }
+.caption b{ color: var(--text-muted); font-weight:600; }
+
+/* footer */
+.ds-foot{ padding-block: var(--s6); display:flex; flex-wrap:wrap; gap: var(--s3); align-items:center; }
+.ds-foot .fm{ font-family: var(--f-mono); font-size:11.5px; color: var(--text-faint); }
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
+}
+</style>
+
+<div class="ds-top">
+  <div class="ds-top-in">
+    <span class="ds-mark"><span class="ds-mark-o" aria-hidden="true"></span>Layover</span>
+    <span class="ds-tag">Foundations</span>
+    <span class="ds-ver">v0.6 · base 6</span>
+    <div class="seg theme-seg" role="radiogroup" aria-label="Color theme">
+      <button type="button" role="radio" aria-checked="false" data-theme-set="light" title="Light" aria-label="Light">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <circle cx="8" cy="8" r="3.1" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M8 1.1v1.7M8 13.2v1.7M1.1 8h1.7M13.2 8h1.7M3.3 3.3l1.2 1.2M11.5 11.5l1.2 1.2M12.7 3.3l-1.2 1.2M4.5 11.5l-1.2 1.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <button type="button" role="radio" aria-checked="true" data-theme-set="system" title="Match system" aria-label="Match system">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <rect x="1.6" y="2.6" width="12.8" height="8.8" rx="1.6" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M5.6 14h4.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <button type="button" role="radio" aria-checked="false" data-theme-set="dark" title="Dark" aria-label="Dark">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M13.4 9.9A5.8 5.8 0 0 1 6.1 2.6a5.8 5.8 0 1 0 7.3 7.3Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="ds-shell">
+
+  <nav class="ds-rail" aria-label="Design system sections">
+    <div class="ds-rail-group">
+      <div class="ds-rail-h">Foundations</div>
+      <a href="#color">Color</a>
+      <a href="#type">Typography</a>
+      <a href="#space">Space &amp; radius</a>
+      <a href="#elevation">Elevation</a>
+      <a href="#motion">Motion</a>
+    </div>
+
+  </nav>
+  <main class="ds-main">
+
+    <section class="ds-intro">
+      <span class="t-eyebrow">Layover — color, type, space, elevation, motion</span>
+      <h1 class="t-display">A calm workspace for the time in between.</h1>
+      <p class="t-body">
+        Layover is where you keep a project's thinking between sessions. An agent can push updates into it
+        while it works, but the app is not a monitor — it's a place you'd open on your own. Everything here is
+        built on a <b>6px</b> unit, a seven-step type scale, and round-cornered surfaces that stay quiet until you touch them.
+      </p>
+
+      <div class="principles">
+        <div>
+          <span class="pn">1</span>
+          <h3 class="t-h3">The room stays still</h3>
+          <p class="t-small">Incoming updates never move what you're reading or steal focus. They arrive, they wait, they hold their place until you look.</p>
+        </div>
+        <div>
+          <span class="pn">2</span>
+          <h3 class="t-h3">Workspaces are people-shaped</h3>
+          <p class="t-small">A workspace is a place with a color and a name, not a file path. Switching is one click and never loses your place in the last one.</p>
+        </div>
+        <div>
+          <span class="pn">3</span>
+          <h3 class="t-h3">Nothing urgent is bright</h3>
+          <p class="t-small">Marigold means something is happening elsewhere. It's the only warm color in the interface, and it never asks to be clicked.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ COLOR ============ -->
+    <section class="sec" id="color">
+      <div class="sec-head">
+        <div class="sec-num"><span class="t-eyebrow">Foundations — Color</span></div>
+        <h2 class="t-h2">Warm stone, one cool accent, one warm signal</h2>
+        <p class="t-body">Neutrals carry a slight green bias so they sit with teal rather than under it. Teal is the only interactive color. Marigold is reserved entirely for work happening somewhere else — it is never a button.</p>
+      </div>
+
+      <div class="spec">
+        <div class="spec-h"><h4>Surface &amp; text</h4><span class="note">Eight steps, warm-biased</span><span class="tok">--bg → --text</span></div>
+        <div class="ramp">
+          <div class="sw"><div class="sw-chip" style="background:var(--bg)"></div><span class="sw-n">--bg</span><span class="sw-v">page ground</span></div>
+          <div class="sw"><div class="sw-chip" style="background:var(--surface)"></div><span class="sw-n">--surface</span><span class="sw-v">cards, sheets</span></div>
+          <div class="sw"><div class="sw-chip" style="background:var(--surface-2)"></div><span class="sw-n">--surface-2</span><span class="sw-v">hover, seg track</span></div>
+          <div class="sw"><div class="sw-chip" style="background:var(--surface-sunk)"></div><span class="sw-n">--surface-sunk</span><span class="sw-v">rails, wells</span></div>
+          <div class="sw"><div class="sw-chip" style="background:var(--border-soft)"></div><span class="sw-n">--border-soft</span><span class="sw-v">default hairline</span></div>
+          <div class="sw"><div class="sw-chip" style="background:var(--border)"></div><span class="sw-n">--border</span><span class="sw-v">inputs, buttons</span></div>
+          <div class="sw"><div class="sw-chip" style="background:var(--text-muted)"></div><span class="sw-n">--text-muted</span><span class="sw-v">secondary copy</span></div>
+          <div class="sw"><div class="sw-chip" style="background:var(--text)"></div><span class="sw-n">--text</span><span class="sw-v">primary copy</span></div>
+        </div>
+        <p class="caption">Both themes are the same eight tokens with different values — no component ever names a color directly, so nothing needs a dark-mode branch. Light is the base; dark redefines the values only. Use the control in the top bar to switch, or leave it on <b>Match system</b>.</p>
+      </div>
+
+      <div class="spec">
+        <div class="spec-h"><h4>Teal — interaction</h4><span class="note">Links, selection, focus, primary action</span><span class="tok">--accent-*</span></div>
+        <div class="ramp">
+          <div class="sw"><div class="sw-chip" style="background:var(--accent-wash)"></div><span class="sw-n">--accent-wash</span><span class="sw-v">selected rows</span></div>
+          <div class="sw"><div class="sw-chip" style="background:var(--accent-soft)"></div><span class="sw-n">--accent-soft</span><span class="sw-v">rules, note spine</span></div>
+          <div class="sw"><div class="sw-chip" style="background:var(--accent-mid)"></div><span class="sw-n">--accent-mid</span><span class="sw-v">focus ring</span></div>
+          <div class="sw"><div class="sw-chip" style="background:var(--accent)"></div><span class="sw-n">--accent</span><span class="sw-v">primary fill</span></div>
+          <div class="sw"><div class="sw-chip" style="background:var(--accent-hover)"></div><span class="sw-n">--accent-hover</span><span class="sw-v">hover fill</span></div>
+          <div class="sw"><div class="sw-chip" style="background:var(--accent-press)"></div><span class="sw-n">--accent-press</span><span class="sw-v">pressed</span></div>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="spec-h"><h4>Signal</h4><span class="note">Marigold is status only — never an action</span><span class="tok">--gold, --ok, --warn, --danger</span></div>
+        <div class="ramp">
+          <div class="sw"><div class="sw-chip" style="background:var(--gold)"></div><span class="sw-n">--gold</span><span class="sw-v">working elsewhere</span></div>
+          <div class="sw"><div class="sw-chip" style="background:var(--ok)"></div><span class="sw-n">--ok</span><span class="sw-v">landed, shipped</span></div>
+          <div class="sw"><div class="sw-chip" style="background:var(--warn)"></div><span class="sw-n">--warn</span><span class="sw-v">needs your call</span></div>
+          <div class="sw"><div class="sw-chip" style="background:var(--danger)"></div><span class="sw-n">--danger</span><span class="sw-v">destructive only</span></div>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="spec-h"><h4>Workspace identity</h4><span class="note">Six hues, assigned on create, editable</span><span class="tok">--ws-*</span></div>
+        <div class="stage">
+          <div class="ws-row">
+            <div class="ws-item"><div class="ws-tok" style="background:var(--ws-clay)">DS</div><span class="ws-name">clay</span></div>
+            <div class="ws-item"><div class="ws-tok" style="background:var(--ws-gold)">LG</div><span class="ws-name">gold</span></div>
+            <div class="ws-item"><div class="ws-tok" style="background:var(--ws-moss)">FS</div><span class="ws-name">moss</span></div>
+            <div class="ws-item"><div class="ws-tok" style="background:var(--ws-teal)">LO</div><span class="ws-name">teal</span></div>
+            <div class="ws-item"><div class="ws-tok" style="background:var(--ws-slate)">AP</div><span class="ws-name">slate</span></div>
+            <div class="ws-item"><div class="ws-tok" style="background:var(--ws-plum)">RB</div><span class="ws-name">plum</span></div>
+          </div>
+          <p class="caption">Six is deliberate. Enough that adjacent workspaces never collide, few enough that each one stays memorable as <b>the clay one</b>.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ TYPE ============ -->
+    <section class="sec" id="type">
+      <div class="sec-head">
+        <div class="sec-num"><span class="t-eyebrow">Foundations — Typography</span></div>
+        <h2 class="t-h2">Seven steps, two voices</h2>
+        <p class="t-body">Familjen Grotesk sets anything that names a thing — titles, workspace names, card headings. Figtree carries everything you read at length; its round bowls are why the interface feels soft at 13px. Mono appears only for token names and counts, never for prose.</p>
+      </div>
+
+      <div class="spec">
+        <div class="spec-h"><h4>Scale</h4><span class="note">Ratio ≈ 1.22, snapped to the 6px rhythm</span><span class="tok">--f-display / --f-ui / --f-mono</span></div>
+        <div class="scale">
+          <div class="scale-row"><span class="scale-k">display</span><div class="scale-x"><span class="sp-1">Pick it up later</span></div><span class="scale-spec">46 / 49 · 600</span></div>
+          <div class="scale-row"><span class="scale-k">title</span><div class="scale-x"><span class="sp-2">Up next in Design System</span></div><span class="scale-spec">31 / 36 · 600</span></div>
+          <div class="scale-row"><span class="scale-k">heading</span><div class="scale-x"><span class="sp-3">Three things worth a decision</span></div><span class="scale-spec">21 / 27 · 600</span></div>
+          <div class="scale-row"><span class="scale-k">strong</span><div class="scale-x"><span class="sp-4">Session expiry should be a setting</span></div><span class="scale-spec">16 / 24 · 600</span></div>
+          <div class="scale-row"><span class="scale-k">body</span><div class="scale-x"><span class="sp-5">The default reading size. Notes, updates, descriptions — anything longer than a label sits here, at a measure of about 66 characters.</span></div><span class="scale-spec">15 / 24 · 400</span></div>
+          <div class="scale-row"><span class="scale-k">small</span><div class="scale-x"><span class="sp-6">Timestamps, helper text, and the second line of a list row.</span></div><span class="scale-spec">13.5 / 21 · 400</span></div>
+          <div class="scale-row"><span class="scale-k">label</span><div class="scale-x"><span class="sp-7">Up next · 4 items</span></div><span class="scale-spec">10.5 / 18 · 500</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SPACE ============ -->
+    <section class="sec" id="space">
+      <div class="sec-head">
+        <div class="sec-num"><span class="t-eyebrow">Foundations — Space &amp; radius</span></div>
+        <h2 class="t-h2">Everything lands on six</h2>
+        <p class="t-body">One unit, seven stops. Gaps inside a component use s1–s3; gaps between components use s3–s5; s6 and s7 separate whole regions. Radius scales with the size of the surface, so a chip and a modal feel like the same family.</p>
+      </div>
+
+      <div class="row wide" style="align-items:flex-start">
+        <div class="spec" style="flex:1 1 320px; margin-top:0">
+          <div class="spec-h"><h4>Space</h4><span class="tok">--s1 … --s7</span></div>
+          <div class="space-grid">
+            <div class="space-row"><span class="space-k">--s1</span><div class="space-bar" style="width:6px"></div><span class="space-v">6</span></div>
+            <div class="space-row"><span class="space-k">--s2</span><div class="space-bar" style="width:12px"></div><span class="space-v">12</span></div>
+            <div class="space-row"><span class="space-k">--s3</span><div class="space-bar" style="width:18px"></div><span class="space-v">18</span></div>
+            <div class="space-row"><span class="space-k">--s4</span><div class="space-bar" style="width:24px"></div><span class="space-v">24</span></div>
+            <div class="space-row"><span class="space-k">--s5</span><div class="space-bar" style="width:36px"></div><span class="space-v">36</span></div>
+            <div class="space-row"><span class="space-k">--s6</span><div class="space-bar" style="width:48px"></div><span class="space-v">48</span></div>
+            <div class="space-row"><span class="space-k">--s7</span><div class="space-bar" style="width:72px"></div><span class="space-v">72</span></div>
+          </div>
+        </div>
+        <div class="spec" style="flex:1 1 320px; margin-top:0">
+          <div class="spec-h"><h4>Radius</h4><span class="tok">--r-sm … --r-full</span></div>
+          <div class="rad-row">
+            <div class="rad-item"><div class="rad-box" style="border-radius:var(--r-sm)"></div><span class="sw-n">sm · 6</span></div>
+            <div class="rad-item"><div class="rad-box" style="border-radius:var(--r-md)"></div><span class="sw-n">md · 12</span></div>
+            <div class="rad-item"><div class="rad-box" style="border-radius:var(--r-lg)"></div><span class="sw-n">lg · 18</span></div>
+            <div class="rad-item"><div class="rad-box" style="border-radius:var(--r-xl)"></div><span class="sw-n">xl · 24</span></div>
+            <div class="rad-item"><div class="rad-box" style="border-radius:var(--r-full)"></div><span class="sw-n">full</span></div>
+          </div>
+          <p class="caption">Buttons, chips and avatars are always <b>full</b>. Containers step up with their size. Nothing in the interface has a square corner.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ELEVATION ============ -->
+    <section class="sec" id="elevation">
+      <div class="sec-head">
+        <div class="sec-num"><span class="t-eyebrow">Foundations — Elevation</span></div>
+        <h2 class="t-h2">Four levels, and most things are level zero</h2>
+        <p class="t-body">Depth is spent on things that genuinely float. Cards sit flat and gain a shadow only on hover; only menus, modals and toasts get e3. In dark mode shadows do almost nothing, so each level also raises the surface color — the border does the work the shadow can't.</p>
+      </div>
+      <div class="stage sunk">
+        <div class="elev-row">
+          <div class="elev-card" style="box-shadow:var(--e0)"><span class="ek">--e0</span><span class="ev">Flat. List rows, fields, most cards at rest.</span></div>
+          <div class="elev-card" style="box-shadow:var(--e1)"><span class="ek">--e1</span><span class="ev">Barely lifted. Segmented control thumb.</span></div>
+          <div class="elev-card" style="box-shadow:var(--e2)"><span class="ek">--e2</span><span class="ev">Hover and drag. Cards you're touching.</span></div>
+          <div class="elev-card" style="box-shadow:var(--e3)"><span class="ek">--e3</span><span class="ev">Floating. Menus, modals, toasts.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ MOTION ============ -->
+    <section class="sec" id="motion">
+      <div class="sec-head">
+        <div class="sec-num"><span class="t-eyebrow">Foundations — Motion</span></div>
+        <h2 class="t-h2">Three durations. No bounce, ever.</h2>
+        <p class="t-body">Motion confirms a change; it doesn't perform one. Anything the user initiated resolves in <b>quick</b>. Anything that arrives on its own uses <b>calm</b>, so it registers without pulling the eye. <b>Slow</b> belongs to the breathing indicators and nothing else.</p>
+      </div>
+      <div class="stage">
+        <div class="motion-grid">
+          <div class="motion-item">
+            <svg class="motion-svg" viewBox="0 0 120 76" role="img" aria-label="Ease-out curve, fast start settling to a stop">
+              <path class="diag" d="M12 64 L108 12"></path>
+              <path class="curve" d="M12 64 C 31 25, 55 14, 108 12"></path>
+            </svg>
+            <span class="motion-k">--dur-quick · 120ms</span>
+            <span class="motion-d">Press, hover, toggle. The user is already looking at it.</span>
+          </div>
+          <div class="motion-item">
+            <svg class="motion-svg" viewBox="0 0 120 76" role="img" aria-label="Soft ease curve, gentle in and out">
+              <path class="diag" d="M12 64 L108 12"></path>
+              <path class="curve" d="M12 64 C 50 62, 62 16, 108 12"></path>
+            </svg>
+            <span class="motion-k">--dur-calm · 240ms</span>
+            <span class="motion-d">An update arrives, a card lands, a panel opens.</span>
+          </div>
+          <div class="motion-item">
+            <svg class="motion-svg" viewBox="0 0 120 76" role="img" aria-label="Slow symmetric curve used for breathing indicators">
+              <path class="diag" d="M12 64 L108 12"></path>
+              <path class="curve" d="M12 64 C 56 64, 64 12, 108 12"></path>
+            </svg>
+            <span class="motion-k">--dur-slow · 480ms</span>
+            <span class="motion-d">Breathing states and the rest timer. Loops, never fires once.</span>
+          </div>
+        </div>
+        <p class="caption">Every duration halves under <b>prefers-reduced-motion</b>, and the two looping animations stop entirely.</p>
+      </div>
+    </section>
+
+    <footer class="ds-foot">
+      <span class="ds-mark" style="font-size:15px"><span class="ds-mark-o" aria-hidden="true" style="width:17px;height:17px"></span>Layover</span>
+      <span class="fm">Foundations · v0.6 · base unit 6 · seven-step scale</span>
+    </footer>
+
+  </main>
+</div>
+
+<script>
+(function(){
+  /* theme: System / Light / Dark.
+     "system" removes the stamp so prefers-color-scheme decides;
+     the other two stamp data-theme, which beats the media query both ways. */
+  var root = document.documentElement;
+  var themeSeg = document.querySelector('.theme-seg');
+  var KEY = 'layover-ds-theme';
+
+  function applyTheme(mode){
+    if(mode === 'system'){ root.removeAttribute('data-theme'); }
+    else { root.setAttribute('data-theme', mode); }
+    themeSeg.querySelectorAll('button').forEach(function(b){
+      b.setAttribute('aria-checked', b.dataset.themeSet === mode ? 'true' : 'false');
+    });
+  }
+
+  var stored = null;
+  try{ stored = localStorage.getItem(KEY); }catch(e){}
+  applyTheme(stored || root.getAttribute('data-theme') || 'system');
+
+  themeSeg.addEventListener('click', function(e){
+    var b = e.target.closest('button');
+    if(!b || !b.dataset.themeSet) return;
+    applyTheme(b.dataset.themeSet);
+    try{ localStorage.setItem(KEY, b.dataset.themeSet); }catch(e){}
+  });
+
+})();
+</script>
+</body>
+</html>

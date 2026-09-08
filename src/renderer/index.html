@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'none';">
+<title>Layover</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:ital,wght@0,400..700;1,400..600&family=Figtree:ital,wght@0,300..800;1,300..600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="rail" aria-label="Workspaces">
+    <div class="rail-top drag"><span class="mark"><span class="mark-o" aria-hidden="true"></span>Layover</span></div>
+    <div class="rail-h"><span class="t-eyebrow">Workspaces</span><button class="icon-btn" id="add-ws" title="New workspace" aria-label="New workspace">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button></div>
+    <div class="rail-list" id="ws-list" role="list"></div>
+    <div class="rail-foot">
+      <button class="rail-btn" id="btn-compact"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3" stroke="currentColor" stroke-width="1.5"/><path d="M6 8h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Compact companion</button>
+      <button class="rail-btn" id="btn-settings"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="2.2" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.8v1.7M8 12.5v1.7M1.8 8h1.7M12.5 8h1.7M3.6 3.6l1.2 1.2M11.2 11.2l1.2 1.2M12.4 3.6l-1.2 1.2M4.8 11.2l-1.2 1.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Settings</button>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="top drag">
+      <span class="mark no-drag" id="compact-mark" hidden><span class="mark-o" aria-hidden="true"></span></span>
+      <select class="input no-drag" id="compact-ws" hidden aria-label="Workspace" style="width:auto;max-width:220px;padding:4px 10px;font-size:13px"></select>
+      <span class="grow"></span>
+      <button class="icon-btn no-drag" id="btn-expand" title="Expanded workspace" aria-label="Expanded workspace" hidden><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M9 2h5v5M7 14H2V9M14 2L9 7M2 14l5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+    </div>
+    <header class="head" id="head"></header>
+    <div class="banners" id="banners"></div>
+    <section class="view" id="view" aria-live="polite"></section>
+    <nav class="cnav" id="cnav" aria-label="Views"></nav>
+  </main>
+</div>
+<div id="overlay"></div>
+<div class="toasts" id="toasts"></div>
+<script src="app.js"></script>
+</body>
+</html>

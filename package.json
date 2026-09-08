@@ -1,0 +1,23 @@
+{
+  "name": "layover",
+  "productName": "Layover",
+  "version": "0.2.0",
+  "description": "A calm companion for the time while your coding agent works.",
+  "main": "src/main/main.js",
+  "type": "module",
+  "private": true,
+  "author": "Layover",
+  "license": "MIT",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "electron . --dev",
+    "test": "node --test tests/*.test.js",
+    "icon": "node build/make-icon.js",
+    "dist": "npm run icon && electron-builder --win nsis",
+    "pack": "electron-builder --dir"
+  },
+  "devDependencies": {
+    "electron": "44.2.0",
+    "electron-builder": "26.15.3"
+  }
+}

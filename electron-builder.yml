@@ -1,0 +1,38 @@
+appId: com.layover.app
+productName: Layover
+copyright: Layover
+directories:
+  output: release
+  buildResources: build
+files:
+  - package.json
+  - src/**/*
+  - skills/**/*
+  - "!**/*.test.js"
+extraResources:
+  # The CLI runs unpacked so the app's own Node runtime can execute it (ELECTRON_RUN_AS_NODE).
+  - from: src
+    to: src
+  - from: skills
+    to: skills
+  - from: build/icon.png
+    to: icon.png
+extraFiles:
+  - from: bin
+    to: bin
+asar: true
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+  artifactName: Layover-Setup-${version}.${ext}
+nsis:
+  oneClick: true
+  perMachine: false
+  allowToChangeInstallationDirectory: false
+  runAfterFinish: true
+  createDesktopShortcut: false
+  createStartMenuShortcut: true
+  shortcutName: Layover
+  deleteAppDataOnUninstall: false
