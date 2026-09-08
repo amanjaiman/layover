@@ -537,7 +537,7 @@
       // Only proposals can be promoted into Next; a decision or a question is not something to do later.
       i.kind === 'opportunity' || i.kind === 'suggestion' ? el('button', { class: 'btn small ghost', onclick: () => ticketFromItem(i) }, svg(ICON.plus, 12), ...lbl('Add to Next', 'Next')) : null,
       el('span', { class: 'spacer' }),
-      i.status === 'open' ? el('button', { class: 'btn small ghost', title: 'Dismiss', onclick: async (e) => { await api.dismiss(S.project, i.key, true); const uu = user(); if (uu) uu.dismissed[i.key] = Date.now(); e.currentTarget.closest('.tl-item')?.remove(); renderHead(); renderRail(); renderCompactNav(); } }, svg(ICON.x, 12), el('span', { class: 'l', text: 'Dismiss' })) : el('span', { class: 'chip', text: i.status }));
+      i.status === 'open' ? el('button', { class: 'btn small ghost', title: 'Dismiss', onclick: async (e) => { const entry = e.currentTarget.closest('.tl-item'); await api.dismiss(S.project, i.key, true); const uu = user(); if (uu) uu.dismissed[i.key] = Date.now(); entry?.remove(); renderHead(); renderRail(); renderCompactNav(); } }, svg(ICON.x, 12), el('span', { class: 'l', text: 'Dismiss' })) : el('span', { class: 'chip', text: i.status }));
     row.append(actions, respBox);
     drawResp();
     return row;
