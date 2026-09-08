@@ -462,3 +462,48 @@ body.rail-collapsed .rail-btn{ width:44px; height:36px; margin:0 auto; }
 .sheet-sec > .switch:first-child{ border-top:none; }
 .sheet .switch .input{ max-width:60%; }
 body.rail-collapsed .ws{ grid-template-columns:1fr; }
+
+/* ==========================================================
+   v0.3.3 — polish
+   ========================================================== */
+/* segmented controls: room around the thumb, one height with primary buttons */
+.seg{ padding:4px; gap:3px; }
+.seg button{ padding:0 13px; height:28px; line-height:28px; }
+.tk-bar > .btn, .tk-bar > .seg{ height:36px; }
+.tk-bar > .btn{ padding:0 16px; font-size:13.5px; }
+/* break timer chip in the header */
+.status.brk{ background:var(--accent-wash); color:var(--accent-text); font-family:var(--f-mono); font-size:12.5px; gap:6px; }
+.status.brk svg{ color:var(--accent-mid); }
+/* collapsed rail: the selection hugs the token */
+body.rail-collapsed .ws{ display:flex; align-items:center; justify-content:center; width:40px; height:40px; padding:0; margin:0 auto; border-radius:var(--r-md); position:relative; }
+body.rail-collapsed .ws .ws-tok{ width:28px; height:28px; font-size:11px; }
+body.rail-collapsed .ws .dot{ position:absolute; right:2px; top:2px; width:7px; height:7px; border:1.5px solid var(--surface-sunk); box-sizing:content-box; }
+body.rail-collapsed .ws[aria-current="true"] .dot{ border-color:var(--surface); }
+/* compact: workspace picker as a pill, tighter nav, break spacing */
+.wsbtn{ display:inline-flex; align-items:center; gap:8px; padding:4px 10px 4px 4px; border-radius:var(--r-full); border:1px solid var(--border); background:var(--surface); cursor:pointer; max-width:220px; font-size:13.5px; font-weight:600; color:var(--text); }
+.wsbtn:hover{ background:var(--surface-2); }
+.wsbtn .ws-tok{ width:22px; height:22px; font-size:10px; border-radius:var(--r-sm); }
+.wsbtn-name{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.wsbtn svg{ color:var(--text-faint); flex:none; }
+.menu-grow{ flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+body.compact .cnav{ padding:4px 6px; gap:2px; }
+body.compact .cnav button{ display:inline-flex; align-items:center; justify-content:center; gap:5px; padding:7px 4px; font-size:12.5px; border-radius:var(--r-sm); }
+body.compact .cnav .count{ font-size:10.5px; color:var(--text-faint); }
+body.compact .cnav button[aria-selected="true"] .count{ color:var(--accent-text); }
+body.compact .break-grid{ display:grid; gap:var(--s3); }
+body.compact .break-timer{ gap:var(--s2); }
+/* pick: pill + menu, replaces native selects */
+.btn.pick{ gap:6px; font-weight:500; }
+.btn.pick > span{ white-space:nowrap; }
+.btn.pick svg:last-child{ color:var(--text-faint); }
+.btn.pick .tk-status, .btn.pick .prio{ width:auto; height:auto; }
+/* collapsible threads */
+.thread-h{ cursor:pointer; user-select:none; }
+.thread-h .chev{ width:24px; height:24px; flex:none; margin-left:-6px; transition:transform var(--dur-quick) var(--ease-out); }
+.thread-h .chev svg{ transform:rotate(90deg); transition:transform var(--dur-quick) var(--ease-out); }
+.thread.collapsed .thread-h .chev svg{ transform:rotate(0deg); }
+.thread.collapsed .thread-h{ border-bottom:none; }
+.break{ gap:var(--s3); }
+.break > .section-h{ margin-bottom:0; }
+.seg{ flex:none; }
+.seg button{ white-space:nowrap; }

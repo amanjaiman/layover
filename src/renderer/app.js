@@ -21,12 +21,22 @@
     ['Breathe', 'In for four, hold for four, out for six. Three rounds.'],
     ['Water', 'Get a glass of water. Drink it somewhere that is not your desk.'],
     ['Hips', 'Sit tall, cross one ankle over the other knee, and lean forward a little. Switch.'],
+    ['Chest', 'Clasp your hands behind your back, lift them a little, and open your chest.'],
+    ['Jaw', 'Unclench your jaw. Let your tongue rest. Drop your shoulders a centimetre.'],
+    ['Calves', 'Stand on the edge of a step or just on your toes. Rise and lower ten times.'],
+    ['Spine', 'Sit tall and twist gently to the right, hand on the back of the chair. Switch.'],
+    ['Hands', 'Spread your fingers wide, then make a fist. Ten times. Shake them out.'],
+    ['Window', 'Walk to a window. Notice three things outside that are moving.'],
+    ['Forearms', 'Arm straight, palm down, fingers pointing at the floor. Press gently. Switch.'],
+    ['Walk', 'Take a lap of the room, or the hallway. Come back slower than you left.'],
+    ['Ankles', 'Lift one foot and draw a circle with your toes, both directions. Switch.'],
+    ['Upper back', 'Hug yourself, then reach around further. Round your upper back and breathe into it.'],
   ];
 
   const S = {
     state: null, settings: null, project: null, view: 'now', mode: 'expanded', users: {},
     viewKey: '', pendingRefresh: false, acked: {}, offers: new Map(), theme: 'system',
-    breakTimer: null, breakLeft: 0, breakTotal: 300, lastBreak: Date.now(), reminderShown: 0, stretchIndex: 0,
+    brk: { timer: null, left: 300, total: 300, stretch: 0, lastStretchAt: 0 }, lastBreak: Date.now(), reminderShown: 0, reminderToast: null,
     lastInteraction: 0, popover: null, notesConflict: null, ticket: null, ticketFilter: 'active', expandedThreads: new Set(), flushers: {},
   };
 
@@ -189,7 +199,7 @@
     $('#btn-settings').addEventListener('click', () => openSettings({}));
     $('#btn-compact').addEventListener('click', () => api.setWindowMode('compact'));
     $('#btn-expand').addEventListener('click', () => api.setWindowMode('expanded'));
-    $('#compact-ws').addEventListener('change', e => switchProject(e.target.value));
+    $('#compact-ws').addEventListener('click', e => workspaceMenu(e.currentTarget));
     $('#btn-rail').addEventListener('click', () => toggleRail());
     if (S.settings.window?.railCollapsed) toggleRail(true);
   }
@@ -261,10 +271,11 @@
     if (!isEngaged() && S.pendingRefresh) { S.pendingRefresh = false; render(); }
     else { renderRail(); renderHead(); refreshElapsed(); }
     const br = S.settings.breakReminder;
-    if (br?.enabled && S.view !== 'break' && Date.now() - S.lastBreak > br.minutes * 60000 && Date.now() - S.reminderShown > br.minutes * 60000) {
+    const toastAlive = S.reminderToast && S.reminderToast.isConnected;
+    if (br?.enabled && S.view !== 'break' && !S.brk.timer && !toastAlive && Date.now() - S.lastBreak > br.minutes * 60000 && Date.now() - S.reminderShown > br.minutes * 60000) {
       S.reminderShown = Date.now();
-      if (br.mode === 'auto') { const go = () => { if (isEngaged()) setTimeout(go, 10000); else { setView('break'); toast({ text: 'Break time. Your place is kept.', ttl: 6000 }); } }; go(); }
-      else toast({ text: `You've been at it for ${br.minutes} minutes. Take a short break?`, ttl: 0, actions: [{ label: 'Take a break', primary: true, fn: () => setView('break') }, { label: 'Later', fn: () => {} }] });
+      if (br.mode === 'auto') { const go = () => { if (isEngaged()) setTimeout(go, 10000); else { setView('break'); startBreak(); } }; go(); }
+      else S.reminderToast = toast({ text: 'It has been ' + br.minutes + ' minutes. Take a break?', ttl: 0, actions: [{ label: 'Take a break', primary: true, fn: () => { setView('break'); startBreak(); } }, { label: 'Later', fn: () => {} }] });
     }
   }
   /** Update the "Working · 3 min" chips in place so threads breathe without re-rendering. */
@@ -328,7 +339,8 @@
         el('span', { class: 'dot ' + st.cls })));
     }
     const sel = $('#compact-ws'); sel.textContent = '';
-    for (const p of ps) sel.append(el('option', { value: p.id, text: projectName(p), selected: p.id === S.project }));
+    const cur = project();
+    if (cur) sel.append(el('span', { class: 'ws-tok', style: `background:var(--ws-${cur.color})` }, initials(projectName(cur))), el('span', { class: 'wsbtn-name', text: projectName(cur) }), svg('M4 6l4 4 4-4', 12));
     $('#compact-ws').hidden = S.mode !== 'compact'; $('#compact-mark').hidden = S.mode !== 'compact'; $('#btn-expand').hidden = S.mode !== 'compact';
   }
 
@@ -337,7 +349,8 @@
     const p = project();
     if (!p) { h.append(el('h1', { text: 'Layover' })); return; }
     const st = projectStatus(p.id);
-    const row = el('div', { class: 'head-row' }, S.mode === 'compact' ? null : el('h1', { text: projectName(p) }), el('button', { class: 'status ' + st.cls, onclick: (e) => runsPopover(e.currentTarget) }, el('span', { class: 'dot ' + st.cls }), st.label));
+    const row = el('div', { class: 'head-row' }, S.mode === 'compact' ? null : el('h1', { text: projectName(p) }), el('button', { class: 'status ' + st.cls, onclick: (e) => runsPopover(e.currentTarget) }, el('span', { class: 'dot ' + st.cls }), st.label),
+      S.brk.timer && S.view !== 'break' ? el('button', { class: 'status brk', title: 'Back to the break', onclick: () => setView('break') }, svg('M8 4.5V8l2.5 1.5M8 2.5a5.5 5.5 0 1 1 0 11a5.5 5.5 0 0 1 0-11Z', 13), el('span', { class: 'brk-chip', text: fmt(S.brk.left) })) : null);
     const open = openItems(p.id).length, active = (user(p.id)?.tickets || []).filter(t => FILTERS.active.includes(t.status)).length;
     const tabs = el('div', { class: 'tabs', role: 'tablist' });
     for (const [id, label] of VIEWS) {
@@ -352,7 +365,7 @@
     const n = $('#cnav'); n.textContent = '';
     if (S.mode !== 'compact' || !S.project) return;
     const open = openItems(S.project).length, active = (user()?.tickets || []).filter(t => FILTERS.active.includes(t.status)).length;
-    for (const [id, label] of VIEWS) n.append(el('button', { 'aria-selected': S.view === id ? 'true' : 'false', onclick: () => setView(id) }, label, el('span', { class: 'count', text: id === 'now' && open ? String(open) : id === 'tickets' && active ? String(active) : ' ' })));
+    for (const [id, label] of VIEWS) n.append(el('button', { 'aria-selected': S.view === id ? 'true' : 'false', onclick: () => setView(id) }, label, id === 'now' && open ? el('span', { class: 'count', text: String(open) }) : id === 'tickets' && active ? el('span', { class: 'count', text: String(active) }) : id === 'break' && S.brk.timer ? el('span', { class: 'count brk-chip', text: fmt(S.brk.left) }) : null));
   }
 
   function ack(runId) { S.acked[runId] = true; const u = user(); if (u) { u.place.acked = { ...(u.place.acked || {}), [runId]: Date.now() }; api.setPlace(S.project, { acked: u.place.acked }); } renderHead(); renderRail(); }
@@ -380,17 +393,28 @@
     const recent = threads.filter(t => t.recent);
     const archive = threads.filter(t => !t.recent);
     if (!threads.length) {
-      wrap.append(el('div', { class: 'empty' }, el('p', {}, el('b', { text: 'No agent has started here yet.' }), ' When Claude Code or Codex begins a turn in this folder, a thread appears here with what it decides, asks, and notices. Line up what comes next in the meantime.')));
+      wrap.append(el('div', { class: 'empty' }, el('p', {}, el('b', { text: 'No agent has started here yet.' }), ' Threads appear when Claude Code or Codex works in this folder.')));
       return;
     }
     const list = el('div', { class: 'threads' });
-    if (!recent.length) list.append(el('div', { class: 'empty' }, el('p', {}, el('b', { text: 'All quiet.' }), ' Nothing has happened here in the last half hour. Conversations wait in the archive below.')));
+    if (!recent.length) list.append(el('div', { class: 'empty' }, el('p', {}, el('b', { text: 'All quiet.' }))));
     for (const t of recent) list.append(threadCard(t, u));
     wrap.append(list);
     if (archive.length) {
-      const d = el('details', { class: 'more' }, el('summary', { text: `Archive · ${archive.length}` }));
+      const d = el('details', { class: 'more', open: S.archiveOpen ? '' : null, ontoggle: e => { S.archiveOpen = e.target.open; } }, el('summary', { text: `Archive · ${archive.length}` }));
       const l2 = el('div', { class: 'threads' }); for (const t of archive) l2.append(threadCard(t, u, true)); d.append(l2); wrap.append(d);
     }
+  }
+  function workspaceMenu(anchor) {
+    closePopover();
+    const pop = el('div', { class: 'pop menu', role: 'menu' });
+    for (const p of visibleProjects()) {
+      const st = projectStatus(p.id);
+      pop.append(el('button', { class: 'menu-item' + (p.id === S.project ? ' on' : ''), role: 'menuitem', onclick: () => { closePopover(); switchProject(p.id); } },
+        el('span', { class: 'ws-tok', style: `background:var(--ws-${p.color});width:22px;height:22px;font-size:10px` }, initials(projectName(p))), el('span', { class: 'menu-grow', text: projectName(p) }), el('span', { class: 'dot ' + st.cls })));
+    }
+    pop.append(el('button', { class: 'menu-item', role: 'menuitem', onclick: () => { closePopover(); addWorkspace(); } }, svg(ICON.plus, 13), 'New workspace'));
+    place(pop, anchor);
   }
   function threadMenu(anchor, t, who) {
     closePopover();
@@ -407,7 +431,9 @@
   function threadCard(t, u, quiet = false) {
     const agent = t.task.agent, who = AGENT[agent] || agent, short = AGENT_SHORT[agent] || agent;
     const latest = t.latest;
-    const card = el('section', { class: 'thread ' + t.status, dataset: { task: t.task.id } });
+    const collapsed = !!user()?.place?.collapsed?.[t.task.id];
+    const card = el('section', { class: 'thread ' + t.status + (collapsed ? ' collapsed' : ''), dataset: { task: t.task.id } });
+    const toggle = async () => { const u = user(); u.place.collapsed = { ...(u.place.collapsed || {}) }; if (collapsed) delete u.place.collapsed[t.task.id]; else u.place.collapsed[t.task.id] = true; await api.setPlace(S.project, { collapsed: u.place.collapsed }); render(true); };
     // header
     const title = cleanTitle(latest?.title) || (t.task.name && !/^(claude|codex):/.test(t.task.name) ? t.task.name : 'Conversation');
     const statusChip = t.status === 'working' ? el('span', { class: 'status working' }, el('span', { class: 'dot working' }), ...lbl(`Working · ${dur(Date.now() - latest.startedAt)}`, dur(Date.now() - latest.startedAt)))
@@ -417,9 +443,10 @@
       : t.status === 'cancelled' ? el('span', { class: 'status attention' }, el('span', { class: 'dot attention' }), 'Interrupted')
       : t.status === 'disconnected' ? el('span', { class: 'status attention' }, el('span', { class: 'dot attention' }), ...lbl('No recent signal', 'No signal'))
       : el('span', { class: 'status' }, el('span', { class: 'dot quiet' }), 'Idle');
-    card.append(el('div', { class: 'thread-h' },
+    card.append(el('div', { class: 'thread-h', onclick: e => { if (!e.target.closest('button')) toggle(); } },
+      el('button', { class: 'icon-btn chev', 'aria-label': collapsed ? 'Expand' : 'Collapse', 'aria-expanded': collapsed ? 'false' : 'true', onclick: toggle }, svg('M6 4l4 4-4 4', 14)),
       el('span', { class: 'agent ' + agent, text: short }),
-      el('div', { class: 'thread-t' }, el('div', { class: 'thread-title' }, el('b', { text: title }), t.ticket ? el('button', { class: 'chip accent link', title: t.ticket.title, onclick: () => { S.ticket = t.ticket.id; S.ticketFilter = 'all'; setView('tickets'); } }, ticketKey(t.ticket)) : null), el('span', { text: `${who} · ${t.runs.length} turn${t.runs.length === 1 ? '' : 's'} · started ${clock(t.runs[0]?.startedAt || t.task.createdAt)}` })),
+      el('div', { class: 'thread-t' }, el('div', { class: 'thread-title' }, el('b', { text: title }), t.ticket ? el('button', { class: 'chip accent link', title: t.ticket.title, onclick: () => { S.ticket = t.ticket.id; S.ticketFilter = 'all'; setView('tickets'); } }, ticketKey(t.ticket)) : null, collapsed && t.open ? el('span', { class: 'chip' + (t.waiting ? ' warn' : ''), text: `${t.open} open` }) : null), el('span', { text: `${who} · ${t.runs.length} turn${t.runs.length === 1 ? '' : 's'} · started ${clock(t.runs[0]?.startedAt || t.task.createdAt)}` })),
       statusChip,
       el('button', { class: 'btn small ghost l', title: `How to return to ${who}`, onclick: () => returnSheet(latest || { agent, task: t.task.id, id: '', source: t.task.source }) }, 'Return', svg(ICON.arrow, 13)),
       el('button', { class: 'icon-btn', title: 'More', 'aria-label': 'Conversation menu', onclick: e => threadMenu(e.currentTarget, t, who) }, svg('M3 8h.01M8 8h.01M13 8h.01', 16, 'stroke-width="2.4"'))));
@@ -443,8 +470,8 @@
       // Only the latest turn's ending deserves the prominent row; older completions read as quiet history.
       else tl.append(endEntry(e.run, who, quiet || e.run.id !== latest?.id, e.run.id === latest?.id ? t.ticket : null));
     }
-    if (t.status === 'working' && !shown.some(e => e.kind === 'item' && e.item.runStatus === 'active')) tl.append(el('div', { class: 'tl-quiet', text: 'Working quietly. Items the agent leaves for you will appear here.' }));
-    card.append(tl);
+    if (t.status === 'working' && !shown.some(e => e.kind === 'item' && e.item.runStatus === 'active')) tl.append(el('div', { class: 'tl-quiet', text: 'Working quietly.' }));
+    if (!collapsed) card.append(tl);
     return card;
   }
 
@@ -536,7 +563,7 @@
       el('span', { class: 't-small l', text: `${visible.length} of ${all.length}` }));
     const split = el('div', { class: 'tk-split' + (S.ticket ? ' has-detail' : '') });
     const list = el('div', { class: 'tk-list' });
-    if (!visible.length) list.append(el('div', { class: 'empty' }, el('p', {}, el('b', { text: all.length ? 'Nothing in this view.' : 'Nothing lined up yet.' }), all.length ? '' : ' Keep what you want to do next here, with the prompt ready for when the agent is free. Press n to add one.')));
+    if (!visible.length) list.append(el('div', { class: 'empty' }, el('p', {}, el('b', { text: all.length ? 'Nothing in this view.' : 'Nothing lined up yet.' }), all.length ? '' : ' Press n to add something.')));
     for (const st of STATUS_ORDER) {
       const rows = visible.filter(t => t.status === st).sort((a, b) => b.priority - a.priority || b.updatedAt - a.updatedAt);
       if (!rows.length) continue;
@@ -566,6 +593,21 @@
     for (const st of STATUS_ORDER) pop.append(el('button', { class: 'menu-item' + (st === t.status ? ' on' : ''), role: 'menuitem', onclick: async () => { closePopover(); await setTicket(t, { status: st }); } }, el('span', { class: 'tk-status ' + st }, STATUS_ICON[st]()), STATUS[st]));
     place(pop, anchor);
   }
+  /** A pill that opens a menu: the app's replacement for native <select>. options: [value, label, iconNode?] */
+  function pick({ options, value, onPick, label, small = true }) {
+    const cur = options.find(o => o[0] === value) || options[0];
+    const btn = el('button', { class: 'btn' + (small ? ' small' : '') + ' pick', 'aria-haspopup': 'menu', 'aria-label': label });
+    const draw = (o) => { btn.textContent = ''; btn.append(...[o[2] ? o[2]() : null, el('span', { text: o[1] }), svg('M4 6l4 4 4-4', 12)].filter(Boolean)); };
+    draw(cur);
+    btn.addEventListener('click', () => {
+      closePopover();
+      const pop = el('div', { class: 'pop menu', role: 'menu' });
+      for (const o of options) pop.append(el('button', { class: 'menu-item' + (String(o[0]) === String(btn.dataset.value ?? value) ? ' on' : ''), role: 'menuitem', onclick: () => { closePopover(); btn.dataset.value = o[0]; draw(o); onPick(o[0]); } }, o[2] ? o[2]() : null, o[1]));
+      place(pop, btn);
+    });
+    btn.dataset.value = cur[0];
+    return btn;
+  }
   async function setTicket(t, patch) {
     const saved = await call(api.upsertTicket(S.project, { id: t.id, ...patch }));
     const u = user(); const idx = u.tickets.findIndex(x => x.id === t.id); if (idx >= 0) u.tickets[idx] = saved;
@@ -583,14 +625,14 @@
     const d = el('div', { class: 'tk-detail card' });
     const u = user();
     const title = el('input', { class: 'tk-title-in', placeholder: 'Title', 'aria-label': 'Title' }); title.value = t.title;
-    const desc = el('textarea', { class: 'input grow', placeholder: 'What, why, and what done looks like.', 'aria-label': 'Description' }); desc.value = t.description;
-    const prompt = el('textarea', { class: 'input grow', placeholder: 'The prompt you will give the agent for this ticket. Title and description are included when you copy it.', 'aria-label': 'Prompt' }); prompt.value = t.prompt;
+    const desc = el('textarea', { class: 'input grow', placeholder: 'Description', 'aria-label': 'Description' }); desc.value = t.description;
+    const prompt = el('textarea', { class: 'input grow', placeholder: 'Prompt for the agent. Title and description are included when you copy it.', 'aria-label': 'Prompt' }); prompt.value = t.prompt;
     const meta = el('span', { class: 't-small', text: `Updated ${ago(t.updatedAt)}` });
     const save = debounce(async () => { const saved = await call(api.upsertTicket(S.project, { id: t.id, title: title.value, description: desc.value, prompt: prompt.value })); Object.assign(t, saved); meta.textContent = 'Saved'; const row = $(`.tk-row.selected .tk-title`); if (row) row.textContent = t.title || 'Untitled'; }, 400);
     registerFlush('ticket:' + t.id, () => save.flush());
     for (const f of [title, desc, prompt]) f.addEventListener('input', () => { meta.textContent = 'Saving…'; if (f.tagName === 'TEXTAREA') autoGrow(f); save(); });
-    const statusSel = el('select', { class: 'input small', 'aria-label': 'Status', onchange: e => setTicket(t, { status: e.target.value }) }, ...STATUS_ORDER.map(s => el('option', { value: s, selected: s === t.status, text: STATUS[s] })));
-    const prioSel = el('select', { class: 'input small', 'aria-label': 'Priority', onchange: e => setTicket(t, { priority: Number(e.target.value) }) }, ...PRIORITY.map((p, i) => el('option', { value: i, selected: i === t.priority, text: p })));
+    const statusSel = pick({ label: 'Status', value: t.status, options: STATUS_ORDER.map(s => [s, STATUS[s], () => el('span', { class: 'tk-status ' + s }, STATUS_ICON[s]())]), onPick: v => setTicket(t, { status: v }) });
+    const prioSel = pick({ label: 'Priority', value: t.priority, options: PRIORITY.map((p, i) => [i, p, () => priorityGlyph(i)]), onPick: v => setTicket(t, { priority: Number(v) }) });
     const copyPrompt = () => {
       const parts = [`${t.title || 'Untitled'} (${ticketKey(t)})`, t.description.trim(), t.prompt.trim()].filter(Boolean);
       api.copy(parts.join('\n\n')); toast({ text: 'Prompt copied. Paste it into the agent when it is free.', ttl: 4000 });
@@ -607,7 +649,7 @@
       el('div', { class: 'tk-detail-f' }, el('button', { class: 'btn primary small', onclick: copyPrompt }, svg(ICON.copy, 12), ...lbl('Copy prompt', 'Copy')),
         t.status !== 'done' ? el('button', { class: 'btn small', onclick: () => setTicket(t, { status: 'done' }) }, svg(ICON.check, 12), ...lbl('Mark done', 'Done')) : el('button', { class: 'btn small', onclick: () => setTicket(t, { status: 'todo' }) }, 'Reopen'),
         el('span', { class: 'spacer' }), meta),
-      linked.length ? el('p', { class: 't-small' }, `Worked on by ${[...new Set(linked.map(r => AGENT[r.agent] || r.agent))].join(' and ')} · ${linked.length} turn${linked.length === 1 ? '' : 's'}`, ' ', el('button', { class: 'btn small ghost', onclick: () => { setView('now'); } }, 'See in Now')) : el('p', { class: 't-small', text: 'Copy the prompt and paste it to an agent: the key in it links the turn back here and moves this to In progress.' }),
+      linked.length ? el('p', { class: 't-small' }, `Worked on by ${[...new Set(linked.map(r => AGENT[r.agent] || r.agent))].join(' and ')} · ${linked.length} turn${linked.length === 1 ? '' : 's'}`, ' ', el('button', { class: 'btn small ghost', onclick: () => { setView('now'); } }, 'See in Now')) : el('p', { class: 't-small', text: 'The key in the copied prompt links the agent’s turn back here.' }),
       t.fromItem ? el('p', { class: 't-small', text: 'Created from an agent item.' }) : null].filter(Boolean));
     queueMicrotask(() => { autoGrow(desc); autoGrow(prompt); });
     return d;
@@ -619,8 +661,8 @@
     if (S.notesConflict) wrap.append(el('div', { class: 'banner warn' }, el('span', { class: 'txt' }, el('b', { text: 'These notes changed elsewhere.' }), ' Your text is kept until you choose.'),
       el('button', { class: 'btn small', onclick: () => { api.copy(S.notesConflict.mine); toast({ text: 'Your version is on the clipboard.', ttl: 4000 }); } }, 'Copy mine'),
       el('button', { class: 'btn small primary', onclick: async () => { S.notesConflict = null; await loadUser(S.project); render(true); } }, 'Load the saved version')));
-    wrap.append(el('div', { class: 'section-h' }, el('span', { class: 't-eyebrow', text: 'Notes' }), el('span', { class: 't-small l', text: 'Decisions, context, the thread of this project. Saved as you type.' })));
-    const ta = el('textarea', { class: 'notes', placeholder: 'Start with what this project is for, and what you decided last time…', 'aria-label': 'Project notes', spellcheck: 'true' });
+    wrap.append(el('div', { class: 'section-h' }, el('span', { class: 't-eyebrow', text: 'Notes' }), el('span', { class: 't-small l', text: 'Saved as you type.' })));
+    const ta = el('textarea', { class: 'notes', placeholder: 'Notes for this project…', 'aria-label': 'Project notes', spellcheck: 'true' });
     ta.value = u.notes.body;
     let revision = u.notes.revision;
     const meta = el('div', { class: 'notes-meta' }, el('span', { text: u.notes.updatedAt ? `Saved ${ago(u.notes.updatedAt)}` : 'Not written yet' }), el('span', { class: 'faint l', text: '· Only on this computer' }));
@@ -636,35 +678,65 @@
   }
 
   // ---------- Break ----------
+  const C_RING = 2 * Math.PI * 84;
+  const fmt = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   function renderBreak(wrap) {
-    const [name, text] = STRETCHES[S.stretchIndex % STRETCHES.length];
     const box = el('div', { class: 'break' });
-    const p = project(); const st = projectStatus(p.id);
-    box.append(el('div', { class: 'section-h' }, el('span', { class: 't-eyebrow', text: 'Break' }), el('span', { class: 't-small', text: st.cls === 'working' ? `${st.label}. You will see it here when it finishes.` : 'Your place in this workspace is kept.' })));
-    const ring = el('div', { class: 'ring' + (S.breakTimer ? '' : ' breathing') });
-    const C = 2 * Math.PI * 84;
-    ring.innerHTML = `<svg viewBox="0 0 180 180"><circle class="track" cx="90" cy="90" r="84"/><circle class="prog" cx="90" cy="90" r="84" stroke-dasharray="${C}" stroke-dashoffset="0"/></svg>`;
-    const time = el('div', { class: 'time' }); ring.append(time);
-    const setTime = () => { const s = S.breakTimer ? S.breakLeft : S.breakTotal; time.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; ring.querySelector('.prog').style.strokeDashoffset = S.breakTimer ? String(C * (1 - S.breakLeft / S.breakTotal)) : '0'; };
-    setTime();
-    const row = el('div', { class: 'timer-row' });
-    const startBtn = el('button', { class: 'btn primary', onclick: () => { if (S.breakTimer) stopBreak(); else startBreak(setTime, startBtn); startBtn.textContent = S.breakTimer ? 'Stop' : 'Start'; } }, S.breakTimer ? 'Stop' : 'Start');
-    row.append(startBtn);
-    for (const m of [3, 5, 10]) row.append(el('button', { class: 'btn ghost small', onclick: () => { if (S.breakTimer) stopBreak(); S.breakTotal = m * 60; S.breakLeft = S.breakTotal; setTime(); startBtn.textContent = 'Start'; } }, `${m} min`));
+    box.append(el('div', { class: 'section-h' }, el('span', { class: 't-eyebrow', text: 'Break' })));
+    const ring = el('div', { class: 'ring' + (S.brk.timer ? '' : ' breathing'), id: 'brk-ring' });
+    ring.innerHTML = `<svg viewBox="0 0 180 180"><circle class="track" cx="90" cy="90" r="84"/><circle class="prog" id="brk-prog" cx="90" cy="90" r="84" stroke-dasharray="${C_RING}" stroke-dashoffset="0"/></svg>`;
+    ring.append(el('div', { class: 'time', id: 'brk-time' }));
+    const row = el('div', { class: 'timer-row' }, el('button', { class: 'btn primary', id: 'brk-start', onclick: () => { if (S.brk.timer) stopBreak(); else startBreak(); } }, 'Start'));
+    for (const m of [3, 5, 10]) row.append(el('button', { class: 'btn ghost small', onclick: () => { stopBreak(); S.brk.total = m * 60; S.brk.left = S.brk.total; paintBreak(); } }, `${m} min`));
     const br = S.settings.breakReminder;
     const timer = el('div', { class: 'break-timer' }, ring, row);
     const side = el('div', { class: 'break-side' },
-      el('div', { class: 'card sunk stretch' }, el('span', { class: 't-eyebrow', text: name }), el('p', { text }), el('div', { class: 'card-actions' }, el('button', { class: 'btn small ghost', onclick: () => { S.stretchIndex++; render(true); } }, 'Another one'))),
+      el('div', { class: 'card sunk stretch', id: 'brk-stretch' }),
       el('div', { class: 'card', style: 'padding-top:6px;padding-bottom:6px' },
-        switchRow('Remind me to take breaks', 'A quiet nudge, never a takeover unless you ask for it.', br.enabled, v => saveBreak({ enabled: v })),
-        el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'Every' })), el('select', { class: 'input', style: 'width:auto', onchange: e => saveBreak({ minutes: Number(e.target.value) }) }, ...[15, 30, 45, 60, 90].map(m => el('option', { value: m, selected: br.minutes === m, text: `${m} minutes` })))),
-        el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'When it is time' }), el('span', { text: 'Automatic entry waits until you have stopped typing.' })), seg([['suggest', 'Suggest'], ['auto', 'Enter break']], br.mode, v => saveBreak({ mode: v })))));
+        switchRow('Remind me to take breaks', 'One quiet nudge; never more than one at a time.', br.enabled, v => saveBreak({ enabled: v })),
+        el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'Every' })), pick({ label: 'Interval', value: br.minutes, small: false, options: [15, 30, 45, 60, 90].map(m => [m, `${m} minutes`]), onPick: v => saveBreak({ minutes: Number(v) }) })),
+        el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'When it is time' }), el('span', { text: 'Automatic entry waits until you have stopped typing.' })), seg([['suggest', 'Suggest'], ['auto', 'Start it']], br.mode, v => saveBreak({ mode: v })))));
     box.append(el('div', { class: 'break-grid' }, timer, side));
     wrap.append(box);
-    S.lastBreak = Date.now();
+    queueMicrotask(paintBreak); // the view is attached to the document right after this returns
+    if (!S.brk.timer) S.lastBreak = Date.now();
   }
-  function startBreak(setTime, btn) { S.breakLeft = S.breakLeft || S.breakTotal; S.lastBreak = Date.now(); S.breakTimer = setInterval(() => { S.breakLeft--; setTime(); if (S.breakLeft <= 0) { stopBreak(); btn.textContent = 'Start'; toast({ text: 'Break’s over, whenever you are.', ttl: 8000 }); setTime(); } }, 1000); $('.ring')?.classList.remove('breathing'); }
-  function stopBreak() { clearInterval(S.breakTimer); S.breakTimer = null; S.breakLeft = S.breakTotal; S.lastBreak = Date.now(); $('.ring')?.classList.add('breathing'); }
+  /** Paint the timer wherever it is shown: the Break page (if open) and the header chip. Safe to call any time. */
+  function paintBreak() {
+    const b = S.brk;
+    const time = $('#brk-time'), prog = $('#brk-prog'), start = $('#brk-start'), ring = $('#brk-ring');
+    if (time) time.textContent = fmt(b.timer ? b.left : b.total);
+    if (prog) prog.style.strokeDashoffset = b.timer ? String(C_RING * (1 - b.left / b.total)) : '0';
+    if (start) start.textContent = b.timer ? 'Stop' : 'Start';
+    if (ring) ring.classList.toggle('breathing', !b.timer);
+    const st = $('#brk-stretch');
+    if (st) {
+      const [name, text] = STRETCHES[b.stretch % STRETCHES.length];
+      st.textContent = '';
+      st.append(el('span', { class: 't-eyebrow', text: name }), el('p', { text }), el('div', { class: 'card-actions' }, el('button', { class: 'btn small ghost', onclick: () => { b.stretch++; b.lastStretchAt = Date.now(); paintBreak(); } }, 'Another one'), b.timer ? el('span', { class: 't-small', text: 'Changes every minute while the timer runs' }) : null));
+    }
+    for (const chip of document.querySelectorAll('.brk-chip')) chip.textContent = fmt(b.left);
+  }
+  function startBreak() {
+    const b = S.brk;
+    if (b.timer) return;
+    b.left = b.left > 0 && b.left < b.total ? b.left : b.total;
+    b.lastStretchAt = Date.now(); S.lastBreak = Date.now();
+    if (S.reminderToast) { S.reminderToast.remove(); S.reminderToast = null; }
+    b.timer = setInterval(() => {
+      b.left--;
+      if (Date.now() - b.lastStretchAt >= 60000) { b.stretch++; b.lastStretchAt = Date.now(); }
+      if (b.left <= 0) { stopBreak(); toast({ text: 'Break’s over.', ttl: 8000 }); return; }
+      paintBreak();
+    }, 1000);
+    renderHead(); renderCompactNav(); paintBreak();
+  }
+  function stopBreak() {
+    const b = S.brk;
+    if (b.timer) clearInterval(b.timer);
+    b.timer = null; b.left = b.total; S.lastBreak = Date.now();
+    renderHead(); renderCompactNav(); paintBreak();
+  }
   function saveBreak(patch) { S.settings.breakReminder = { ...S.settings.breakReminder, ...patch }; api.setSettings({ breakReminder: patch }); }
 
   // ---------- popovers ----------
@@ -786,14 +858,14 @@
     };
     if (onboarding) {
       sheet([el('h2', { text: 'Welcome to Layover' }),
-        el('p', { class: 't-body', text: 'Layover is the room you wait in while an agent works: threads of what each agent decides and asks, a place for what comes next, notes, and a break when you want one. Connect your agents so they can open it for you.' }),
+        el('p', { class: 't-body', text: 'Threads of what each agent decides and asks, a place for what comes next, notes, and a break. Connect your agents so they can open Layover for you.' }),
         ...panes.agents(),
         el('div', { class: 'card-actions', style: 'justify-content:flex-end' }, el('button', { class: 'btn primary', onclick: async () => { S.settings.onboarded = true; await api.setSettings({ onboarded: true }); closeOverlay(); } }, 'Done'))]);
       return;
     }
-    let current = tab || S.settingsTab || 'agents';
+    let current = tab || S.settingsTab || 'workspace';
     const body = el('div', { class: 'sheet-body' });
-    const tabs = seg([['agents', 'Agents'], ['workspace', 'Workspace'], ['preferences', 'Preferences']], current, v => { current = v; S.settingsTab = v; body.textContent = ''; body.append(...panes[v]()); });
+    const tabs = seg([['workspace', 'Workspace'], ['agents', 'Agents'], ['preferences', 'Preferences']], current, v => { current = v; S.settingsTab = v; body.textContent = ''; body.append(...panes[v]()); });
     body.append(...panes[current]());
     sheet([el('div', { class: 'sheet-h' }, el('h2', { text: 'Settings' }), el('button', { class: 'icon-btn', 'aria-label': 'Close', onclick: closeOverlay }, svg(ICON.x, 14))), tabs, body]);
   }
