@@ -150,10 +150,27 @@ function applyTheme() {
   if (win) { try { win.setTitleBarOverlay({ color: c.overlay, symbolColor: c.symbol, height: 42 }); } catch { /* not supported on this platform */ } win.setBackgroundColor(c.bg); win.webContents.send('theme', { theme: settings.theme, dark: nativeTheme.shouldUseDarkColors }); }
 }
 
+/**
+ * Bring Layover in front of everything once. Windows refuses foreground changes from background
+ * processes, so the window is briefly pinned on top while it is shown and focused.
+ */
+function bringToFront() {
+  if (!win) createWindow({ show: false });
+  if (win.isMinimized()) win.restore();
+  const pinned = settings.window.mode === 'compact';
+  win.setAlwaysOnTop(true, 'screen-saver');
+  win.show();
+  win.focus();
+  win.moveTop();
+  setTimeout(() => { if (win && !win.isDestroyed()) win.setAlwaysOnTop(pinned, 'floating'); }, 250);
+  lastInteraction = Date.now();
+  return { visible: true, focused: true };
+}
+
 /** Show the window without taking focus from whatever the user is doing. */
 function reveal({ focus = false } = {}) {
   if (!win) createWindow({ show: false });
-  if (focus) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); return { visible: true, focused: true }; }
+  if (focus) return bringToFront();
   if (win.isMinimized()) { win.flashFrame(true); return { visible: false, minimized: true }; }
   if (!win.isVisible()) { win.showInactive(); return { visible: true, focused: false }; }
   return { visible: true, focused: win.isFocused() };
@@ -168,21 +185,29 @@ async function handleOpen(ctx, { explicit }) {
   if (ctx?.projectPath && !store.projects.has(clean.project)) {
     try { store.createProject({ id: projectIdFromPath(ctx.projectPath), name: projectNameFromPath(ctx.projectPath), path: ctx.projectPath }); clean.project = projectIdFromPath(ctx.projectPath); } catch (e) { log('open: cannot create project', e.message); }
   }
-  const shown = reveal({ focus: false });
+  // An explicit open (the user asked the agent, or clicked a notification) is the one case that takes focus.
   const engaged = uiEngaged || (win?.isFocused() && Date.now() - lastInteraction < 60_000);
+  const shown = explicit ? bringToFront() : reveal({ focus: false });
   broadcast('open-request', { ...clean, explicit, engaged, requestedAt: Date.now() });
-  return { reused: true, ...shown, engaged, foregroundFocus: false };
+  return { reused: true, ...shown, engaged, foregroundFocus: !!explicit };
 }
 
 async function onEvent(e, result) {
-  if (result.started && (settings.openOnRunStart === 'open' || settings.openOnRunStart === 'reveal')) {
-    const wasVisible = win?.isVisible();
-    if (settings.openOnRunStart === 'open' || (settings.openOnRunStart === 'reveal' && win)) {
-      const shown = reveal({ focus: false });
-      const engaged = uiEngaged || (win?.isFocused() && Date.now() - lastInteraction < 60_000);
+  if (result.started) {
+    const mode = settings.openOnRunStart;
+    const wasVisible = !!win?.isVisible();
+    const wasFocused = !!win?.isFocused();
+    let shown = null;
+    // A run starting is the "first launch" moment the brief allows to be noticeable; later items never move the window.
+    if (mode === 'focus') shown = wasFocused ? { visible: true, focused: true } : bringToFront();
+    else if (mode === 'open') shown = reveal({ focus: false });
+    else if (mode === 'reveal' && win) shown = reveal({ focus: false });
+    if (shown) {
+      const engaged = uiEngaged || (wasFocused && Date.now() - lastInteraction < 60_000);
       broadcast('open-request', { project: e.project, task: e.task, run: e.run, reason: 'run-start', explicit: false, engaged, wasVisible, requestedAt: Date.now() });
-      return shown;
     }
+    updateTray();
+    return shown;
   }
   updateTray();
   return null;
@@ -236,8 +261,8 @@ const handle = (channel, fn) => ipcMain.handle(channel, async (_e, payload) => {
 handle('state:get', () => store.state());
 handle('user:get', (project) => store.user(project));
 handle('user:notes', ({ project, body, revision }) => store.setNotes(project, body, revision));
-handle('user:next', ({ project, entry }) => store.upsertNext(project, entry));
-handle('user:next:delete', ({ project, id }) => store.deleteNext(project, id));
+handle('user:ticket', ({ project, ticket }) => store.upsertTicket(project, ticket));
+handle('user:ticket:delete', ({ project, id }) => store.deleteTicket(project, id));
 handle('user:respond', ({ project, key, body }) => store.respond(project, key, body));
 handle('user:dismiss', ({ project, key, dismissed }) => store.dismiss(project, key, dismissed));
 handle('user:place', ({ project, place }) => store.setPlace(project, place));

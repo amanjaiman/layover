@@ -22,14 +22,14 @@ Uninstall from Windows Settings, or run `Uninstall Layover.exe`. Your data in `%
 ## What you see
 
 - **Workspaces** (left rail): one per project folder, with a colour, a name, and a dot that breathes marigold while an agent works. Switching never loses your place or your unfinished writing.
-- **Now / For you**: what the agent left for you: *Decision made*, *Input requested*, *Opportunity*, *Think ahead*. One item is prominent; the rest wait. A "Waiting on you" chip only appears when the agent is actually stopped on it (a permission prompt, or an item it marked `--waiting`). You can write a thought or an answer (saved locally, never sent by itself), save it to Next, copy it for the agent, or dismiss it.
-- **Next**: your prompts to send later, ideas, and things you chose to do. Autosaved.
+- **Now**: one thread per agent conversation, Slack-style. The header shows the agent, what it is working on, and its status (working, waiting on you, finished, interrupted, no signal). The timeline shows each turn and the *Decisions*, *Input requested*, *Opportunities* and *Think ahead* items the agent left inside it, newest at the bottom, with the latest open item highlighted. A "Waiting on you" chip only appears when the agent is actually stopped on it (a permission prompt, or an item it marked `--waiting`). Reply inline (saved locally, never sent by itself), make a ticket from an item, copy it for the agent, or dismiss it. When a turn finishes, the thread ends with *Ready when you are* and a return action; nothing else moves.
+- **Tickets**: a Linear-style tracker for what comes next. Status groups (In progress, Todo, Backlog, Done, Cancelled), keys like `LAY-12`, priority, a description, and a **prompt draft attached to each ticket**. *Copy prompt* packages title, description and draft for the agent. `Ctrl+N` creates one; the prefix is editable in Settings.
 - **Notes**: the project's running notes. Autosaved, with conflict protection.
 - **Break**: stretch prompts, a timer, and optional reminders (suggest, or enter the break automatically once you stop typing).
-- **Ready when you are**: the completion banner. *Return to Claude Code* shows the session and a copyable resume command; Layover never pretends it can focus another window.
-- **Compact companion**: the same app at 400×580, floating, with a workspace picker. `Ctrl+Shift+C`.
+- **Return to the agent**: shows the session and a copyable resume command; Layover never pretends it can focus another window.
+- **Compact companion**: the same app at 400×580, floating, with a workspace picker and short labels. `Ctrl+Shift+C`.
 
-Layover never steals focus. New runs appear behind your work; a switch to another workspace is only offered while you're typing, and only happens on its own when you're not.
+**Focus.** The start of a turn is the one moment Layover comes forward (you just pressed Enter and are waiting). Items and completions never move the window, and a switch to another workspace is offered rather than forced while you're typing. Settings → *When an agent starts a turn* offers: bring Layover forward (default), open behind my work, only if already open, stay quiet.
 
 ## How agents reach it
 

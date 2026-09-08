@@ -4,9 +4,13 @@
   const api = window.layover;
   const $ = (sel, root = document) => root.querySelector(sel);
   const AGENT = { claude: 'Claude Code', codex: 'Codex', test: 'Test agent' };
-  const KIND_LABEL = { suggestion: 'Think ahead', decision: 'Decision made', question: 'Input requested', opportunity: 'Opportunity' };
-  const KIND_ORDER = { question: 0, decision: 1, suggestion: 2, opportunity: 3 };
-  const VIEWS = [['now', 'Now'], ['next', 'Next'], ['notes', 'Notes'], ['break', 'Break']];
+  const AGENT_SHORT = { claude: 'Claude', codex: 'Codex', test: 'Test' };
+  const KIND_LABEL = { suggestion: 'Think ahead', decision: 'Decision', question: 'Input requested', opportunity: 'Opportunity' };
+  const VIEWS = [['now', 'Now'], ['tickets', 'Tickets'], ['notes', 'Notes'], ['break', 'Break']];
+  const STATUS = { progress: 'In progress', todo: 'Todo', backlog: 'Backlog', done: 'Done', cancelled: 'Cancelled' };
+  const STATUS_ORDER = ['progress', 'todo', 'backlog', 'done', 'cancelled'];
+  const PRIORITY = ['No priority', 'Low', 'Medium', 'High', 'Urgent'];
+  const FILTERS = { active: ['progress', 'todo'], backlog: ['backlog'], done: ['done', 'cancelled'], all: STATUS_ORDER };
   const STRETCHES = [
     ['Shoulders', 'Roll your shoulders back five times, slowly. Let your arms hang.'],
     ['Eyes', 'Look at something at least six metres away for twenty seconds. Blink a few times.'],
@@ -22,7 +26,7 @@
     state: null, settings: null, project: null, view: 'now', mode: 'expanded', users: {},
     viewKey: '', pendingRefresh: false, acked: {}, offers: new Map(), theme: 'system',
     breakTimer: null, breakLeft: 0, breakTotal: 300, lastBreak: Date.now(), reminderShown: 0, stretchIndex: 0,
-    lastInteraction: 0, popover: null, notesConflict: null,
+    lastInteraction: 0, popover: null, notesConflict: null, ticket: null, ticketFilter: 'active', expandedThreads: new Set(), flushers: {},
   };
 
   // ---------- helpers ----------
@@ -32,7 +36,6 @@
       if (v === undefined || v === null || v === false) continue;
       if (k === 'class') n.className = v;
       else if (k === 'text') n.textContent = v;
-      else if (k === 'html') n.innerHTML = v; // only ever static markup from this file
       else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
       else if (k === 'dataset') Object.assign(n.dataset, v);
       else n.setAttribute(k, v === true ? '' : v);
@@ -40,14 +43,17 @@
     for (const c of children.flat()) if (c !== null && c !== undefined && c !== false) n.append(c.nodeType ? c : document.createTextNode(String(c)));
     return n;
   }
-  const svg = (d, size = 14) => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('width', size); s.setAttribute('height', size); s.setAttribute('viewBox', '0 0 16 16'); s.setAttribute('fill', 'none'); s.setAttribute('aria-hidden', 'true'); s.innerHTML = `<path d="${d}" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`; return s; };
-  const ICON = { check: 'M3 8.5l3 3 7-7', copy: 'M6 6h7v7H6zM3 10V3h7', x: 'M4 4l8 8M12 4l-8 8', arrow: 'M3 8h10M9 4l4 4-4 4', plus: 'M8 3v10M3 8h10', trash: 'M3 4h10M6 4V2.5h4V4M5 4l.6 9h4.8L11 4' };
+  const svg = (d, size = 14, extra = '') => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('width', size); s.setAttribute('height', size); s.setAttribute('viewBox', '0 0 16 16'); s.setAttribute('fill', 'none'); s.setAttribute('aria-hidden', 'true'); s.innerHTML = `<path d="${d}" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" ${extra}/>`; return s; };
+  const ICON = { check: 'M3 8.5l3 3 7-7', copy: 'M6 6h7v7H6zM3 10V3h7', x: 'M4 4l8 8M12 4l-8 8', arrow: 'M3 8h10M9 4l4 4-4 4', plus: 'M8 3v10M3 8h10', trash: 'M3 4h10M6 4V2.5h4V4M5 4l.6 9h4.8L11 4', back: 'M13 8H3M7 4L3 8l4 4', reply: 'M6 4L2 8l4 4M2 8h7a5 5 0 0 1 5 5' };
+  /** Long label in the expanded window, short label in the compact companion. */
+  const lbl = (long, short) => [el('span', { class: 'l', text: long }), el('span', { class: 's', text: short })];
   function ago(ts) {
     if (!ts) return '';
     const s = Math.max(0, (Date.now() - ts) / 1000);
     if (s < 45) return 'just now'; if (s < 3600) return `${Math.round(s / 60)} min ago`;
     if (s < 86400) return `${Math.round(s / 3600)} h ago`; return `${Math.round(s / 86400)} d ago`;
   }
+  function clock(ts) { return new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
   function dur(ms) { const m = Math.round(ms / 60000); return m < 1 ? 'under a minute' : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`; }
   const debounce = (fn, ms) => { let t; const d = (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; d.flush = (...a) => { clearTimeout(t); fn(...a); }; return d; };
   async function call(p) { const r = await p; if (!r.ok) throw Error(r.error); return r.value; }
@@ -55,6 +61,7 @@
   function initials(name) { const w = String(name || '?').replace(/[_-]+/g, ' ').trim().split(/\s+/); return (w.length > 1 ? w[0][0] + w[1][0] : w[0].slice(0, 2)).toUpperCase(); }
   function projectName(p) { return p?.displayName || p?.name || 'Workspace'; }
   function isEngaged() { const a = document.activeElement; const editing = a && $('#view')?.contains(a) && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT'); return (editing && Date.now() - S.lastInteraction < 15000) || Date.now() - S.lastInteraction < 5000; }
+  function ticketKey(t) { return `${project()?.prefix || 'WS'}-${t.number}`; }
 
   // ---------- derived ----------
   function project() { return S.state?.projects.find(p => p.id === S.project) || null; }
@@ -67,22 +74,34 @@
     const u = user(id) || { dismissed: {} };
     return (S.state?.items || []).filter(i => i.project === id).map(i => ({ ...i, userDismissed: !!u.dismissed[i.key] }));
   }
-  function openItems(id) {
-    return itemsOf(id).filter(i => i.status === 'open' && !i.userDismissed).sort((a, b) => (b.waiting - a.waiting) || (KIND_ORDER[a.kind] - KIND_ORDER[b.kind]) || (b.updatedAt - a.updatedAt));
-  }
+  function openItems(id) { return itemsOf(id).filter(i => i.status === 'open' && !i.userDismissed); }
+  function isAcked(runId) { return !!(S.acked[runId] || user()?.place?.acked?.[runId]); }
   function projectStatus(id) {
     const active = activeRuns(id);
+    const waiting = openItems(id).find(i => i.waiting && i.runStatus === 'active');
+    if (waiting) return { cls: 'attention', label: 'Waiting on you', run: active[0] };
     if (active.length) return { cls: 'working', label: `${AGENT[active[0].agent] || active[0].agent} working${active.length > 1 ? ` · ${active.length} runs` : ''}`, run: active[0] };
-    const waiting = openItems(id).find(i => i.waiting);
     const last = latestRun(id);
-    if (waiting && last && last.status === 'active') return { cls: 'attention', label: 'Waiting on you', run: last };
-    if (last && !S.acked[last.id] && Date.now() - last.endedAt < 12 * 3600000) {
+    if (last && !isAcked(last.id) && Date.now() - (last.endedAt || last.lastSeen) < 12 * 3600000) {
       if (last.status === 'completed') return { cls: 'done', label: 'Ready when you are', run: last };
       if (last.status === 'failed') return { cls: 'attention', label: 'Stopped with an error', run: last };
       if (last.status === 'cancelled') return { cls: 'attention', label: 'Interrupted', run: last };
       if (last.status === 'disconnected') return { cls: 'attention', label: 'No recent signal', run: last };
     }
     return { cls: 'quiet', label: last ? `Quiet · last run ${ago(last.endedAt || last.startedAt)}` : 'Quiet', run: last };
+  }
+  /** One thread per agent conversation: its runs (turns), its items, and a derived status. */
+  function threadsOf(id) {
+    const items = itemsOf(id), runs = runsOf(id);
+    return tasksOf(id).map(t => {
+      const tr = runs.filter(r => r.task === t.id).sort((a, b) => a.startedAt - b.startedAt);
+      const ti = items.filter(i => i.task === t.id);
+      const latest = tr[tr.length - 1] || null;
+      const waiting = ti.some(i => i.waiting && i.status === 'open' && !i.userDismissed && i.runStatus === 'active');
+      const lastActivity = Math.max(t.lastSeen || 0, ...tr.map(r => Math.max(r.lastSeen, r.endedAt)), ...ti.map(i => i.updatedAt));
+      const status = !latest ? 'idle' : latest.status === 'active' ? (waiting ? 'attention' : 'working') : latest.status;
+      return { task: t, runs: tr, items: ti, latest, waiting, lastActivity, status, open: ti.filter(i => i.status === 'open' && !i.userDismissed).length };
+    }).sort((a, b) => (b.status === 'working' || b.status === 'attention') - (a.status === 'working' || a.status === 'attention') || b.lastActivity - a.lastActivity);
   }
 
   // ---------- boot ----------
@@ -121,8 +140,8 @@
     if (theme === 'dark' || (theme === 'system' && dark)) document.documentElement.setAttribute('data-theme', 'dark');
     else document.documentElement.removeAttribute('data-theme');
   }
-  function restorePlace() { const u = user(); if (u?.place?.view && VIEWS.some(v => v[0] === u.place.view)) S.view = u.place.view; else S.view = 'now'; }
-  function savePlace(extra = {}) { if (S.project) api.setPlace(S.project, { view: S.view, ...extra }); api.setSettings({ window: {} }); }
+  function restorePlace() { const u = user(); S.view = u?.place?.view && VIEWS.some(v => v[0] === u.place.view) ? u.place.view : 'now'; S.ticket = u?.place?.ticket || null; S.ticketFilter = u?.place?.ticketFilter || 'active'; }
+  function savePlace(extra = {}) { if (S.project) api.setPlace(S.project, { view: S.view, ticket: S.ticket, ticketFilter: S.ticketFilter, ...extra }); }
 
   async function switchProject(id, { view } = {}) {
     if (!id || id === S.project) { if (view) setView(view); return; }
@@ -132,39 +151,38 @@
     restorePlace();
     if (view) S.view = view;
     S.settings.window.lastProject = id;
-    api.setSettings({ window: {} }); // touch; lastProject is kept in memory only
     render(true);
   }
   function setView(v) { if (S.view === v) return; flushAll(); S.view = v; savePlace(); render(true); }
-  function flushAll() { for (const f of Object.values(S.flushers || {})) { try { f(); } catch { /* best effort */ } } S.flushers = {}; }
-  function registerFlush(key, fn) { (S.flushers ??= {})[key] = fn; }
+  function flushAll() { for (const f of Object.values(S.flushers)) { try { f(); } catch { /* best effort */ } } S.flushers = {}; }
+  function registerFlush(key, fn) { S.flushers[key] = fn; }
 
   // ---------- pushes ----------
   function onState() {
     if (!S.project || !S.state.projects.some(p => p.id === S.project)) S.project = visibleProjects()[0]?.id || null;
     if (S.project && !user(S.project)) loadUser(S.project).then(() => render());
-    renderRail(); renderHead(); renderBanners(); renderCompactNav();
+    renderRail(); renderHead(); renderCompactNav();
     if (isEngaged()) { S.pendingRefresh = true; return; }
     renderView();
   }
   function onOpenRequest(req) {
     if (!S.state) return;
     if (!S.state.projects.some(p => p.id === req.project)) return;
-    if (req.project === S.project) { if (req.reason === 'notification') setView('now'); return; }
+    if (req.project === S.project) { if (req.reason === 'notification' || req.explicit) setView('now'); return; }
     const engaged = req.engaged || isEngaged();
     const p = S.state.projects.find(x => x.id === req.project);
     const task = S.state.tasks.find(t => t.id === req.task);
     const who = task ? AGENT[task.agent] || task.agent : 'An agent';
     if (!engaged && (req.explicit || req.wasVisible === false || req.reason === 'notification')) { switchProject(req.project, { view: 'now' }); return; }
     if (S.offers.has(req.project)) return;
-    const t = toast({ cls: 'gold', text: [el('b', { text: who }), ` is working in `, el('b', { text: projectName(p) }), '.'], ttl: 0, actions: [
+    const t = toast({ cls: 'gold', text: [el('b', { text: who }), ` started in `, el('b', { text: projectName(p) }), '.'], ttl: 0, actions: [
       { label: 'Switch', primary: true, fn: () => { S.offers.delete(req.project); switchProject(req.project, { view: 'now' }); } },
       { label: 'Stay here', fn: () => S.offers.delete(req.project) },
     ] });
     S.offers.set(req.project, t);
   }
   function onRunEnded({ run, status, project: pid }) {
-    if (pid === S.project) return; // the banner handles it
+    if (pid === S.project) return; // the thread shows it
     const r = S.state.runs.find(x => x.id === run); const p = S.state.projects.find(x => x.id === pid);
     if (!r || !p) return;
     const label = status === 'completed' ? 'finished' : status === 'failed' ? 'stopped with an error' : status === 'cancelled' ? 'was interrupted' : 'went quiet';
@@ -186,12 +204,12 @@
     if (!mod) return;
     if (e.key >= '1' && e.key <= '4') { e.preventDefault(); setView(VIEWS[Number(e.key) - 1][0]); }
     else if (e.key === ',') { e.preventDefault(); openSettings({}); }
-    else if (e.key.toLowerCase() === 'n' && !e.shiftKey) { e.preventDefault(); if (S.view !== 'next') setView('next'); newNext(); }
+    else if (e.key.toLowerCase() === 'n' && !e.shiftKey) { e.preventDefault(); if (S.view !== 'tickets') setView('tickets'); newTicket(); }
     else if (e.key.toLowerCase() === 'c' && e.shiftKey) { e.preventDefault(); api.setWindowMode(S.mode === 'compact' ? 'expanded' : 'compact'); }
   }
 
   // ---------- render ----------
-  function render(force = false) { renderRail(); renderHead(); renderBanners(); renderCompactNav(); renderView(force); }
+  function render(force = false) { renderRail(); renderHead(); renderCompactNav(); renderView(force); }
 
   function renderRail() {
     const list = $('#ws-list'); list.textContent = '';
@@ -199,11 +217,10 @@
     if (!ps.length) list.append(el('p', { class: 't-small', style: 'padding:8px 10px' }, 'No workspaces yet. An agent will create one when it starts, or add one yourself.'));
     for (const p of ps) {
       const st = projectStatus(p.id);
-      const waiting = openItems(p.id).some(i => i.waiting);
       list.append(el('button', { class: 'ws', role: 'listitem', 'aria-current': p.id === S.project ? 'true' : 'false', onclick: () => switchProject(p.id), title: p.path || '' },
         el('span', { class: 'ws-tok', style: `background:var(--ws-${p.color})` }, initials(projectName(p))),
         el('span', { style: 'display:grid;min-width:0' }, el('span', { class: 'ws-name', text: projectName(p) }), el('span', { class: 'ws-sub', text: st.label })),
-        el('span', { class: 'dot ' + (waiting && st.cls !== 'working' ? 'attention' : st.cls) })));
+        el('span', { class: 'dot ' + st.cls })));
     }
     const sel = $('#compact-ws'); sel.textContent = '';
     for (const p of ps) sel.append(el('option', { value: p.id, text: projectName(p), selected: p.id === S.project }));
@@ -215,12 +232,12 @@
     const p = project();
     if (!p) { h.append(el('h1', { text: 'Layover' })); return; }
     const st = projectStatus(p.id);
-    const row = el('div', { class: 'head-row' }, el('h1', { text: projectName(p) }), el('button', { class: 'status ' + st.cls, onclick: (e) => runsPopover(e.currentTarget) }, el('span', { class: 'dot ' + st.cls }), st.label));
-    const open = openItems(p.id).length, next = (user(p.id)?.next || []).filter(n => n.status === 'open').length;
+    const row = el('div', { class: 'head-row' }, S.mode === 'compact' ? null : el('h1', { text: projectName(p) }), el('button', { class: 'status ' + st.cls, onclick: (e) => runsPopover(e.currentTarget) }, el('span', { class: 'dot ' + st.cls }), st.label));
+    const open = openItems(p.id).length, active = (user(p.id)?.tickets || []).filter(t => FILTERS.active.includes(t.status)).length;
     const tabs = el('div', { class: 'tabs', role: 'tablist' });
     for (const [id, label] of VIEWS) {
-      const count = id === 'now' ? open : id === 'next' ? next : 0;
-      tabs.append(el('button', { class: 'tab', role: 'tab', 'aria-selected': S.view === id ? 'true' : 'false', onclick: () => setView(id) }, label, count ? el('span', { class: 'count' + (id === 'now' && openItems(p.id).some(i => i.waiting) ? ' hot' : ''), text: String(count) }) : null));
+      const count = id === 'now' ? open : id === 'tickets' ? active : 0;
+      tabs.append(el('button', { class: 'tab', role: 'tab', 'aria-selected': S.view === id ? 'true' : 'false', onclick: () => setView(id) }, label, count ? el('span', { class: 'count' + (id === 'now' && st.cls === 'attention' ? ' hot' : ''), text: String(count) }) : null));
     }
     if (S.mode !== 'compact') h.append(row, tabs); else h.append(row);
   }
@@ -228,31 +245,11 @@
   function renderCompactNav() {
     const n = $('#cnav'); n.textContent = '';
     if (S.mode !== 'compact' || !S.project) return;
-    const open = openItems(S.project).length, next = (user()?.next || []).filter(x => x.status === 'open').length;
-    for (const [id, label] of VIEWS) n.append(el('button', { 'aria-selected': S.view === id ? 'true' : 'false', onclick: () => setView(id) }, label, el('span', { class: 'count', text: id === 'now' && open ? String(open) : id === 'next' && next ? String(next) : ' ' })));
+    const open = openItems(S.project).length, active = (user()?.tickets || []).filter(t => FILTERS.active.includes(t.status)).length;
+    for (const [id, label] of VIEWS) n.append(el('button', { 'aria-selected': S.view === id ? 'true' : 'false', onclick: () => setView(id) }, label, el('span', { class: 'count', text: id === 'now' && open ? String(open) : id === 'tickets' && active ? String(active) : ' ' })));
   }
 
-  function renderBanners() {
-    const b = $('#banners'); b.textContent = '';
-    const p = project(); if (!p) return;
-    const u = user(p.id);
-    for (const r of runsOf(p.id).slice(0, 6)) {
-      if (r.status === 'active' || S.acked[r.id] || u?.place?.acked?.[r.id] || Date.now() - r.endedAt > 12 * 3600000) continue;
-      const who = AGENT[r.agent] || r.agent;
-      const cls = r.status === 'completed' ? 'done' : r.status === 'disconnected' ? 'warn' : r.status === 'failed' ? 'danger' : 'warn';
-      const msg = r.status === 'completed' ? [el('b', { text: 'Ready when you are.' }), ` ${who} finished${r.title ? ' “' + r.title + '”' : ''}.`]
-        : r.status === 'failed' ? [el('b', { text: `${who} stopped with an error.` }), r.endNote ? ' ' + r.endNote : '']
-        : r.status === 'cancelled' ? [el('b', { text: `${who} was interrupted.` }), r.endNote ? ' ' + r.endNote : '']
-        : [el('b', { text: `No recent signal from ${who}.` }), ' It may still be thinking, or the session may have closed.'];
-      b.append(el('div', { class: 'banner ' + cls }, el('span', { class: 'txt' }, ...msg),
-        el('button', { class: 'btn small primary', onclick: () => returnSheet(r) }, `Return to ${who}`, svg(ICON.arrow, 13)),
-        el('button', { class: 'btn small ghost', onclick: () => ack(r.id) }, 'Stay here')));
-    }
-    if (S.notesConflict && S.view === 'notes') b.append(el('div', { class: 'banner warn' }, el('span', { class: 'txt' }, el('b', { text: 'These notes changed elsewhere.' }), ' Your text is kept here until you choose.'),
-      el('button', { class: 'btn small', onclick: () => { api.copy(S.notesConflict.mine); toast({ text: 'Your version is on the clipboard.', ttl: 4000 }); } }, 'Copy mine'),
-      el('button', { class: 'btn small primary', onclick: async () => { S.notesConflict = null; await loadUser(S.project); render(true); } }, 'Load the saved version')));
-  }
-  function ack(runId) { S.acked[runId] = true; const u = user(); if (u) { u.place.acked = { ...(u.place.acked || {}), [runId]: Date.now() }; api.setPlace(S.project, { acked: u.place.acked }); } renderBanners(); renderHead(); renderRail(); }
+  function ack(runId) { S.acked[runId] = true; const u = user(); if (u) { u.place.acked = { ...(u.place.acked || {}), [runId]: Date.now() }; api.setPlace(S.project, { acked: u.place.acked }); } renderHead(); renderRail(); }
 
   function renderView(force = false) {
     const key = `${S.project}|${S.view}|${S.mode}`;
@@ -261,146 +258,249 @@
     if (S.view === 'now' && !force && key === S.viewKey && isEngaged()) { S.pendingRefresh = true; return; }
     S.viewKey = key; S.pendingRefresh = false;
     v.textContent = '';
+    v.className = 'view view-' + S.view;
     if (!S.project) { v.append(el('div', { class: 'empty' }, el('p', {}, el('b', { text: 'Nothing here yet.' }), ' Layover fills in when Claude Code or Codex starts working in a folder. Connect them in Settings, or add a workspace by hand.'), el('p', { style: 'margin-top:12px' }, el('button', { class: 'btn', onclick: () => openSettings({}) }, 'Open Settings')))); return; }
     const wrap = el('div', { class: 'view-in' });
-    ({ now: renderNow, next: renderNext, notes: renderNotes, break: renderBreak })[S.view](wrap);
+    ({ now: renderNow, tickets: renderTickets, notes: renderNotes, break: renderBreak })[S.view](wrap);
     v.append(wrap);
   }
 
-  // ---------- Now / For you ----------
+  // ---------- Now: threads ----------
   function renderNow(wrap) {
-    const pid = S.project, items = openItems(pid), u = user(pid);
-    const st = projectStatus(pid);
-    wrap.append(el('div', { class: 'section-h' }, el('span', { class: 't-eyebrow', text: 'For you' }), items.length ? el('span', { class: 't-small', text: `${items.length} open` }) : null));
-    if (!items.length) {
-      const last = latestRun(pid);
-      wrap.append(el('div', { class: 'empty' }, el('p', {}, el('b', { text: st.cls === 'working' ? 'Nothing needs you right now.' : 'Nothing waiting.' }), st.cls === 'working' ? ' The agent will leave a note here if it makes a decision worth a look or needs your input. Draft the next prompt, or take a break.' : last ? ' Items the agent leaves during a run collect here, and move to history when the run ends.' : ' When an agent starts in this workspace, its decisions, questions and opportunities will appear here.')));
-    } else {
-      const [hero, ...rest] = items;
-      wrap.append(itemCard(hero, u, true));
-      if (rest.length) {
-        const more = el('details', { class: 'more', open: S.mode !== 'compact' && rest.length <= 3 ? '' : null }, el('summary', { text: `${rest.length} more` }));
-        const st2 = el('div', { class: 'stack' }); for (const i of rest) st2.append(itemCard(i, u, false)); more.append(st2); wrap.append(more);
-      }
+    const pid = S.project, u = user(pid);
+    const threads = threadsOf(pid);
+    const recent = threads.filter(t => t.status === 'working' || t.status === 'attention' || Date.now() - t.lastActivity < 24 * 3600000);
+    const earlier = threads.filter(t => !recent.includes(t));
+    if (!threads.length) {
+      wrap.append(el('div', { class: 'empty' }, el('p', {}, el('b', { text: 'No agent has started here yet.' }), ' When Claude Code or Codex begins a turn in this folder, a thread appears here with what it decides, asks, and notices. Draft tickets in the meantime.')));
+      return;
     }
-    const history = itemsOf(pid).filter(i => !(i.status === 'open' && !i.userDismissed)).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 30);
-    if (history.length) {
-      const d = el('details', { class: 'more' }, el('summary', { text: `Earlier · ${history.length}` }));
-      const st3 = el('div', { class: 'stack' });
-      for (const i of history) st3.append(el('div', { class: 'card compact-row', onclick: (e) => { if (!e.target.closest('button')) expandHistory(i, u, e.currentTarget); } },
-        el('div', { class: 'card-top', style: 'margin:0' }, el('span', { class: 'kind ' + i.kind }, el('i'), KIND_LABEL[i.kind]), el('span', { class: 'chip', text: i.userDismissed ? 'dismissed' : i.status }), el('span', { class: 'spacer' }), el('span', { class: 'card-src', text: ago(i.updatedAt) })),
-        el('div', { class: 'card-text', text: i.title ? i.title + ' — ' + i.text : i.text })));
-      d.append(st3); wrap.append(d);
+    const list = el('div', { class: 'threads' });
+    for (const t of recent) list.append(threadCard(t, u));
+    wrap.append(list);
+    if (earlier.length) {
+      const d = el('details', { class: 'more' }, el('summary', { text: `Earlier conversations · ${earlier.length}` }));
+      const l2 = el('div', { class: 'threads' }); for (const t of earlier) l2.append(threadCard(t, u, true)); d.append(l2); wrap.append(d);
     }
   }
-  function expandHistory(i, u, node) { node.replaceWith(itemCard(i, u, false, true)); }
-  function itemCard(i, u, hero, history = false) {
-    const run = S.state.runs.find(r => r.id === i.run); const task = S.state.tasks.find(t => t.id === i.task);
-    const who = AGENT[i.agent] || i.agent;
+
+  function threadCard(t, u, quiet = false) {
+    const agent = t.task.agent, who = AGENT[agent] || agent, short = AGENT_SHORT[agent] || agent;
+    const latest = t.latest;
+    const card = el('section', { class: 'thread ' + t.status, dataset: { task: t.task.id } });
+    // header
+    const title = latest?.title || t.task.name || 'Conversation';
+    const statusChip = t.status === 'working' ? el('span', { class: 'status working' }, el('span', { class: 'dot working' }), ...lbl(`Working · ${dur(Date.now() - latest.startedAt)}`, dur(Date.now() - latest.startedAt)))
+      : t.status === 'attention' ? el('span', { class: 'status attention' }, el('span', { class: 'dot attention' }), ...lbl('Waiting on you', 'Waiting'))
+      : t.status === 'completed' ? el('span', { class: 'status done' }, el('span', { class: 'dot done' }), ...lbl(`Finished ${ago(latest.endedAt)}`, 'Done'))
+      : t.status === 'failed' ? el('span', { class: 'status attention' }, el('span', { class: 'dot failed' }), 'Error')
+      : t.status === 'cancelled' ? el('span', { class: 'status attention' }, el('span', { class: 'dot attention' }), 'Interrupted')
+      : t.status === 'disconnected' ? el('span', { class: 'status attention' }, el('span', { class: 'dot attention' }), ...lbl('No recent signal', 'No signal'))
+      : el('span', { class: 'status' }, el('span', { class: 'dot quiet' }), 'Idle');
+    card.append(el('div', { class: 'thread-h' },
+      el('span', { class: 'agent ' + agent, text: short }),
+      el('div', { class: 'thread-t' }, el('b', { text: title }), el('span', { text: `${who} · ${t.runs.length} turn${t.runs.length === 1 ? '' : 's'} · ${t.task.source ? t.task.source.split('\n')[0] : ''}` })),
+      statusChip,
+      el('button', { class: 'icon-btn', title: `How to return to ${who}`, 'aria-label': 'How to return', onclick: () => returnSheet(latest || { agent, task: t.task.id, id: '', source: t.task.source }) }, svg(ICON.arrow, 14))));
+    // timeline entries in time order
+    const entries = [];
+    for (const r of t.runs) {
+      if (t.runs.length > 1) entries.push({ at: r.startedAt, kind: 'turn', run: r }); // a single turn is already the thread title
+      if (r.status !== 'active') entries.push({ at: r.endedAt || r.lastSeen, kind: 'end', run: r });
+    }
+    for (const i of t.items) if (!i.userDismissed) entries.push({ at: i.createdAt, kind: 'item', item: i });
+    entries.sort((a, b) => a.at - b.at);
+    const limit = S.mode === 'compact' ? 4 : 10;
+    const expanded = S.expandedThreads.has(t.task.id);
+    const shown = expanded || entries.length <= limit ? entries : entries.slice(-limit);
+    const tl = el('div', { class: 'tl' });
+    if (shown.length < entries.length) tl.append(el('button', { class: 'btn small ghost tl-more', onclick: () => { S.expandedThreads.add(t.task.id); render(true); } }, `Show ${entries.length - shown.length} earlier`));
+    const openLatest = [...t.items].reverse().find(i => i.status === 'open' && !i.userDismissed);
+    for (const e of shown) {
+      if (e.kind === 'turn') tl.append(el('div', { class: 'tl-turn' }, el('i'), el('span', { text: e.run.title || 'Turn' }), el('span', { class: 'tl-time', text: clock(e.at) })));
+      else if (e.kind === 'item') tl.append(itemEntry(e.item, u, openLatest && e.item.key === openLatest.key && t.status !== 'completed'));
+      else tl.append(endEntry(e.run, who, quiet));
+    }
+    if (t.status === 'working' && !shown.some(e => e.kind === 'item' && e.item.runStatus === 'active')) tl.append(el('div', { class: 'tl-quiet', text: 'Working quietly. Items the agent leaves for you will appear here.' }));
+    card.append(tl);
+    return card;
+  }
+
+  function itemEntry(i, u, hot) {
     const resp = u?.responses?.[i.key];
-    const card = el('div', { class: 'card' + (hero ? ' hero' : ''), dataset: { key: i.key } });
+    const row = el('div', { class: 'tl-item ' + i.kind + (hot ? ' hot' : ''), dataset: { key: i.key } });
     const chip = i.waiting && i.runStatus === 'active' ? el('span', { class: 'chip warn', text: 'Waiting on you' })
-      : i.kind === 'decision' && i.runStatus === 'active' ? el('span', { class: 'chip', text: 'Assumption · continuing' })
-      : i.kind === 'question' && i.runStatus === 'active' ? el('span', { class: 'chip', text: 'Not blocked · continuing' }) : null;
-    card.append(el('div', { class: 'card-top' }, el('span', { class: 'kind ' + i.kind }, el('i'), KIND_LABEL[i.kind]), chip, el('span', { class: 'spacer' }), el('span', { class: 'card-src', text: `${who}${run?.title ? ' · ' + run.title : ''} · ${ago(i.updatedAt)}` })));
-    if (i.title) card.append(el('div', { class: 't-h3', style: 'margin-bottom:6px', text: i.title }));
-    card.append(el('div', { class: 'card-text', text: i.text }));
-    const actions = el('div', { class: 'card-actions' });
+      : i.kind === 'decision' && i.runStatus === 'active' ? el('span', { class: 'chip' }, ...lbl('Assumption · continuing', 'Assumption')) : null;
+    row.append(el('div', { class: 'tl-meta' }, el('span', { class: 'kind ' + i.kind }, el('i'), KIND_LABEL[i.kind]), chip, el('span', { class: 'spacer' }), el('span', { class: 'tl-time', text: clock(i.updatedAt) })));
+    if (i.title) row.append(el('div', { class: 't-h3', text: i.title }));
+    row.append(el('div', { class: 'tl-text', text: i.text }));
     const respBox = el('div', { class: 'resp' });
-    let editing = !!resp;
+    let editing = false;
     const drawResp = () => {
       respBox.textContent = '';
-      if (!editing) return;
-      const ta = el('textarea', { class: 'input', placeholder: i.kind === 'question' ? 'Your answer, for when you return to the agent…' : 'A thought, a concern, a reply…', 'aria-label': 'Your response' });
+      if (!editing) { if (resp?.body) respBox.append(el('div', { class: 'bubble', onclick: () => { editing = true; drawResp(); } }, el('span', { class: 'bubble-who', text: 'You · saved here, not sent' }), el('div', { class: 'tl-text', text: resp.body }))); return; }
+      const ta = el('textarea', { class: 'input', placeholder: i.kind === 'question' ? 'Your answer, for when you return to the agent…' : 'A thought, a concern, a reply…', 'aria-label': 'Your reply' });
       ta.value = resp?.body || '';
-      const meta = el('div', { class: 'resp-meta' }, el('span', { text: resp ? `Saved ${ago(resp.updatedAt)}` : 'Saved locally as you type' }), el('span', { class: 'faint', text: '· Not sent to the agent' }));
-      const save = debounce(() => api.respond(S.project, i.key, ta.value).then(() => { const uu = user(); if (uu) uu.responses[i.key] = ta.value ? { body: ta.value, updatedAt: Date.now() } : undefined; meta.firstChild.textContent = ta.value ? 'Saved just now' : 'Saved locally as you type'; }), 400);
+      const meta = el('div', { class: 'resp-meta' }, el('span', { text: resp ? `Saved ${ago(resp.updatedAt)}` : 'Saved as you type' }), el('span', { class: 'faint' }, ...lbl('· Not sent to the agent', '· local')));
+      const save = debounce(() => api.respond(S.project, i.key, ta.value).then(() => { const uu = user(); if (uu) { if (ta.value) uu.responses[i.key] = { body: ta.value, updatedAt: Date.now() }; else delete uu.responses[i.key]; } meta.firstChild.textContent = ta.value ? 'Saved just now' : 'Saved as you type'; }), 400);
       ta.addEventListener('input', () => { autoGrow(ta); save(); });
       registerFlush('resp:' + i.key, () => save.flush());
       respBox.append(ta, meta);
-      queueMicrotask(() => { autoGrow(ta); if (!resp) ta.focus(); });
+      queueMicrotask(() => { autoGrow(ta); ta.focus(); });
     };
-    if (!history) {
-      actions.append(el('button', { class: 'btn small' + (i.kind === 'question' ? ' primary' : ''), onclick: () => { editing = true; drawResp(); } }, i.kind === 'question' ? 'Write an answer' : 'Write a thought'));
-      actions.append(el('button', { class: 'btn small', onclick: () => saveToNext(i) }, 'Save to Next'));
-      actions.append(el('button', { class: 'btn small ghost', onclick: () => copyItem(i, u) }, svg(ICON.copy, 12), 'Copy for agent'));
-      actions.append(el('span', { style: 'flex:1' }));
-      actions.append(el('button', { class: 'btn small ghost', title: 'Dismiss', onclick: async () => { await api.dismiss(S.project, i.key, true); const uu = user(); if (uu) uu.dismissed[i.key] = Date.now(); render(true); } }, 'Dismiss'));
-    } else {
-      actions.append(el('button', { class: 'btn small ghost', onclick: () => copyItem(i, u) }, svg(ICON.copy, 12), 'Copy'));
-      if (i.userDismissed) actions.append(el('button', { class: 'btn small ghost', onclick: async () => { await api.dismiss(S.project, i.key, false); const uu = user(); if (uu) delete uu.dismissed[i.key]; render(true); } }, 'Restore'));
-      if (run) actions.append(el('button', { class: 'btn small ghost', onclick: () => returnSheet(run) }, `Return to ${who}`));
-    }
-    card.append(actions, respBox);
-    if (resp) drawResp();
-    if (task?.source && hero) card.append(el('div', { class: 'card-src', style: 'margin-top:10px', text: task.source.split('\n')[0] }));
-    return card;
+    const actions = el('div', { class: 'tl-actions' },
+      el('button', { class: 'btn small' + (i.kind === 'question' && i.status === 'open' ? ' primary' : ' ghost'), onclick: () => { editing = true; drawResp(); } }, svg(ICON.reply, 12), ...lbl(i.kind === 'question' ? 'Answer' : 'Reply', i.kind === 'question' ? 'Answer' : 'Reply')),
+      el('button', { class: 'btn small ghost', onclick: () => ticketFromItem(i) }, svg(ICON.plus, 12), ...lbl('Make a ticket', 'Ticket')),
+      el('button', { class: 'btn small ghost', onclick: () => copyItem(i, u) }, svg(ICON.copy, 12), ...lbl('Copy for agent', 'Copy')),
+      el('span', { class: 'spacer' }),
+      i.status === 'open' ? el('button', { class: 'btn small ghost', title: 'Dismiss', onclick: async () => { await api.dismiss(S.project, i.key, true); const uu = user(); if (uu) uu.dismissed[i.key] = Date.now(); render(true); } }, svg(ICON.x, 12), el('span', { class: 'l', text: 'Dismiss' })) : el('span', { class: 'chip', text: i.status }));
+    row.append(actions, respBox);
+    drawResp();
+    return row;
   }
+
+  function endEntry(r, who, quiet) {
+    const acked = isAcked(r.id) || quiet;
+    const cls = r.status === 'completed' ? 'done' : r.status === 'failed' ? 'failed' : 'attention';
+    const text = r.status === 'completed' ? `${who} finished · ran ${dur((r.endedAt || r.lastSeen) - r.startedAt)}`
+      : r.status === 'failed' ? `${who} stopped with an error${r.endNote ? ' · ' + r.endNote : ''}`
+      : r.status === 'cancelled' ? `${who} was interrupted${r.endNote ? ' · ' + r.endNote : ''}`
+      : `No recent signal from ${who}. It may still be thinking, or the session may have closed.`;
+    const row = el('div', { class: 'tl-end ' + cls + (acked ? ' acked' : '') }, el('span', { class: 'dot ' + cls }), el('span', { class: 'tl-end-text' }, acked ? text : [el('b', { text: r.status === 'completed' ? 'Ready when you are. ' : '' }), text]), el('span', { class: 'tl-time', text: clock(r.endedAt || r.lastSeen) }));
+    if (!acked) row.append(el('span', { class: 'tl-end-actions' }, el('button', { class: 'btn small primary', onclick: () => returnSheet(r) }, ...lbl(`Return to ${who}`, 'Return'), svg(ICON.arrow, 12)), el('button', { class: 'btn small ghost', onclick: () => { ack(r.id); render(true); } }, ...lbl('Got it', 'OK'))));
+    return row;
+  }
+
   function copyItem(i, u) {
     const r = u?.responses?.[i.key]?.body;
     api.copy(r ? `Regarding your ${i.kind}: "${i.text}"\n\nMy response: ${r}` : `Regarding your ${i.kind}: "${i.text}"`);
-    toast({ text: r ? 'Item and your response copied. Paste it into the agent.' : 'Item copied.', ttl: 4000 });
+    toast({ text: r ? 'Item and your reply copied. Paste it into the agent.' : 'Item copied.', ttl: 4000 });
   }
-  async function saveToNext(i) {
+  async function ticketFromItem(i) {
     const u = user();
     const title = (i.title || i.text).split('\n')[0].slice(0, 100);
-    const body = `${i.text}\n\n— from ${AGENT[i.agent] || i.agent}, ${KIND_LABEL[i.kind].toLowerCase()}`;
-    const e = await call(api.upsertNext(S.project, { kind: i.kind === 'question' ? 'prompt' : 'idea', title, body, fromItem: i.key }));
-    if (u) u.next.unshift(e);
-    toast({ text: 'Saved to Next.', ttl: 3500, actions: [{ label: 'Open Next', fn: () => setView('next') }] });
+    const description = `${i.text}\n\n— ${AGENT[i.agent] || i.agent}, ${KIND_LABEL[i.kind].toLowerCase()}`;
+    const t = await call(api.upsertTicket(S.project, { title, description, status: 'backlog', fromItem: i.key }));
+    if (u) u.tickets.unshift(t);
+    toast({ text: `${ticketKey(t)} created in Backlog.`, ttl: 4000, actions: [{ label: 'Open', fn: () => { S.ticket = t.id; S.ticketFilter = 'backlog'; setView('tickets'); } }] });
     renderHead(); renderCompactNav();
   }
 
-  // ---------- Next ----------
-  function renderNext(wrap) {
-    const u = user(); if (!u) return;
-    const open = u.next.filter(n => n.status === 'open'), done = u.next.filter(n => n.status !== 'open');
-    wrap.append(el('div', { class: 'section-h' }, el('span', { class: 't-eyebrow', text: 'Next' }), el('span', { class: 't-small', text: 'Prompts to send later, ideas, things you chose to do' }), el('span', { class: 'spacer' }),
-      el('button', { class: 'btn small', onclick: () => newNext('prompt') }, svg(ICON.plus, 12), 'Draft a prompt'), el('button', { class: 'btn small ghost', onclick: () => newNext('idea') }, 'Idea')));
-    const list = el('div', { class: 'stack', id: 'next-list' });
-    if (!open.length) list.append(el('div', { class: 'empty' }, el('p', {}, el('b', { text: 'Your list is empty.' }), ' Draft tomorrow’s prompt while the agent works, or save something it suggested. Nothing here is sent anywhere by itself.')));
-    for (const n of open) list.append(nextCard(n));
-    wrap.append(list);
-    if (done.length) { const d = el('details', { class: 'more' }, el('summary', { text: `Done and archived · ${done.length}` })); const s = el('div', { class: 'stack' }); for (const n of done) s.append(nextCard(n)); d.append(s); wrap.append(d); }
+  // ---------- Tickets ----------
+  const STATUS_ICON = {
+    backlog: () => svg('M8 2.5a5.5 5.5 0 1 1 0 11a5.5 5.5 0 0 1 0-11Z', 15, 'stroke-dasharray="2.2 2.2"'),
+    todo: () => svg('M8 2.5a5.5 5.5 0 1 1 0 11a5.5 5.5 0 0 1 0-11Z', 15),
+    progress: () => { const s = svg('M8 2.5a5.5 5.5 0 1 1 0 11a5.5 5.5 0 0 1 0-11Z', 15); s.innerHTML += '<path d="M8 4.5a3.5 3.5 0 0 1 0 7Z" fill="currentColor"/>'; return s; },
+    done: () => { const s = svg('', 15); s.innerHTML = '<circle cx="8" cy="8" r="5.5" fill="currentColor"/><path d="M5.5 8.2l1.8 1.8 3.4-3.6" stroke="var(--surface)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'; return s; },
+    cancelled: () => { const s = svg('M8 2.5a5.5 5.5 0 1 1 0 11a5.5 5.5 0 0 1 0-11Z', 15); s.innerHTML += '<path d="M6 6l4 4M10 6l-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>'; return s; },
+  };
+  function priorityGlyph(p) {
+    const g = el('span', { class: 'prio p' + p, title: PRIORITY[p] });
+    if (p === 4) { g.textContent = '!'; return g; }
+    for (let i = 1; i <= 3; i++) g.append(el('i', { class: i <= p ? 'on' : '' }));
+    return g;
   }
-  async function newNext(kind = 'prompt') {
+
+  function renderTickets(wrap) {
     const u = user(); if (!u) return;
-    const e = await call(api.upsertNext(S.project, { kind, title: '', body: '' }));
-    u.next.unshift(e);
-    const list = $('#next-list'); if (list) { list.querySelector('.empty')?.remove(); list.prepend(nextCard(e)); list.firstChild.querySelector('input')?.focus(); } else render(true);
-    renderHead(); renderCompactNav();
+    const all = u.tickets;
+    const visible = all.filter(t => FILTERS[S.ticketFilter].includes(t.status));
+    const bar = el('div', { class: 'tk-bar' },
+      el('button', { class: 'btn primary small', onclick: () => newTicket() }, svg(ICON.plus, 12), ...lbl('New ticket', 'New')),
+      seg([['active', 'Active'], ['backlog', 'Backlog'], ['done', 'Done'], ['all', 'All']], S.ticketFilter, v => { S.ticketFilter = v; savePlace(); render(true); }),
+      el('span', { class: 'spacer' }),
+      el('span', { class: 't-small l', text: `${visible.length} of ${all.length}` }));
+    const split = el('div', { class: 'tk-split' + (S.ticket ? ' has-detail' : '') });
+    const list = el('div', { class: 'tk-list' });
+    if (!visible.length) list.append(el('div', { class: 'empty' }, el('p', {}, el('b', { text: all.length ? 'Nothing in this view.' : 'No tickets yet.' }), all.length ? '' : ' Track the work you want done next, and draft the prompt for each piece so it is ready when the agent is.')));
+    for (const st of STATUS_ORDER) {
+      const rows = visible.filter(t => t.status === st).sort((a, b) => b.priority - a.priority || b.updatedAt - a.updatedAt);
+      if (!rows.length) continue;
+      list.append(el('div', { class: 'tk-group' }, el('span', { class: 'tk-status ' + st }, STATUS_ICON[st]()), el('span', { text: STATUS[st] }), el('span', { class: 'faint', text: String(rows.length) })));
+      for (const t of rows) list.append(ticketRow(t));
+    }
+    split.append(list);
+    const sel = S.ticket ? all.find(t => t.id === S.ticket) : null;
+    if (sel) split.append(ticketDetail(sel)); else S.ticket = null;
+    wrap.append(bar, split);
   }
-  function nextCard(n) {
-    const card = el('div', { class: 'card entry' + (n.status !== 'open' ? ' done' : ''), dataset: { id: n.id } });
-    const title = el('input', { class: 'title', placeholder: n.kind === 'prompt' ? 'Prompt for the agent…' : 'What to remember…', 'aria-label': 'Title' }); title.value = n.title;
-    const body = el('textarea', { placeholder: n.kind === 'prompt' ? 'Write the prompt you will send when the agent is free.' : 'Details, links, why it matters.', 'aria-label': 'Body' }); body.value = n.body;
-    const check = el('button', { class: 'check', role: 'checkbox', 'aria-checked': n.status === 'done' ? 'true' : 'false', title: 'Done', onclick: async () => { n.status = n.status === 'done' ? 'open' : 'done'; await api.upsertNext(S.project, { id: n.id, status: n.status }); render(true); } }, svg(ICON.check, 11));
-    const save = debounce(async () => { n.title = title.value; n.body = body.value; await api.upsertNext(S.project, { id: n.id, title: n.title, body: n.body }); meta.textContent = 'Saved'; }, 400);
-    registerFlush('next:' + n.id, () => save.flush());
-    title.addEventListener('input', () => { meta.textContent = 'Saving…'; save(); });
-    body.addEventListener('input', () => { autoGrow(body); meta.textContent = 'Saving…'; save(); });
-    const meta = el('span', { text: `${n.kind} · ${ago(n.updatedAt)}` });
-    const foot = el('div', { class: 'entry-foot' }, meta, n.fromItem ? el('span', { class: 'chip accent', text: 'from agent' }) : null, el('span', { class: 'spacer' }),
-      el('button', { class: 'btn small ghost', onclick: () => { api.copy(title.value + (body.value ? '\n\n' + body.value : '')); toast({ text: 'Copied. Paste it into the agent when you are ready.', ttl: 4000 }); } }, svg(ICON.copy, 12), 'Copy'),
-      n.status !== 'archived' ? el('button', { class: 'btn small ghost', onclick: async () => { await api.upsertNext(S.project, { id: n.id, status: 'archived' }); n.status = 'archived'; render(true); } }, 'Archive') : el('button', { class: 'btn small ghost', onclick: async () => { await api.upsertNext(S.project, { id: n.id, status: 'open' }); n.status = 'open'; render(true); } }, 'Reopen'),
-      el('button', { class: 'btn small ghost danger', title: 'Delete', onclick: async () => { await api.deleteNext(S.project, n.id); const u = user(); if (u) u.next = u.next.filter(x => x.id !== n.id); render(true); } }, svg(ICON.trash, 12)));
-    card.append(el('div', { class: 'row' }, check, title), body, foot);
-    queueMicrotask(() => autoGrow(body));
-    return card;
+  function ticketRow(t) {
+    const row = el('div', { class: 'tk-row' + (t.id === S.ticket ? ' selected' : '') + (t.status === 'done' || t.status === 'cancelled' ? ' closed' : ''), role: 'button', tabindex: '0',
+      onclick: () => { S.ticket = t.id; savePlace(); render(true); }, onkeydown: e => { if (e.key === 'Enter') { S.ticket = t.id; savePlace(); render(true); } } });
+    row.append(...[
+      el('button', { class: 'tk-status ' + t.status, title: STATUS[t.status], onclick: e => { e.stopPropagation(); statusMenu(e.currentTarget, t); } }, STATUS_ICON[t.status]()),
+      el('span', { class: 'tk-key', text: ticketKey(t) }),
+      el('span', { class: 'tk-title', text: t.title || 'Untitled' }),
+      t.prompt ? el('span', { class: 'chip accent', title: 'Has a prompt draft' }, ...lbl('prompt', 'P')) : null,
+      priorityGlyph(t.priority),
+      el('span', { class: 'tk-time l', text: ago(t.updatedAt) })].filter(Boolean));
+    return row;
+  }
+  function statusMenu(anchor, t) {
+    closePopover();
+    const pop = el('div', { class: 'pop menu', role: 'menu' });
+    for (const st of STATUS_ORDER) pop.append(el('button', { class: 'menu-item' + (st === t.status ? ' on' : ''), role: 'menuitem', onclick: async () => { closePopover(); await setTicket(t, { status: st }); } }, el('span', { class: 'tk-status ' + st }, STATUS_ICON[st]()), STATUS[st]));
+    place(pop, anchor);
+  }
+  async function setTicket(t, patch) {
+    const saved = await call(api.upsertTicket(S.project, { id: t.id, ...patch }));
+    const u = user(); const idx = u.tickets.findIndex(x => x.id === t.id); if (idx >= 0) u.tickets[idx] = saved;
+    render(true);
+    return saved;
+  }
+  async function newTicket() {
+    const u = user(); if (!u) return;
+    const t = await call(api.upsertTicket(S.project, { title: '', status: S.ticketFilter === 'backlog' ? 'backlog' : 'todo' }));
+    u.tickets.unshift(t); S.ticket = t.id; savePlace();
+    render(true);
+    $('.tk-detail input.tk-title-in')?.focus();
+  }
+  function ticketDetail(t) {
+    const d = el('div', { class: 'tk-detail card' });
+    const u = user();
+    const title = el('input', { class: 'tk-title-in', placeholder: 'Title', 'aria-label': 'Title' }); title.value = t.title;
+    const desc = el('textarea', { class: 'input grow', placeholder: 'What, why, and what done looks like.', 'aria-label': 'Description' }); desc.value = t.description;
+    const prompt = el('textarea', { class: 'input grow', placeholder: 'The prompt you will give the agent for this ticket. Title and description are included when you copy it.', 'aria-label': 'Prompt' }); prompt.value = t.prompt;
+    const meta = el('span', { class: 't-small', text: `Updated ${ago(t.updatedAt)}` });
+    const save = debounce(async () => { const saved = await call(api.upsertTicket(S.project, { id: t.id, title: title.value, description: desc.value, prompt: prompt.value })); Object.assign(t, saved); meta.textContent = 'Saved'; const row = $(`.tk-row.selected .tk-title`); if (row) row.textContent = t.title || 'Untitled'; }, 400);
+    registerFlush('ticket:' + t.id, () => save.flush());
+    for (const f of [title, desc, prompt]) f.addEventListener('input', () => { meta.textContent = 'Saving…'; if (f.tagName === 'TEXTAREA') autoGrow(f); save(); });
+    const statusSel = el('select', { class: 'input small', 'aria-label': 'Status', onchange: e => setTicket(t, { status: e.target.value }) }, ...STATUS_ORDER.map(s => el('option', { value: s, selected: s === t.status, text: STATUS[s] })));
+    const prioSel = el('select', { class: 'input small', 'aria-label': 'Priority', onchange: e => setTicket(t, { priority: Number(e.target.value) }) }, ...PRIORITY.map((p, i) => el('option', { value: i, selected: i === t.priority, text: p })));
+    const copyPrompt = () => {
+      const parts = [`${t.title || 'Untitled'} (${ticketKey(t)})`, t.description.trim(), t.prompt.trim()].filter(Boolean);
+      api.copy(parts.join('\n\n')); toast({ text: 'Prompt copied. Paste it into the agent when it is free.', ttl: 4000 });
+    };
+    d.append(...[
+      el('div', { class: 'tk-detail-h' }, S.mode === 'compact' ? el('button', { class: 'icon-btn', 'aria-label': 'Back', onclick: () => { S.ticket = null; savePlace(); render(true); } }, svg(ICON.back, 14)) : null, el('span', { class: 'tk-key', text: ticketKey(t) }), statusSel, prioSel, el('span', { class: 'spacer' }),
+        el('button', { class: 'icon-btn', title: 'Delete ticket', 'aria-label': 'Delete', onclick: async () => { await api.deleteTicket(S.project, t.id); u.tickets = u.tickets.filter(x => x.id !== t.id); S.ticket = null; render(true); } }, svg(ICON.trash, 14)),
+        S.mode !== 'compact' ? el('button', { class: 'icon-btn', 'aria-label': 'Close', onclick: () => { S.ticket = null; savePlace(); render(true); } }, svg(ICON.x, 14)) : null),
+      title,
+      el('div', { class: 'field' }, el('label', { text: 'Description' }), desc),
+      el('div', { class: 'field' }, el('label', { text: 'Prompt for the agent' }), prompt),
+      el('div', { class: 'tk-detail-f' }, el('button', { class: 'btn primary small', onclick: copyPrompt }, svg(ICON.copy, 12), ...lbl('Copy prompt', 'Copy')),
+        t.status !== 'done' ? el('button', { class: 'btn small', onclick: () => setTicket(t, { status: 'done' }) }, svg(ICON.check, 12), ...lbl('Mark done', 'Done')) : el('button', { class: 'btn small', onclick: () => setTicket(t, { status: 'todo' }) }, 'Reopen'),
+        el('span', { class: 'spacer' }), meta),
+      t.fromItem ? el('p', { class: 't-small', text: 'Created from an agent item.' }) : null].filter(Boolean));
+    queueMicrotask(() => { autoGrow(desc); autoGrow(prompt); });
+    return d;
   }
 
   // ---------- Notes ----------
   function renderNotes(wrap) {
     const u = user(); if (!u) return;
-    wrap.append(el('div', { class: 'section-h' }, el('span', { class: 't-eyebrow', text: 'Notes' }), el('span', { class: 't-small', text: 'Decisions, context, the thread of this project. Saved as you type.' })));
+    if (S.notesConflict) wrap.append(el('div', { class: 'banner warn' }, el('span', { class: 'txt' }, el('b', { text: 'These notes changed elsewhere.' }), ' Your text is kept until you choose.'),
+      el('button', { class: 'btn small', onclick: () => { api.copy(S.notesConflict.mine); toast({ text: 'Your version is on the clipboard.', ttl: 4000 }); } }, 'Copy mine'),
+      el('button', { class: 'btn small primary', onclick: async () => { S.notesConflict = null; await loadUser(S.project); render(true); } }, 'Load the saved version')));
+    wrap.append(el('div', { class: 'section-h' }, el('span', { class: 't-eyebrow', text: 'Notes' }), el('span', { class: 't-small l', text: 'Decisions, context, the thread of this project. Saved as you type.' })));
     const ta = el('textarea', { class: 'notes', placeholder: 'Start with what this project is for, and what you decided last time…', 'aria-label': 'Project notes', spellcheck: 'true' });
     ta.value = u.notes.body;
     let revision = u.notes.revision;
-    const meta = el('div', { class: 'notes-meta' }, el('span', { text: u.notes.updatedAt ? `Saved ${ago(u.notes.updatedAt)}` : 'Not written yet' }), el('span', { class: 'faint', text: '· Only on this computer' }));
+    const meta = el('div', { class: 'notes-meta' }, el('span', { text: u.notes.updatedAt ? `Saved ${ago(u.notes.updatedAt)}` : 'Not written yet' }), el('span', { class: 'faint l', text: '· Only on this computer' }));
     const save = debounce(async () => {
       const body = ta.value;
       const r = await call(api.setNotes(S.project, body, revision));
-      if (r.conflict) { S.notesConflict = { mine: body, theirs: r.body }; revision = r.revision; renderBanners(); return; }
+      if (r.conflict) { S.notesConflict = { mine: body, theirs: r.body }; revision = r.revision; render(true); return; }
       revision = r.revision; u.notes = { body, revision, updatedAt: Date.now() }; meta.firstChild.textContent = 'Saved just now';
     }, 500);
     registerFlush('notes', () => save.flush());
@@ -438,7 +538,14 @@
   function stopBreak() { clearInterval(S.breakTimer); S.breakTimer = null; S.breakLeft = S.breakTotal; S.lastBreak = Date.now(); $('.ring')?.classList.add('breathing'); }
   function saveBreak(patch) { S.settings.breakReminder = { ...S.settings.breakReminder, ...patch }; api.setSettings({ breakReminder: patch }); }
 
-  // ---------- runs popover ----------
+  // ---------- popovers ----------
+  function place(pop, anchor) {
+    const rect = anchor.getBoundingClientRect();
+    document.body.append(pop); S.popover = pop;
+    const w = pop.offsetWidth || 300;
+    pop.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - w - 8)) + 'px'; pop.style.top = Math.min(rect.bottom + 8, window.innerHeight - pop.offsetHeight - 8) + 'px';
+    setTimeout(() => document.addEventListener('pointerdown', onDocDown), 0);
+  }
   function runsPopover(anchor) {
     closePopover();
     const p = project(); const runs = runsOf(p.id).slice(0, 12); const tasks = tasksOf(p.id);
@@ -446,18 +553,13 @@
     pop.append(el('div', { class: 'section-h', style: 'margin:0 0 6px' }, el('span', { class: 't-eyebrow', text: 'Runs' }), el('span', { class: 'spacer' }), el('span', { class: 't-small', text: `${tasks.length} conversation${tasks.length === 1 ? '' : 's'}` })));
     if (!runs.length) pop.append(el('p', { class: 't-small', text: 'No runs yet in this workspace.' }));
     for (const r of runs) {
-      const t = tasks.find(x => x.id === r.task);
-      const label = r.status === 'active' ? 'working' : r.status;
       pop.append(el('div', { class: 'run-row' },
-        el('div', { class: 'l1' }, el('span', { class: 'dot ' + (r.status === 'active' ? 'working' : r.status === 'completed' ? 'done' : r.status === 'failed' ? 'failed' : 'attention') }), el('span', { text: `${AGENT[r.agent] || r.agent} · ${r.title || 'Working'}` }), el('span', { class: 'spacer', style: 'flex:1' }), el('span', { class: 'chip', text: label })),
+        el('div', { class: 'l1' }, el('span', { class: 'dot ' + (r.status === 'active' ? 'working' : r.status === 'completed' ? 'done' : r.status === 'failed' ? 'failed' : 'attention') }), el('span', { text: `${AGENT[r.agent] || r.agent} · ${r.title || 'Working'}` }), el('span', { class: 'spacer', style: 'flex:1' }), el('span', { class: 'chip', text: r.status === 'active' ? 'working' : r.status })),
         el('div', { class: 'l2', text: `${r.status === 'active' ? 'started ' + ago(r.startedAt) : (r.endedAt ? 'ended ' + ago(r.endedAt) + ' · ran ' + dur(r.endedAt - r.startedAt) : '')}${r.lifecycle === 'hooks' ? ' · lifecycle via hooks' : r.lifecycle === 'voluntary' ? ' · reported by the agent' : ''}` }),
-        el('div', { class: 'l2' }, el('button', { class: 'btn small ghost', onclick: () => returnSheet(r) }, 'How to return'), r.agent === 'codex' ? el('button', { class: 'btn small ghost', onclick: () => sendSheet(r) }, 'Send to Codex…') : null)));
+        el('div', { class: 'l2' }, el('button', { class: 'btn small ghost', onclick: () => { closePopover(); returnSheet(r); } }, 'How to return'), r.agent === 'codex' ? el('button', { class: 'btn small ghost', onclick: () => { closePopover(); sendSheet(r); } }, 'Send to Codex…') : null)));
     }
     if (p.path) pop.append(el('div', { class: 'run-row' }, el('div', { class: 'l2' }, 'Folder: ', el('code', { class: 'path', text: p.path }), ' ', el('button', { class: 'btn small ghost', onclick: () => api.openPath(p.path) }, 'Open'))));
-    const rect = anchor.getBoundingClientRect();
-    pop.style.left = Math.min(rect.left, window.innerWidth - 480) + 'px'; pop.style.top = rect.bottom + 8 + 'px';
-    document.body.append(pop); S.popover = pop;
-    setTimeout(() => document.addEventListener('pointerdown', onDocDown), 0);
+    place(pop, anchor);
   }
   function onDocDown(e) { if (S.popover && !S.popover.contains(e.target)) closePopover(); }
   function closePopover() { if (S.popover) { S.popover.remove(); S.popover = null; document.removeEventListener('pointerdown', onDocDown); } }
@@ -468,7 +570,7 @@
 
   function returnSheet(r) {
     const t = S.state.tasks.find(x => x.id === r.task); const who = AGENT[r.agent] || r.agent; const p = project();
-    const responses = Object.entries(user()?.responses || {}).filter(([k]) => k.startsWith(r.id + ':')).map(([, v]) => v.body).filter(Boolean);
+    const responses = Object.entries(user()?.responses || {}).filter(([k]) => k.startsWith((r.id || '§') + ':')).map(([, v]) => v.body).filter(Boolean);
     const source = r.source || t?.source || `Return to the ${who} window where this work started.`;
     const resume = source.match(/(claude --resume \S+|codex resume \S+)/)?.[1];
     sheet([
@@ -479,7 +581,7 @@
         resume ? el('button', { class: 'btn', onclick: () => { api.copy(resume); toast({ text: 'Resume command copied.', ttl: 3500 }); } }, svg(ICON.copy, 12), 'Copy resume command') : null,
         responses.length ? el('button', { class: 'btn primary', onclick: () => { api.copy(responses.join('\n\n')); toast({ text: 'Your replies are on the clipboard.', ttl: 3500 }); } }, svg(ICON.copy, 12), `Copy my repl${responses.length === 1 ? 'y' : 'ies'}`) : null,
         p?.path ? el('button', { class: 'btn ghost', onclick: () => api.openPath(p.path) }, 'Open folder') : null),
-      el('div', { class: 'card-actions', style: 'justify-content:flex-end' }, el('button', { class: 'btn ghost', onclick: closeOverlay }, 'Close'), el('button', { class: 'btn primary', onclick: () => { ack(r.id); closeOverlay(); } }, 'Got it')),
+      el('div', { class: 'card-actions', style: 'justify-content:flex-end' }, el('button', { class: 'btn ghost', onclick: closeOverlay }, 'Close'), r.id ? el('button', { class: 'btn primary', onclick: () => { ack(r.id); closeOverlay(); render(true); } }, 'Got it') : null),
     ]);
   }
 
@@ -494,14 +596,14 @@
     catch (e) { status.textContent = e.message; return; }
     send.addEventListener('click', async () => {
       send.disabled = true;
-      try { const m = await call(api.bridgeSend({ id: crypto.randomUUID(), run: r.id, thread: target.thread, text: ta.value, expectedTurnId: target.activeTurnId })); status.textContent = `${m.status}: ${m.detail}`; if (['accepted', 'queued', 'acknowledged'].includes(m.status)) { toast({ text: `Codex ${m.status}. Acknowledgment ≠ completion.`, ttl: 6000 }); } }
+      try { const m = await call(api.bridgeSend({ id: crypto.randomUUID(), run: r.id, thread: target.thread, text: ta.value, expectedTurnId: target.activeTurnId })); status.textContent = `${m.status}: ${m.detail}`; if (['accepted', 'queued', 'acknowledged'].includes(m.status)) toast({ text: `Codex ${m.status}. Acknowledgment ≠ completion.`, ttl: 6000 }); }
       catch (e) { status.textContent = e.message; send.disabled = false; }
     });
   }
 
   async function addWorkspace() {
     const name = el('input', { class: 'input', placeholder: 'Name' }); const folder = el('input', { class: 'input', placeholder: 'Folder (optional, lets agents find it)' });
-    sheet([el('h2', { text: 'New workspace' }), el('p', { class: 't-body', text: 'Workspaces are created automatically when an agent starts in a folder. Add one by hand to keep notes before that happens.' }),
+    sheet([el('h2', { text: 'New workspace' }), el('p', { class: 't-body', text: 'Workspaces are created automatically when an agent starts in a folder. Add one by hand to keep notes and tickets before that happens.' }),
       el('div', { class: 'field' }, el('label', { text: 'Name' }), name),
       el('div', { class: 'field' }, el('label', { text: 'Folder' }), el('div', { style: 'display:flex;gap:8px' }, folder, el('button', { class: 'btn', onclick: async () => { const f = await call(api.pickFolder()); if (f) { folder.value = f; if (!name.value) name.value = f.split(/[\\/]/).filter(Boolean).pop(); } } }, 'Choose…'))),
       el('div', { class: 'card-actions', style: 'justify-content:flex-end' }, el('button', { class: 'btn ghost', onclick: closeOverlay }, 'Cancel'), el('button', { class: 'btn primary', onclick: async () => { if (!name.value.trim() && !folder.value.trim()) return; const p = await call(api.createProject(name.value.trim(), folder.value.trim())); closeOverlay(); S.state = await call(api.getState()); await switchProject(p.id); } }, 'Create'))]);
@@ -526,7 +628,8 @@
       const draw = () => {
         row.textContent = '';
         const connected = info.connected; const stale = connected && !(info.skillCurrent && info.hooksCurrent);
-        row.append(...[el('span', { class: 'dot ' + (connected ? 'done' : 'quiet'), style: connected ? '' : 'background:var(--border-strong)' }),
+        row.append(...[
+          el('span', { class: 'dot ' + (connected ? 'done' : 'quiet'), style: connected ? '' : 'background:var(--border-strong)' }),
           el('div', { class: 'l' }, el('b', { text: label }), el('span', { text: connected ? (stale ? 'Connected · update available' : 'Connected: skill and lifecycle hooks installed') : 'Not connected. One click installs the skill and hooks in your user settings.' }),
             id === 'codex' && connected ? el('span', { text: 'Codex asks you to trust hooks once: type /hooks in Codex and approve the Layover entries.' }) : null, info.hooksError ? el('span', { style: 'color:var(--danger)', text: 'Hooks file could not be read: ' + info.hooksError }) : null),
           connected ? el('button', { class: 'btn small ghost', onclick: async () => { await call(api.setupRemove(id)); info = (await call(api.setupStatus()))[id]; draw(); } }, 'Disconnect') : null,
@@ -534,22 +637,27 @@
       };
       draw(); return row;
     };
+    const p = project();
     const content = [
       el('h2', { text: onboarding ? 'Welcome to Layover' : 'Settings' }),
-      onboarding ? el('p', { class: 't-body', text: 'Layover is the room you wait in while an agent works: a notebook for the project, a place for what the agent wants you to know, and a break when you want one. Connect your agents so they can open it for you.' }) : null,
+      onboarding ? el('p', { class: 't-body', text: 'Layover is the room you wait in while an agent works: a notebook for the project, threads of what each agent decides and asks, tickets for what comes next, and a break when you want one. Connect your agents so they can open it for you.' }) : null,
       el('div', { class: 'sheet-sec' }, el('h3', { text: 'Agents' }), agentRow('claude', 'Claude Code', st.claude), agentRow('codex', 'Codex', st.codex),
         el('p', { class: 't-small' }, 'Command agents use: ', el('code', { class: 'path', text: st.cli }), ' ', el('button', { class: 'btn small ghost', onclick: () => api.copy(st.cli) }, 'Copy'), st.cliExists ? null : el('span', { style: 'color:var(--danger)', text: ' (missing)' }))),
     ];
     if (!onboarding) content.push(
-      el('div', { class: 'sheet-sec' }, el('h3', { text: 'When an agent starts a run' }),
-        seg([['open', 'Open Layover'], ['reveal', 'Only if already open'], ['never', 'Stay quiet']], s.openOnRunStart, v => { s.openOnRunStart = v; api.setSettings({ openOnRunStart: v }); }),
-        el('p', { class: 't-small', text: 'Layover never takes focus from what you are doing. It appears behind your work, and offers to switch workspaces only when you are not typing.' }),
-        switchRow('Windows notification when a run finishes', 'Silent toast; only when Layover is not in front.', s.notifyOnComplete, v => api.setSettings({ notifyOnComplete: v })),
+      el('div', { class: 'sheet-sec' }, el('h3', { text: 'When an agent starts a turn' }),
+        seg([['focus', 'Bring Layover forward'], ['open', 'Open behind my work'], ['reveal', 'Only if already open'], ['never', 'Stay quiet']], s.openOnRunStart, v => { s.openOnRunStart = v; api.setSettings({ openOnRunStart: v }); }),
+        el('p', { class: 't-small', text: 'Only the start of a turn can bring Layover forward; items and completions never move the window. A switch to another workspace is offered, not forced, while you are typing.' }),
+        switchRow('Windows notification when a turn finishes', 'Silent toast; only when Layover is not in front.', s.notifyOnComplete, v => api.setSettings({ notifyOnComplete: v })),
         switchRow('Keep running in the tray when the window is closed', 'Needed so agents can reach it.', s.closeToTray, v => api.setSettings({ closeToTray: v })),
         switchRow('Tell the agent its run id', 'One short line per prompt so it can publish items without guessing. Off saves a few tokens.', s.hookContext, v => api.setSettings({ hookContext: v }))),
+      p ? el('div', { class: 'sheet-sec' }, el('h3', { text: 'This workspace' }),
+        el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'Ticket prefix' }), el('span', { text: 'Up to 4 capital letters or digits.' })), el('input', { class: 'input', style: 'width:90px', maxlength: '4', value: p.prefix, onchange: async e => { try { await call(api.setProjectMeta(p.id, { prefix: e.target.value.toUpperCase() })); } catch (err) { toast({ text: err.message, ttl: 5000 }); } } })),
+        el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'Colour' })), el('div', { class: 'row' }, ...['clay', 'gold', 'moss', 'teal', 'slate', 'plum'].map(c => el('button', { class: 'ws-tok', style: `background:var(--ws-${c});width:26px;height:26px;border:${c === p.color ? '2px solid var(--text)' : 'none'};cursor:pointer`, title: c, onclick: () => api.setProjectMeta(p.id, { color: c }) })))),
+        el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'Display name' })), el('input', { class: 'input', style: 'width:220px', value: p.displayName, placeholder: p.name, onchange: e => api.setProjectMeta(p.id, { name: e.target.value }) }))) : null,
       el('div', { class: 'sheet-sec' }, el('h3', { text: 'Appearance' }), seg([['system', 'Match system'], ['light', 'Light'], ['dark', 'Dark']], s.theme, v => { s.theme = v; api.setSettings({ theme: v }); })),
       el('div', { class: 'sheet-sec' }, el('h3', { text: 'About' }), el('p', { class: 't-small' }, `Layover ${s.version} · data in `, el('code', { class: 'path', text: s.dataDir }), ' ', el('button', { class: 'btn small ghost', onclick: () => api.openPath(s.dataDir) }, 'Open'), ' · local service on 127.0.0.1:' + s.port + '. Layover makes no model calls.'),
-        el('p', { class: 't-small' }, 'Shortcuts: ', el('kbd', { text: 'Ctrl' }), '+', el('kbd', { text: '1–4' }), ' views · ', el('kbd', { text: 'Ctrl' }), '+', el('kbd', { text: 'N' }), ' new draft · ', el('kbd', { text: 'Ctrl' }), '+', el('kbd', { text: 'Shift' }), '+', el('kbd', { text: 'C' }), ' compact')));
+        el('p', { class: 't-small' }, 'Shortcuts: ', el('kbd', { text: 'Ctrl' }), '+', el('kbd', { text: '1–4' }), ' views · ', el('kbd', { text: 'Ctrl' }), '+', el('kbd', { text: 'N' }), ' new ticket · ', el('kbd', { text: 'Ctrl' }), '+', el('kbd', { text: 'Shift' }), '+', el('kbd', { text: 'C' }), ' compact')));
     content.push(el('div', { class: 'card-actions', style: 'justify-content:flex-end' }, el('button', { class: 'btn primary', onclick: async () => { if (onboarding) { S.settings.onboarded = true; await api.setSettings({ onboarded: true }); } closeOverlay(); } }, onboarding ? 'Done' : 'Close')));
     sheet(content);
   }

@@ -78,7 +78,7 @@ async function runHook(agent) {
   const { events, context, open } = mapHook(agent, input, { hookContext: settings.hookContext !== false });
   if (!events.length) return;
   const isStart = events.some(e => e.type === 'start');
-  const wantsWindow = isStart && settings.openOnRunStart === 'open';
+  const wantsWindow = isStart && ['focus', 'open'].includes(settings.openOnRunStart || 'focus');
   let status = await health() ? 'running' : null;
   if (!status) {
     if (settings.autoStart === false) status = 'unavailable';
@@ -145,7 +145,7 @@ async function main() {
       { ...base, id: crypto.randomUUID(), type: 'start', run, seq: 0, title: flags.title || 'Working', source, lifecycle: 'voluntary' },
     ];
     const settings = readSettings();
-    const wantsWindow = !!flags.open || settings.openOnRunStart === 'open';
+    const wantsWindow = !!flags.open || ['focus', 'open'].includes(settings.openOnRunStart || 'focus');
     const r = await deliver(events, { open: wantsWindow ? { project, task, run, reason: 'run-start' } : null, background: !wantsWindow });
     if (r.status === 'unavailable') throw Error('Layover could not be started; events were saved for its next launch.');
     const err = r.results.find(x => x.error); if (err) throw Error(err.error);

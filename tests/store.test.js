@@ -123,18 +123,39 @@ test('user content: notes conflict, next entries, responses, dismissals persist'
   s.event(start('r1'));
   assert.deepEqual(s.setNotes('p1', 'hello', 0), { revision: 1 });
   assert.equal(s.setNotes('p1', 'stale', 0).conflict, true);
-  const n = s.upsertNext('p1', { kind: 'prompt', title: 'Tomorrow', body: 'Refactor exports' });
-  s.upsertNext('p1', { id: n.id, status: 'done' });
+  const t = s.upsertTicket('p1', { title: 'Tomorrow', prompt: 'Refactor exports', status: 'backlog' });
+  assert.equal(t.number, 1);
+  const t2 = s.upsertTicket('p1', { title: 'Second' });
+  assert.equal(t2.number, 2); assert.equal(t2.status, 'todo');
+  s.upsertTicket('p1', { id: t.id, status: 'done', priority: 3 });
+  assert.throws(() => s.upsertTicket('p1', { id: t.id, status: 'later' }), /status/);
   s.respond('p1', 'r1:d1', 'I agree');
   s.dismiss('p1', 'r1:d1');
   s.close();
   s = new Store(dir);
   const u = s.user('p1');
   assert.equal(u.notes.body, 'hello');
-  assert.equal(u.next[0].status, 'done');
+  const done = u.tickets.find(x => x.id === t.id);
+  assert.equal(done.status, 'done'); assert.equal(done.priority, 3); assert.ok(done.completedAt > 0);
+  assert.equal(s.state().projects[0].prefix, 'DEM');
+  s.deleteTicket('p1', t2.id);
+  assert.equal(s.user('p1').tickets.length, 1);
   assert.equal(u.responses['r1:d1'].body, 'I agree');
   assert.ok(u.dismissed['r1:d1']);
   assert.equal(s.state().projects[0].color, 'clay');
+  s.close();
+});
+
+test('legacy "next" entries migrate into tickets', () => {
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, 'user.json'), JSON.stringify({ version: 1, projects: { p1: { color: 'teal', name: '', hidden: false, notes: { body: '', revision: 0 }, next: [{ id: 'n_1', kind: 'prompt', title: 'Ship it', body: 'Do the thing', status: 'open', createdAt: 1, updatedAt: 2 }, { id: 'n_2', kind: 'idea', title: 'Later', body: 'Maybe', status: 'done', createdAt: 1, updatedAt: 2 }], responses: {}, dismissed: {}, place: {} } } }));
+  const s = new Store(dir);
+  const u = s.user('p1');
+  assert.equal(u.next, undefined);
+  assert.equal(u.tickets.length, 2);
+  assert.equal(u.tickets[0].prompt, 'Do the thing'); assert.equal(u.tickets[0].status, 'backlog');
+  assert.equal(u.tickets[1].description, 'Maybe'); assert.equal(u.tickets[1].status, 'done');
+  assert.equal(s.upsertTicket('p1', { title: 'New' }).number, 3);
   s.close();
 });
 

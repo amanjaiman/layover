@@ -1,7 +1,7 @@
 {
   "name": "layover",
   "productName": "Layover",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A calm companion for the time while your coding agent works.",
   "main": "src/main/main.js",
   "type": "module",

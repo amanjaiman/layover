@@ -4,10 +4,10 @@ import path from 'node:path';
 import { settingsFile } from './paths.js';
 
 export const DEFAULTS = {
-  version: 1,
+  version: 2,
   onboarded: false,
   theme: 'system',                 // system | light | dark
-  openOnRunStart: 'reveal',        // open: show the window (without stealing focus) | reveal: only if already running | never
+  openOnRunStart: 'focus',         // focus: bring Layover forward | open: show it behind your work | reveal: only if already open | never
   notifyOnComplete: true,          // Windows toast when a run finishes
   closeToTray: true,               // closing the window keeps Layover in the tray
   hookContext: true,               // hooks print one short line so the agent knows the run id
@@ -18,6 +18,7 @@ export const DEFAULTS = {
 export function loadSettings(file = settingsFile) {
   let s = {};
   try { if (fs.existsSync(file)) s = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { s = {}; }
+  if (!s.version || s.version < 2) { if (s.openOnRunStart === 'reveal') s.openOnRunStart = 'focus'; s.version = 2; } // v1 default never surfaced a hook-launched app
   return merge(structuredClone(DEFAULTS), s);
 }
 
@@ -41,7 +42,7 @@ function merge(base, extra) {
 export function validateSettings(patch) {
   const out = {};
   if (patch.theme !== undefined) { if (!['system', 'light', 'dark'].includes(patch.theme)) throw Error('Invalid theme'); out.theme = patch.theme; }
-  if (patch.openOnRunStart !== undefined) { if (!['open', 'reveal', 'never'].includes(patch.openOnRunStart)) throw Error('Invalid openOnRunStart'); out.openOnRunStart = patch.openOnRunStart; }
+  if (patch.openOnRunStart !== undefined) { if (!['focus', 'open', 'reveal', 'never'].includes(patch.openOnRunStart)) throw Error('Invalid openOnRunStart'); out.openOnRunStart = patch.openOnRunStart; }
   for (const k of ['notifyOnComplete', 'closeToTray', 'hookContext', 'onboarded']) if (patch[k] !== undefined) out[k] = !!patch[k];
   if (patch.breakReminder !== undefined) {
     const b = patch.breakReminder || {};

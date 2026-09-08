@@ -31,7 +31,32 @@ function atomicWrite(file, body) {
 }
 
 function emptyUserProject() {
-  return { color: '', name: '', hidden: false, notes: { body: '', revision: 0 }, next: [], responses: {}, dismissed: {}, place: {} };
+  return { color: '', name: '', hidden: false, prefix: '', notes: { body: '', revision: 0 }, tickets: [], ticketSeq: 0, responses: {}, dismissed: {}, place: {} };
+}
+
+export const TICKET_STATUS = ['backlog', 'todo', 'progress', 'done', 'cancelled'];
+export const TICKET_PRIORITY = [0, 1, 2, 3, 4]; // none, low, medium, high, urgent
+
+/** Ticket key prefix from a workspace name: "agent-companion-phase1" -> ACP, "layover" -> LAY. */
+export function ticketPrefix(name) {
+  const words = String(name || 'WS').split(/[^a-z0-9]+/i).filter(Boolean);
+  const s = words.length >= 2 ? words.map(w => w[0]).join('').slice(0, 3) : words[0]?.slice(0, 3) || 'WS';
+  return s.toUpperCase();
+}
+
+/** One-time migration of the phase-two "Next" entries into tickets. */
+function migrateUserProject(u) {
+  if (Array.isArray(u.tickets)) return u;
+  const now = Date.now();
+  u.tickets = (u.next || []).map((n, i) => ({
+    id: n.id || 't_' + now.toString(36) + i, number: i + 1, title: n.title || '', description: n.kind === 'prompt' ? '' : n.body || '',
+    prompt: n.kind === 'prompt' ? n.body || '' : '', status: n.status === 'done' ? 'done' : n.status === 'archived' ? 'cancelled' : 'backlog',
+    priority: 0, fromItem: n.fromItem || null, createdAt: n.createdAt || now, updatedAt: n.updatedAt || now, completedAt: n.status === 'done' ? n.updatedAt || now : 0,
+  }));
+  u.ticketSeq = u.tickets.length;
+  delete u.next;
+  u.prefix ??= '';
+  return u;
 }
 
 export class Store {
@@ -234,11 +259,12 @@ export class Store {
   // ---------- user content (never sent anywhere by itself) ----------
   userProject(id) {
     if (!isId(id)) throw Error('Invalid project');
-    return (this.userDoc.projects[id] ??= emptyUserProject());
+    return migrateUserProject(this.userDoc.projects[id] ??= emptyUserProject());
   }
   projectMeta(id) {
     const u = this.userDoc.projects[id] || {};
-    return { color: u.color || 'teal', displayName: u.name || '', hidden: !!u.hidden };
+    const p = this.projects.get(id);
+    return { color: u.color || 'teal', displayName: u.name || '', hidden: !!u.hidden, prefix: u.prefix || ticketPrefix(u.name || p?.name || id) };
   }
   user(id) { return structuredClone(this.userProject(id)); }
 
@@ -258,11 +284,12 @@ export class Store {
     return p;
   }
 
-  setProjectMeta(id, { color, name, hidden }) {
+  setProjectMeta(id, { color, name, hidden, prefix }) {
     const u = this.userProject(id);
     if (color !== undefined) { if (!COLORS.includes(color)) throw Error('Invalid color'); u.color = color; }
     if (name !== undefined) u.name = text(name, 120, 'name');
     if (hidden !== undefined) u.hidden = !!hidden;
+    if (prefix !== undefined) { if (typeof prefix !== 'string' || !/^[A-Z0-9]{0,4}$/.test(prefix)) throw Error('Prefix: up to 4 capital letters or digits'); u.prefix = prefix; }
     this.saveUser(); this.emit({ type: 'project', project: id });
     return this.projectMeta(id);
   }
@@ -277,26 +304,32 @@ export class Store {
     return { revision: u.notes.revision };
   }
 
-  upsertNext(id, entry) {
+  /** Create or update a ticket. New tickets get the next number in this workspace. */
+  upsertTicket(id, t) {
     const u = this.userProject(id);
-    if (!entry || typeof entry !== 'object') throw Error('Invalid entry');
+    if (!t || typeof t !== 'object') throw Error('Invalid ticket');
     const now = Date.now();
-    let e = entry.id ? u.next.find(n => n.id === entry.id) : null;
+    let e = t.id ? u.tickets.find(x => x.id === t.id) : null;
     if (!e) {
-      e = { id: entry.id && isId(entry.id) ? entry.id : 'n_' + now.toString(36) + Math.random().toString(36).slice(2, 7), kind: 'idea', title: '', body: '', status: 'open', createdAt: now, updatedAt: now, fromItem: entry.fromItem || null };
-      u.next.unshift(e);
+      e = { id: t.id && isId(t.id) ? t.id : 't_' + now.toString(36) + Math.random().toString(36).slice(2, 7), number: ++u.ticketSeq, title: '', description: '', prompt: '', status: 'todo', priority: 0, fromItem: t.fromItem || null, createdAt: now, updatedAt: now, completedAt: 0 };
+      u.tickets.unshift(e);
     }
-    if (entry.kind !== undefined) { if (!['idea', 'prompt', 'task'].includes(entry.kind)) throw Error('Invalid kind'); e.kind = entry.kind; }
-    if (entry.title !== undefined) e.title = text(entry.title, 300, 'title');
-    if (entry.body !== undefined) e.body = text(entry.body, MAX_TEXT * 4, 'body');
-    if (entry.status !== undefined) { if (!['open', 'done', 'archived'].includes(entry.status)) throw Error('Invalid status'); e.status = entry.status; }
+    if (t.title !== undefined) e.title = text(t.title, 300, 'title');
+    if (t.description !== undefined) e.description = text(t.description, MAX_TEXT * 4, 'description');
+    if (t.prompt !== undefined) e.prompt = text(t.prompt, MAX_TEXT * 4, 'prompt');
+    if (t.status !== undefined) {
+      if (!TICKET_STATUS.includes(t.status)) throw Error('Invalid status');
+      if (t.status !== e.status) e.completedAt = t.status === 'done' || t.status === 'cancelled' ? now : 0;
+      e.status = t.status;
+    }
+    if (t.priority !== undefined) { if (!TICKET_PRIORITY.includes(Number(t.priority))) throw Error('Invalid priority'); e.priority = Number(t.priority); }
     e.updatedAt = now;
     this.saveUser();
     return structuredClone(e);
   }
-  deleteNext(id, entryId) {
+  deleteTicket(id, ticketId) {
     const u = this.userProject(id);
-    u.next = u.next.filter(n => n.id !== entryId);
+    u.tickets = u.tickets.filter(x => x.id !== ticketId);
     this.saveUser();
   }
 

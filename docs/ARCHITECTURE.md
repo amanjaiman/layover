@@ -52,7 +52,7 @@ Human-readable names travel with events (`projectName`, `title`) and are shown; 
 
 Rules the store enforces: an `id` used twice must carry identical JSON (retries are free, reuse is an error); project/task/agent of a run never change; a task's project/agent never change. Statuses are computed at read time: a voluntary run with no event for 2 minutes shows `disconnected` ("no recent signal", not failure); a hook-driven run does so after 6 hours. A notification item resolves itself when its run ends.
 
-User content (notes, Next entries, responses to items, dismissals, place) lives in `user.json` and is never sent anywhere. Notes use optimistic revisions: a stale save returns a conflict and the UI keeps both texts.
+User content (notes, tickets, responses to items, dismissals, place) lives in `user.json` and is never sent anywhere. Tickets carry `number` (per-workspace counter), `status` (`backlog|todo|progress|done|cancelled`), `priority` (0–4), `description` and a `prompt` draft; the displayed key is the workspace prefix plus the number. Phase-two "Next" entries migrate to tickets on first load. Notes use optimistic revisions: a stale save returns a conflict and the UI keeps both texts.
 
 ## Hook mapping
 
@@ -72,8 +72,8 @@ Hooks call `layover.cmd hook <agent>`, which reads JSON from stdin, maps it, che
 
 ## Opening and focus
 
-- `layover open` and an explicit `--open` launch route to the workspace. If the window is hidden it is shown *inactive*; if minimized it flashes; focus is never taken.
-- A hook-driven `start` follows the setting *When an agent starts a run*: **Open Layover** (show inactive), **Only if already open**, **Stay quiet**.
+- `layover open` and an explicit `--open` launch route to the workspace and bring the window forward (an explicit request is allowed to take focus).
+- A hook-driven `start` follows the setting *When an agent starts a turn*: **Bring Layover forward** (default; the window is briefly pinned on top while shown and focused, because Windows refuses foreground changes from background processes), **Open behind my work** (show inactive), **Only if already open**, **Stay quiet**. Items and `end` events never move the window.
 - The renderer switches workspaces on its own only when the user is not engaged (no keystroke or click in the last few seconds, no cursor in an editor). Otherwise it offers a switch in a toast that stays until answered.
 - Completion shows a banner in that workspace and, if Layover is not the foreground window, a silent Windows toast. Neither changes the selected workspace.
 
