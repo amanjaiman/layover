@@ -313,7 +313,7 @@
     const mod = e.ctrlKey || e.metaKey;
     if (e.key === 'Escape') {
       if ($('#overlay').firstChild || S.popover) { closeOverlay(); closePopover(); return; }
-      if (S.view === 'tickets' && S.ticket) { S.ticket = null; savePlace(); render(true); return; }
+      if (S.view === 'tickets' && S.ticket) { S.ticket = null; savePlace(); refreshTicketDetail(); return; }
       if (typing()) document.activeElement.blur();
       return;
     }
@@ -392,14 +392,15 @@
     const v = $('#view');
     if (!force && key === S.viewKey && S.view !== 'now') return;
     if (S.view === 'now' && !force && key === S.viewKey && isEngaged()) { deferRefresh(); return; }
-    const keepScroll = key === S.viewKey ? v.scrollTop : 0;
+    const changed = key !== S.viewKey;
+    const keepScroll = changed ? 0 : v.scrollTop;
     S.viewKey = key; S.pendingRefresh = false;
     v.textContent = '';
     v.className = 'view view-' + S.view;
     if (!S.project) { v.append(el('div', { class: 'empty' }, el('p', {}, el('b', { text: 'Nothing here yet.' }), ' Layover fills in when Claude Code or Codex starts working in a folder. Connect them in Settings, or add a workspace by hand.'), el('p', { style: 'margin-top:12px' }, el('button', { class: 'btn', onclick: () => openSettings({}) }, 'Open Settings')))); return; }
     const wrap = el('div', { class: 'view-in' });
     ({ now: renderNow, tickets: renderTickets, notes: renderNotes, break: renderBreak })[S.view](wrap);
-    if (!keepScroll) wrap.classList.add('enter'); // a new page settles in; an in-place refresh stays still
+    if (changed) wrap.classList.add('enter'); // a new page settles in; an in-place refresh stays still
     v.append(wrap);
     if (keepScroll) v.scrollTop = keepScroll;
   }
@@ -536,7 +537,7 @@
       // Only proposals can be promoted into Next; a decision or a question is not something to do later.
       i.kind === 'opportunity' || i.kind === 'suggestion' ? el('button', { class: 'btn small ghost', onclick: () => ticketFromItem(i) }, svg(ICON.plus, 12), ...lbl('Add to Next', 'Next')) : null,
       el('span', { class: 'spacer' }),
-      i.status === 'open' ? el('button', { class: 'btn small ghost', title: 'Dismiss', onclick: async () => { await api.dismiss(S.project, i.key, true); const uu = user(); if (uu) uu.dismissed[i.key] = Date.now(); render(true); } }, svg(ICON.x, 12), el('span', { class: 'l', text: 'Dismiss' })) : el('span', { class: 'chip', text: i.status }));
+      i.status === 'open' ? el('button', { class: 'btn small ghost', title: 'Dismiss', onclick: async (e) => { await api.dismiss(S.project, i.key, true); const uu = user(); if (uu) uu.dismissed[i.key] = Date.now(); e.currentTarget.closest('.tl-item')?.remove(); renderHead(); renderRail(); renderCompactNav(); } }, svg(ICON.x, 12), el('span', { class: 'l', text: 'Dismiss' })) : el('span', { class: 'chip', text: i.status }));
     row.append(actions, respBox);
     drawResp();
     return row;
@@ -552,7 +553,7 @@
     const row = el('div', { class: 'tl-end ' + cls + (acked ? ' acked' : '') }, agentIcon(r.agent, 16), el('span', { class: 'tl-end-text' }, acked ? text : [el('b', { text: r.status === 'completed' ? 'Ready when you are. ' : '' }), text]), el('span', { class: 'tl-time', text: clock(r.endedAt || r.lastSeen) }));
     if (!acked) row.append(el('span', { class: 'tl-end-actions' }, el('button', { class: 'btn small primary', title: `Return to ${who}`, onclick: () => returnTo(r) }, 'Return', svg(ICON.arrow, 12)),
       ticket && ticket.status !== 'done' && r.status === 'completed' ? el('button', { class: 'btn small', onclick: () => setTicket(ticket, { status: 'done' }) }, svg(ICON.check, 12), ...lbl(`Mark ${ticketKey(ticket)} done`, 'Done')) : null,
-      el('button', { class: 'btn small ghost', onclick: () => { ack(r.id); render(true); } }, ...lbl('Got it', 'OK'))));
+      el('button', { class: 'btn small ghost', onclick: (e) => { ack(r.id); const row = e.currentTarget.closest('.tl-end'); if (row) row.replaceWith(endEntry(r, who, true, ticket)); } }, ...lbl('Got it', 'OK'))));
     return row;
   }
 
@@ -618,7 +619,7 @@
     const visible = all.filter(t => FILTERS[S.ticketFilter].includes(t.status));
     const bar = el('div', { class: 'tk-bar' },
       el('button', { class: 'btn primary', onclick: () => newTicket() }, svg(ICON.plus, 12), 'New'),
-      seg([['active', 'Active'], ['done', 'Done']], S.ticketFilter, v => { S.ticketFilter = v; savePlace(); render(true); }),
+      seg([['active', 'Active'], ['done', 'Done']], S.ticketFilter, v => { S.ticketFilter = v; savePlace(); refreshTicketList(); }),
       el('span', { class: 'spacer' }),
       el('span', { class: 't-small l', text: visible.length + ' of ' + all.length }));
     const split = el('div', { class: 'tk-split' + (S.ticket ? ' has-detail' : '') });
@@ -635,11 +636,43 @@
     if (sel) split.append(ticketDetail(sel)); else S.ticket = null;
     wrap.append(bar, split);
   }
+  /** Rebuild just the rows (grouping and counts), leaving the toolbar and the detail panel alone. */
+  function refreshTicketList() {
+    const u = user(); const list = $('.tk-list'); if (!u || !list) { render(true); return; }
+    const all = u.tickets, visible = all.filter(x => FILTERS[S.ticketFilter].includes(x.status));
+    const fresh = el('div', { class: 'tk-list' });
+    if (!visible.length) fresh.append(el('div', { class: 'empty' }, el('p', {}, el('b', { text: all.length ? 'Nothing in this view.' : 'Nothing lined up yet.' }), all.length ? '' : ' Press n to add something.')));
+    for (const st of STATUS_ORDER) {
+      const rows = visible.filter(x => x.status === st).sort((a, b) => b.priority - a.priority || b.updatedAt - a.updatedAt);
+      if (!rows.length) continue;
+      fresh.append(el('div', { class: 'tk-group' }, el('span', { text: STATUS[st] }), el('span', { class: 'faint', text: String(rows.length) })));
+      for (const x of rows) fresh.append(ticketRow(x));
+    }
+    list.replaceWith(fresh);
+    const count = $('.tk-bar .t-small'); if (count) count.textContent = visible.length + ' of ' + all.length;
+    renderHead(); renderCompactNav();
+  }
+  /** Swap one row for a fresh copy of itself (title, priority, prompt state), without touching neighbours. */
+  function refreshTicketRow(t) {
+    const item = document.querySelector('.tk-item[data-id="' + t.id + '"]');
+    if (item) item.replaceWith(ticketRow(t)); else refreshTicketList();
+  }
+  /** Show, replace, or remove the detail panel without rebuilding the list. */
+  function refreshTicketDetail() {
+    const split = $('.tk-split'); if (!split) { render(true); return; }
+    const u = user(); const sel = S.ticket ? u?.tickets.find(x => x.id === S.ticket) : null;
+    const old = split.querySelector('.tk-detail');
+    if (sel) { const d = ticketDetail(sel); if (old) old.replaceWith(d); else split.append(d); }
+    else if (old) old.remove();
+    split.classList.toggle('has-detail', !!sel);
+    document.querySelectorAll('.tk-row').forEach(r => r.classList.toggle('selected', r.closest('.tk-item')?.dataset.id === S.ticket));
+    if (S.mode === 'compact') { const list = $('.tk-list'); if (list) list.style.display = sel ? 'none' : ''; }
+  }
   /** One entry: the row, plus a prompt editor that folds open underneath it. */
   function ticketRow(t) {
     const open = S.promptOpen.has(t.id);
     const item = el('div', { class: 'tk-item' + (open ? ' open' : ''), dataset: { id: t.id } });
-    const select = () => { S.ticket = t.id; savePlace(); render(true); };
+    const select = () => { if (S.ticket === t.id) return; S.ticket = t.id; savePlace(); refreshTicketDetail(); };
     const row = el('div', { class: 'tk-row' + (t.id === S.ticket ? ' selected' : '') + (t.status === 'done' || t.status === 'cancelled' ? ' closed' : ''), role: 'button', tabindex: '0',
       onclick: e => { if (!e.target.closest('button, input, textarea')) select(); }, onkeydown: e => { if (e.key === 'Enter' && e.target === row) select(); } });
     const editing = S.editingTitle === t.id;
@@ -649,9 +682,9 @@
           const commit = async (cancel) => {
             if (done) return; done = true; S.editingTitle = null;
             const v = cancel ? '' : input.value.trim();
-            if (!v && !t.description && !t.prompt) { await api.deleteTicket(S.project, t.id); const uu = user(); uu.tickets = uu.tickets.filter(x => x.id !== t.id); }
-            else if (v && v !== t.title) { const saved = await call(api.upsertTicket(S.project, { id: t.id, title: v })); Object.assign(t, saved); }
-            render(true);
+            if (!v && !t.description && !t.prompt) { await api.deleteTicket(S.project, t.id); const uu = user(); uu.tickets = uu.tickets.filter(x => x.id !== t.id); refreshTicketList(); return; }
+            if (v && v !== t.title) { const saved = await call(api.upsertTicket(S.project, { id: t.id, title: v })); Object.assign(t, saved); }
+            refreshTicketRow(t);
           };
           const input = el('input', { class: 'tk-title-row', placeholder: 'What needs doing?', 'aria-label': 'Title', value: t.title,
             onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); commit(false); } else if (e.key === 'Escape') { e.stopPropagation(); commit(true); } },
@@ -713,7 +746,8 @@
   async function setTicket(t, patch) {
     const saved = await call(api.upsertTicket(S.project, { id: t.id, ...patch }));
     const u = user(); const idx = u.tickets.findIndex(x => x.id === t.id); if (idx >= 0) u.tickets[idx] = saved;
-    render(true);
+    Object.assign(t, saved);
+    if (S.view === 'tickets') { refreshTicketList(); if (S.ticket === t.id) refreshTicketDetail(); } else renderHead();
     return saved;
   }
   /** New entry: an inline title on a fresh row. Enter keeps it, Escape drops it. */
@@ -722,7 +756,7 @@
     if (S.ticketFilter !== 'active') { S.ticketFilter = 'active'; savePlace(); }
     const t = await call(api.upsertTicket(S.project, { title: '', status: 'todo' }));
     u.tickets.unshift(t); S.editingTitle = t.id;
-    render(true);
+    if (S.view === 'tickets' && $('.tk-list')) refreshTicketList(); else render(true);
   }
   function ticketDetail(t) {
     const d = el('div', { class: 'tk-detail card' });
@@ -737,14 +771,14 @@
     const prioSel = pick({ label: 'Priority', value: t.priority, options: PRIORITY.map((p, i) => [i, p, () => priorityGlyph(i)]), onPick: v => setTicket(t, { priority: Number(v) }) });
     const linked = (t.runs || []).map(id => S.state.runs.find(r => r.id === id)).filter(Boolean);
     d.append(...[
-      el('div', { class: 'tk-detail-h' }, S.mode === 'compact' ? el('button', { class: 'icon-btn', 'aria-label': 'Back', onclick: () => { S.ticket = null; savePlace(); render(true); } }, svg(ICON.back, 14)) : null, el('span', { class: 'tk-key', text: ticketKey(t) }), el('span', { class: 'spacer' }),
-        el('button', { class: 'icon-btn', title: 'Delete', 'aria-label': 'Delete', onclick: async () => { await api.deleteTicket(S.project, t.id); u.tickets = u.tickets.filter(x => x.id !== t.id); S.ticket = null; render(true); } }, svg(ICON.trash, 14)),
-        S.mode !== 'compact' ? el('button', { class: 'icon-btn', 'aria-label': 'Close', onclick: () => { S.ticket = null; savePlace(); render(true); } }, svg(ICON.x, 14)) : null),
+      el('div', { class: 'tk-detail-h' }, S.mode === 'compact' ? el('button', { class: 'icon-btn', 'aria-label': 'Back', onclick: () => { S.ticket = null; savePlace(); refreshTicketDetail(); } }, svg(ICON.back, 14)) : null, el('span', { class: 'tk-key', text: ticketKey(t) }), el('span', { class: 'spacer' }),
+        el('button', { class: 'icon-btn', title: 'Delete', 'aria-label': 'Delete', onclick: async () => { await api.deleteTicket(S.project, t.id); u.tickets = u.tickets.filter(x => x.id !== t.id); S.ticket = null; refreshTicketDetail(); refreshTicketList(); } }, svg(ICON.trash, 14)),
+        S.mode !== 'compact' ? el('button', { class: 'icon-btn', 'aria-label': 'Close', onclick: () => { S.ticket = null; savePlace(); refreshTicketDetail(); } }, svg(ICON.x, 14)) : null),
       el('div', { class: 'tk-detail-c' }, statusSel, prioSel),
       title,
       el('div', { class: 'field' }, el('label', { text: 'Description' }), desc),
       el('div', { class: 'tk-detail-f' },
-        el('button', { class: 'btn small', onclick: () => { const item = document.querySelector('.tk-item[data-id="' + t.id + '"]'); if (item && !item.classList.contains('open')) togglePrompt(t, item); item?.querySelector('textarea')?.focus(); if (S.mode === 'compact') { S.ticket = null; S.promptOpen.add(t.id); render(true); } } }, svg('M3 13l1-4 7-7 3 3-7 7-4 1z', 12), ...lbl(t.prompt ? 'Edit prompt' : 'Draft prompt', 'Prompt')),
+        el('button', { class: 'btn small', onclick: () => { const item = document.querySelector('.tk-item[data-id="' + t.id + '"]'); if (item && !item.classList.contains('open')) togglePrompt(t, item); item?.querySelector('textarea')?.focus(); if (S.mode === 'compact') { S.ticket = null; S.promptOpen.add(t.id); refreshTicketDetail(); refreshTicketRow(t); } } }, svg('M3 13l1-4 7-7 3 3-7 7-4 1z', 12), ...lbl(t.prompt ? 'Edit prompt' : 'Draft prompt', 'Prompt')),
         t.status !== 'done' ? el('button', { class: 'btn small', onclick: () => setTicket(t, { status: 'done' }) }, svg(ICON.check, 12), ...lbl('Mark done', 'Done')) : el('button', { class: 'btn small', onclick: () => setTicket(t, { status: 'todo' }) }, 'Reopen'),
         el('span', { class: 'spacer' }), meta),
       linked.length ? el('p', { class: 't-small' }, 'Worked on by ' + [...new Set(linked.map(r => AGENT[r.agent] || r.agent))].join(' and ') + ' · ' + linked.length + ' turn' + (linked.length === 1 ? '' : 's'), ' ', el('button', { class: 'btn small ghost', onclick: () => { setView('now'); } }, 'See in Now')) : null,
