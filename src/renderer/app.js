@@ -202,6 +202,9 @@
     api.on('run-ended', onRunEnded);
     api.on('platform', ({ platform }) => { document.body.classList.toggle('mac', platform === 'darwin'); S.platform = platform; });
     api.on('open-settings', () => openSettings({}));
+    api.on('update', onUpdate);
+    S.update = await call(api.getUpdate()).catch(() => null);
+    if (S.update) onUpdate(S.update);
     setInterval(tick, 30000);
     document.addEventListener('keydown', onKey);
     ['keydown', 'pointerdown', 'input'].forEach(evn => document.addEventListener(evn, () => { S.lastInteraction = Date.now(); api.engaged(true); }, { passive: true }));
@@ -209,6 +212,7 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden && S.pendingRefresh && !isEngaged()) { S.pendingRefresh = false; render(); } });
     $('#add-ws').addEventListener('click', addWorkspace);
     $('#btn-settings').addEventListener('click', () => openSettings({}));
+    $('#btn-update').addEventListener('click', updateSheet);
     $('#btn-compact').addEventListener('click', () => api.setWindowMode('compact'));
     $('#btn-expand').addEventListener('click', () => api.setWindowMode('expanded'));
     $('#compact-ws').addEventListener('click', e => workspaceMenu(e.currentTarget));
@@ -1009,7 +1013,8 @@
             return g;
           })(),
           (() => { const g = el('div', { class: 'seg accent-seg', role: 'radiogroup', 'aria-label': 'Accent' }); for (const [id, label, sw] of ACCENTS) g.append(el('button', { role: 'radio', 'aria-checked': (s.accent || 'teal') === id ? 'true' : 'false', title: label, 'aria-label': label + ' accent', onclick: () => { g.querySelectorAll('button').forEach(b => b.setAttribute('aria-checked', 'false')); g.querySelector('[title="' + label + '"]').setAttribute('aria-checked', 'true'); s.accent = id; applyAccent(id); api.setSettings({ accent: id }); } }, el('span', { class: 'acc-dot', style: 'background:' + sw }))); return g; })())),
-        el('div', { class: 'sheet-sec' }, el('p', { class: 't-small' }, 'Layover ' + s.version + ' · data in ', el('code', { class: 'path', text: s.dataDir }), ' ', el('button', { class: 'btn small ghost', onclick: () => api.openPath(s.dataDir) }, 'Open'), ' · local service on 127.0.0.1:' + s.port + '. Layover makes no model calls.'),
+        updatesSection(s),
+        el('div', { class: 'sheet-sec' }, el('p', { class: 't-small' }, 'Data in ', el('code', { class: 'path', text: s.dataDir }), ' ', el('button', { class: 'btn small ghost', onclick: () => api.openPath(s.dataDir) }, 'Open'), ' · local service on 127.0.0.1:' + s.port + '. Layover makes no model calls.'),
           el('p', { class: 't-small' }, 'Press ', el('kbd', { text: '?' }), ' anywhere for keyboard shortcuts.'))],
     };
     if (onboarding) {
@@ -1024,6 +1029,69 @@
     const tabs = seg([['workspace', 'Workspace'], ['agents', 'Agents'], ['preferences', 'Preferences']], current, v => { current = v; S.settingsTab = v; body.textContent = ''; body.append(...panes[v]()); });
     body.append(...panes[current]());
     sheet([el('div', { class: 'sheet-h' }, el('h2', { text: 'Settings' }), el('button', { class: 'icon-btn', 'aria-label': 'Close', onclick: closeOverlay }, svg(ICON.x, 14))), tabs, body]);
+  }
+
+  // ---------- updates ----------
+  // The main process asks GitHub for the latest release now and then; here we only show what it found.
+  function updateReady() { const u = S.update; return !!(u?.latest && !u.skipped); }
+
+  function onUpdate(u) {
+    S.update = u;
+    renderUpdateButton();
+    if (updateReady() && !u.installing && S.updateToasted !== u.latest.version) {
+      S.updateToasted = u.latest.version;
+      toast({ text: ['Layover ' + u.latest.version + ' is available.'], ttl: 15000, actions: [{ label: 'Install and restart', primary: true, fn: installUpdate }, { label: 'What changed', fn: updateSheet }, { label: 'Later', fn: () => {} }] });
+    }
+  }
+
+  function renderUpdateButton() {
+    const b = $('#btn-update'); if (!b) return;
+    const u = S.update;
+    b.hidden = !updateReady();
+    if (!b.hidden) { $('#btn-update-lbl').textContent = u.installing ? 'Installing ' + u.latest.version + '…' : 'Layover ' + u.latest.version + ' available'; b.title = u.installing ? 'Layover restarts on its own in a moment' : 'Layover ' + u.latest.version + ' is available. Click to see what changed and install it.'; b.disabled = !!u.installing; }
+  }
+
+  async function installUpdate() {
+    if (!updateReady() || S.update.installing) return;
+    try {
+      const r = await call(api.installUpdate());
+      S.update = r; renderUpdateButton(); closeOverlay();
+      toast({ text: ['Installing Layover ' + r.latest.version + '. It downloads, quits and reopens on its own; give it a minute.'], ttl: 20000 });
+    } catch (e) {
+      toast({ text: ['The update could not start: ' + e.message], ttl: 12000, cls: 'gold', actions: [{ label: 'Download from GitHub', fn: () => api.openExternal(S.update.latest.url) }] });
+    }
+  }
+
+  function updateSheet() {
+    const u = S.update; if (!u?.latest) return;
+    const notes = u.latest.notes || 'No release notes.';
+    sheet([el('div', { class: 'sheet-h' }, el('h2', { text: 'Layover ' + u.latest.version }), el('button', { class: 'icon-btn', 'aria-label': 'Close', onclick: closeOverlay }, svg(ICON.x, 14))),
+      el('p', { class: 't-small', text: 'You have ' + u.current + '. Installing runs the same install script as a fresh install: Layover quits, the new version replaces it, the agent hooks are reconnected, and it reopens.' }),
+      el('div', { class: 'notes-pre', text: notes }),
+      el('div', { class: 'card-actions', style: 'justify-content:flex-end;flex-wrap:wrap' },
+        el('button', { class: 'btn small ghost', onclick: () => api.openExternal(u.latest.url) }, 'Open on GitHub'),
+        u.skipped ? null : el('button', { class: 'btn small ghost', onclick: async () => { S.update = await call(api.skipUpdate(u.latest.version)); renderUpdateButton(); closeOverlay(); } }, 'Skip this version'),
+        el('button', { class: 'btn small primary', disabled: u.installing ? 'true' : undefined, onclick: installUpdate }, u.installing ? 'Installing…' : 'Install and restart'))]);
+  }
+
+  /** The Updates block in Preferences: version, state of the last check, and the switch. */
+  function updatesSection(s) {
+    const u = S.update || {};
+    const status = el('span');
+    const paint = () => {
+      const cur = S.update || {};
+      status.textContent = cur.latest ? ('Layover ' + cur.latest.version + ' is available.' + (cur.skipped ? ' You skipped it.' : '')) : cur.error ? 'Could not check: ' + cur.error + '.' : cur.checkedAt ? 'Up to date. Checked ' + ago(cur.checkedAt) + '.' : 'Not checked yet.';
+    };
+    paint();
+    const btn = el('button', { class: 'btn small' + (u.latest && !u.skipped ? ' primary' : ' ghost'), onclick: async () => {
+      if (S.update?.latest && !S.update.skipped) return installUpdate();
+      btn.disabled = true; btn.textContent = 'Checking…';
+      try { S.update = await call(api.checkUpdate()); renderUpdateButton(); } catch (e) { toast({ text: e.message, ttl: 6000 }); }
+      btn.disabled = false; btn.textContent = S.update?.latest && !S.update.skipped ? 'Install' : 'Check now'; btn.className = 'btn small' + (S.update?.latest && !S.update.skipped ? ' primary' : ' ghost'); paint();
+    } }, u.latest && !u.skipped ? 'Install' : 'Check now');
+    return el('div', { class: 'sheet-sec' }, el('h3', { text: 'Updates' }),
+      el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'Layover ' + (u.current || s.version) }), status), btn),
+      switchRow('Check for new releases', 'One request to GitHub every few hours. It is the only thing Layover sends off this machine, and it carries nothing about you or your projects.', s.updates?.check !== false, v => { s.updates = { ...(s.updates || {}), check: v }; api.setSettings({ updates: { check: v } }); }));
   }
 
   // ---------- toasts ----------

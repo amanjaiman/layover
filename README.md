@@ -24,6 +24,10 @@ curl -fsSL https://raw.githubusercontent.com/amanjaiman/layover/main/scripts/ins
 
 The macOS build is unsigned; the script clears the quarantine flag so Gatekeeper lets it run. On macOS the compact companion also lives in the menu bar: click the Layover icon for a popover that closes when you click away (Settings → Preferences). Releases are built by the GitHub workflow on a tag push (`git tag v0.5.0 && git push --tags`); macOS artifacts come from a macOS runner.
 
+### Updating
+
+Layover checks GitHub for a newer release every few hours (Settings → Preferences → Updates; the switch there turns it off, and it is the only request the app makes off your machine). When one exists you get a small **Layover x.y.z available** button in the sidebar and an entry in the tray menu. **Install and restart** runs the install script above for that exact release: Layover quits, the new version replaces it, the agent hooks are reconnected, and it reopens. Rerunning the one-liner by hand does the same.
+
 ### Manual install (Windows)
 
 1. Run `release/Layover-Setup-<version>.exe` (per-user, no admin). It installs to `%LOCALAPPDATA%\Programs\layover`, adds a Start Menu entry, and on first launch puts `layover` on your user PATH.

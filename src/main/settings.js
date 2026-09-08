@@ -14,6 +14,7 @@ export const DEFAULTS = {
   trayPopover: process.platform === 'darwin', // tray / menu-bar click opens the compact companion as a popover
   hookContext: true,               // hooks print one short line so the agent knows the run id
   breakReminder: { enabled: false, minutes: 30, mode: 'suggest' }, // suggest | auto
+  updates: { check: true, skip: '' }, // check: ask GitHub for the latest release every few hours (the only outbound request); skip: a version the user chose to ignore
   window: { mode: 'expanded' },
 };
 
@@ -53,6 +54,12 @@ export function validateSettings(patch) {
     if (b.enabled !== undefined) out.breakReminder.enabled = !!b.enabled;
     if (b.minutes !== undefined) { if (![15, 30, 45, 60, 90].includes(Number(b.minutes))) throw Error('Invalid interval'); out.breakReminder.minutes = Number(b.minutes); }
     if (b.mode !== undefined) { if (!['suggest', 'auto'].includes(b.mode)) throw Error('Invalid reminder mode'); out.breakReminder.mode = b.mode; }
+  }
+  if (patch.updates !== undefined) {
+    const u = patch.updates || {};
+    out.updates = {};
+    if (u.check !== undefined) out.updates.check = !!u.check;
+    if (u.skip !== undefined) { if (typeof u.skip !== 'string' || u.skip.length > 40) throw Error('Invalid skip version'); out.updates.skip = u.skip; }
   }
   if (patch.window !== undefined) { const w = patch.window || {}; out.window = {}; if (w.mode !== undefined) { if (!['expanded', 'compact'].includes(w.mode)) throw Error('Invalid window mode'); out.window.mode = w.mode; } if (w.railCollapsed !== undefined) out.window.railCollapsed = !!w.railCollapsed; }
   return out;

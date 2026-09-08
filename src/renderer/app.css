@@ -694,3 +694,9 @@ body.mac .rail-top{ padding-left:82px; }
 body.mac.rail-collapsed .rail-top{ padding-left:0; padding-top:38px; }
 body.mac.compact .top{ padding-left:82px; padding-right:var(--s3); }
 body.mac .top{ padding-right:var(--s3); }
+
+/* Update available: the rail button takes the accent so it is noticed without shouting. */
+.rail-btn.update{ color:var(--accent-text); }
+.rail-btn.update:hover{ color:var(--accent-text); background:var(--accent-wash); }
+.rail-btn.update:disabled{ opacity:.6; cursor:default; }
+.notes-pre{ white-space:pre-wrap; font-size:13px; line-height:1.5; color:var(--text-muted); max-height:260px; overflow:auto; padding:var(--s2) var(--s3); background:var(--surface-2); border-radius:var(--r-sm); }

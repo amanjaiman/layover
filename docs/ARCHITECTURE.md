@@ -20,6 +20,7 @@ Layover is three pieces that share one event contract. The UI never talks to an 
 | `src/main/store.js` | Append-only event log (fsync per event) + atomic user document; derived state | plain Node |
 | `src/main/settings.js` | App settings, defaults, validation | plain Node |
 | `src/main/bridge.js`, `codex-rpc.js` | Optional Codex write-back (ported from phase one) | plain Node |
+| `src/main/updates.js` | Release check against GitHub and the hand-off to the install script | plain Node |
 | `src/cli/layover.js` | The `layover` command | Node, or `Layover.exe` with `ELECTRON_RUN_AS_NODE` |
 | `src/cli/hook.js` | Pure mapping from hook JSON to events | plain Node |
 | `src/cli/setup.js` | Installs skill + hooks, merges into agent config, PATH helper | plain Node |
@@ -76,6 +77,10 @@ Hooks call `layover.cmd hook <agent>`, which reads JSON from stdin, maps it, che
 - A hook-driven `start` follows the setting *When an agent starts a turn*: **Bring Layover forward** (default; the window is briefly pinned on top while shown and focused, because Windows refuses foreground changes from background processes), **Open behind my work** (show inactive), **Only if already open**, **Stay quiet**. Items and `end` events never move the window.
 - The renderer switches workspaces on its own only when the user is not engaged (no keystroke or click in the last few seconds, no cursor in an editor). Otherwise it offers a switch in a toast that stays until answered.
 - Completion shows a banner in that workspace and, if Layover is not the foreground window, a silent Windows toast. Neither changes the selected workspace.
+
+## Updates
+
+Layover does not update itself. Every few hours (and on demand from Preferences) the main process asks `api.github.com` for the latest release of the repo; that is the only request the app makes off the machine, and the switch in Preferences turns it off. A newer release shows as a rail button, a one-time toast, a tray menu entry and the Updates block in Preferences. **Install and restart** runs the same script a fresh install uses, pinned to the new release's tag (`scripts/install.ps1` or `install.sh` with `LAYOVER_VERSION`); that script stops Layover, replaces it, reconnects the agent hooks and reopens it. On Windows the script is started through WMI (`Win32_Process.Create`) because every child of Layover dies with it (Chromium keeps its tree in a job object) and the script has to stop Layover; on macOS a detached `sh` is enough. Output goes to `update.log` in the data root. Proper in-app auto-update (electron-updater) is off the table while the macOS build is unsigned: Squirrel refuses unsigned updates.
 
 ## Security boundaries
 

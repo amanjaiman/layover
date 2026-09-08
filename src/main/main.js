@@ -12,6 +12,7 @@ import { loadSettings, saveSettings, applySettings } from './settings.js';
 import { dataDir, dataRoot, logFile, APP_NAME, projectIdFromPath, projectNameFromPath, port } from './paths.js';
 import * as setup from '../cli/setup.js';
 import { resolveLatest } from '../cli/hook.js';
+import { checkForUpdate, installUpdate as startInstall } from './updates.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '..', '..');
@@ -75,6 +76,7 @@ async function boot() {
     ]));
   }
   createTray();
+  scheduleUpdateChecks();
   if (flag('--popover') && !app.isPackaged) setTimeout(togglePopover, 800); // dev: exercise the tray popover without a click
   const openReq = flagValue('--open');
   if (!flag('--background')) createWindow({ show: true });
@@ -129,7 +131,7 @@ function createWindow({ show }) {
   win.on('focus', () => { lastInteraction = Date.now(); });
   win.webContents.on('will-navigate', e => e.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  win.webContents.on('did-finish-load', () => { applyTheme(); win.webContents.send('window-mode', settings.window.mode || 'expanded'); win.webContents.send('platform', { platform: process.platform }); });
+  win.webContents.on('did-finish-load', () => { applyTheme(); win.webContents.send('window-mode', settings.window.mode || 'expanded'); win.webContents.send('platform', { platform: process.platform }); if (update.latest) win.webContents.send('update', updateView()); });
   // Popover mode: the compact companion hides again when it loses focus, like a menu-bar app.
   win.on('blur', () => { if (settings.trayPopover && settings.window.mode === 'compact' && win && !win.webContents.isDevToolsOpened() && popoverShown) { popoverShown = false; win.hide(); } });
   const shot = flagValue('--screenshot');
@@ -346,12 +348,58 @@ function updateTray() {
   if (!tray) return;
   const active = store.state().runs.filter(r => r.status === 'active').length;
   tray.setToolTip(active ? `${APP_NAME} · ${active} agent${active === 1 ? '' : 's'} working` : APP_NAME);
+  const u = updateView();
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Open Layover', click: () => reveal({ focus: true }) },
+    ...(u.latest && !u.skipped ? [{ label: u.installing ? `Installing Layover ${u.latest.version}…` : `Install Layover ${u.latest.version}…`, enabled: !u.installing, click: () => installUpdate().catch(e => log('update install failed', e.message)) }] : []),
     { label: settings.window.mode === 'compact' ? 'Expanded workspace' : 'Compact companion', click: () => { setWindowMode(settings.window.mode === 'compact' ? 'expanded' : 'compact'); reveal({ focus: true }); } },
     { type: 'separator' },
     { label: 'Quit Layover', click: () => { quitting = true; app.quit(); } },
   ]));
+}
+
+// ---------- updates ----------
+// One request to api.github.com every few hours (switchable off); nothing is downloaded by the app itself.
+const UPDATE_INTERVAL = 6 * 60 * 60 * 1000;
+let update = { latest: null, latestVersion: null, checkedAt: 0, error: null, installing: false };
+// Dev only: pretend to be an older build so the update path can be exercised against the real releases.
+const appVersion = () => (!app.isPackaged && flagValue('--pretend-version')) || app.getVersion();
+
+function updateView() {
+  return { ...update, current: appVersion(), skipped: !!(update.latest && settings.updates?.skip === update.latest.version), checkEnabled: settings.updates?.check !== false };
+}
+
+async function runUpdateCheck({ manual = false } = {}) {
+  if (!manual && settings.updates?.check === false) return updateView();
+  const r = await checkForUpdate({ current: appVersion(), userAgent: `Layover/${appVersion()} (${process.platform})` });
+  update = { ...update, ...r };
+  log('update check', r.error ? 'failed: ' + r.error : r.latest ? `${r.latest.version} available` : `up to date (${r.latestVersion || '?'})`);
+  broadcast('update', updateView());
+  updateTray();
+  return updateView();
+}
+
+function scheduleUpdateChecks() {
+  setTimeout(() => runUpdateCheck().catch(e => log('update check error', e.message)), 20_000);
+  setInterval(() => runUpdateCheck().catch(e => log('update check error', e.message)), UPDATE_INTERVAL);
+}
+
+/** Hand over to the install script for the newest release; it quits Layover, replaces it, reconnects the hooks and reopens it. */
+async function installUpdate() {
+  const v = update.latest?.version;
+  if (!v) throw Error('There is no newer release to install.');
+  if (update.installing) return updateView();
+  update.installing = true; broadcast('update', updateView()); updateTray();
+  const logPath = path.join(dataRoot, 'update.log');
+  try {
+    const r = await startInstall(v, { logPath });
+    log('update installer started', v, r.detail);
+    return { ...updateView(), log: logPath };
+  } catch (e) {
+    update.installing = false; broadcast('update', updateView()); updateTray();
+    log('update installer failed to start', e.message);
+    throw e;
+  }
 }
 
 // ---------- IPC ----------
@@ -382,4 +430,8 @@ handle('outbox:send', (m) => store.queueMessage(m));
 handle('outbox:cancel', (id) => store.cancelMessage(String(id)));
 handle('bridge:target', (run) => bridge.target({ run }));
 handle('bridge:send', (payload) => bridge.send(payload));
+handle('update:get', () => updateView());
+handle('update:check', () => runUpdateCheck({ manual: true }));
+handle('update:install', () => installUpdate());
+handle('update:skip', (version) => { settings = applySettings(settings, { updates: { skip: String(version || '') } }); saveSettings(settings); updateTray(); broadcast('settings', settings); return updateView(); });
 ipcMain.on('ui:engaged', (_e, flag) => { uiEngaged = !!flag; if (flag) lastInteraction = Date.now(); });

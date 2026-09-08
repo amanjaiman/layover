@@ -1,7 +1,7 @@
 // Narrow, typed bridge between the renderer and the main process. No Node access in the page.
 const { contextBridge, ipcRenderer } = require('electron');
 
-const PUSH = new Set(['state', 'open-request', 'theme', 'settings', 'window-mode', 'run-ended', 'reveal', 'setup', 'platform', 'open-settings']);
+const PUSH = new Set(['state', 'open-request', 'theme', 'settings', 'window-mode', 'run-ended', 'reveal', 'setup', 'platform', 'open-settings', 'update']);
 
 contextBridge.exposeInMainWorld('layover', {
   getState: () => ipcRenderer.invoke('state:get'),
@@ -29,6 +29,10 @@ contextBridge.exposeInMainWorld('layover', {
   cancelMessage: (id) => ipcRenderer.invoke('outbox:cancel', id),
   bridgeTarget: (run) => ipcRenderer.invoke('bridge:target', run),
   bridgeSend: (payload) => ipcRenderer.invoke('bridge:send', payload),
+  getUpdate: () => ipcRenderer.invoke('update:get'),
+  checkUpdate: () => ipcRenderer.invoke('update:check'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+  skipUpdate: (version) => ipcRenderer.invoke('update:skip', version),
   engaged: (flag) => ipcRenderer.send('ui:engaged', !!flag),
   on: (channel, fn) => {
     if (!PUSH.has(channel)) throw Error('Unknown channel ' + channel);

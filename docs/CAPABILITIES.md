@@ -47,6 +47,13 @@ Workspace rail with colours and working dot; Now view as per-agent threads with 
 
 Not manually exercised end-to-end yet: compact mode window sizing, break reminders over a real interval, Windows toast click-through, notes conflict banner with two windows, the Codex write-back sheet against a live App Server (bridge code is the phase-one implementation, unit-level only here).
 
+## Updates (0.5.2, verified on Windows)
+
+- Check: a dev instance started with `--pretend-version 0.4.0` asked GitHub and reported 0.5.1 available 20 s after boot; the rail button, toast, update sheet, tray entry and the Preferences block all showed it. An older or equal release, a draft or a pre-release is ignored (unit-tested).
+- Install: **Install and restart** from that dev instance ran `install.ps1` pinned to v0.5.1 through WMI. The installed 0.5.0 was stopped, replaced, both agents reconnected (`setup --agent all` output in `update.log`), and Layover 0.5.1 came back with its window; `/health` on 43137 reported 0.5.1. Elapsed about 3.5 minutes, nearly all of it the 111 MB download under Windows PowerShell 5.1 (its progress bar is now silenced in the script, which was the known slowdown).
+- Why WMI: a detached child of the Electron main process was killed with it on a hard kill and on a normal quit (measured with a marker file); the same worker created via `Win32_Process.Create` survived.
+- Not verified: the macOS path (`install.sh` through a detached `sh`; the script itself ran successfully by hand on the user's Mac in 0.5.1), and the six-hour re-check interval over a real day.
+
 ## Known limits (honest list)
 
 - **Interrupt detection in Claude Code** is inferred: `Stop` does not fire on Escape, so an interrupted turn stays "working" until the next prompt or session end closes it as *interrupted*. Codex has a real `Interrupt` hook.
