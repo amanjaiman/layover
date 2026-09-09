@@ -182,6 +182,10 @@
 
   // ---------- boot ----------
   async function boot() {
+    // Platform first: on macOS the traffic lights sit where the rail header starts, and the push that
+    // also carries this can arrive before the listener below exists.
+    S.platform = api.platform || S.platform;
+    document.body.classList.toggle('mac', S.platform === 'darwin');
     S.settings = await call(api.getSettings());
     S.state = await call(api.getState());
     S.mode = S.settings.window?.mode || 'expanded';

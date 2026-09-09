@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 const PUSH = new Set(['state', 'open-request', 'theme', 'settings', 'window-mode', 'run-ended', 'reveal', 'setup', 'platform', 'open-settings', 'update']);
 
 contextBridge.exposeInMainWorld('layover', {
+  platform: process.platform, // known before the page runs, so layout never waits for a push that may already have gone by
   getState: () => ipcRenderer.invoke('state:get'),
   getUser: (project) => ipcRenderer.invoke('user:get', project),
   setNotes: (project, body, revision) => ipcRenderer.invoke('user:notes', { project, body, revision }),
