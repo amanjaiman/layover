@@ -30,8 +30,7 @@ Everything the app's buttons do is also a command: `layover setup --agent all`, 
 
 Layover checks GitHub for a newer release every few hours — the only request it makes off your machine, and switchable off in Settings → Preferences → Updates. When one exists, **Layover x.y.z available** appears in the sidebar and the tray menu; **Install and restart** swaps in the new version, reconnects the hooks, and reopens.
 
-<details>
-<summary><b>Manual install (Windows)</b></summary>
+### Manual install (Windows)
 
 1. Run `release/Layover-Setup-<version>.exe` (per-user, no admin). It installs to `%LOCALAPPDATA%\Programs\layover`, adds a Start Menu entry, and on first launch puts `layover` on your user PATH.
 2. Layover opens. Click **Connect** for Claude Code and/or Codex. That writes:
@@ -40,8 +39,6 @@ Layover checks GitHub for a newer release every few hours — the only request i
 3. Codex asks you to trust new hooks once: type `/hooks` inside Codex and approve the Layover entries. Claude Code needs nothing more.
 
 Uninstall from Windows Settings, or run `Uninstall Layover.exe`. Your data in `%LOCALAPPDATA%\Layover` is kept unless you delete it. Run `layover setup --remove` first if you want the agent hooks gone.
-
-</details>
 
 ## What it does
 
