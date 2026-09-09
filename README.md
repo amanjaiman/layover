@@ -110,4 +110,5 @@ Use `LAYOVER_DATA` and `LAYOVER_PORT` together to run an isolated instance. The 
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the pieces and the event contract
 - [docs/CAPABILITIES.md](docs/CAPABILITIES.md) — what has been verified live and what has not
+- [bench/RESULTS.md](bench/RESULTS.md) — what Layover costs the agent: latency, tokens and turns, with and without
 - [docs/DESIGN-AUDIT.md](docs/DESIGN-AUDIT.md) — the audit that drove 0.3.1, with the open questions

@@ -1,0 +1,59 @@
+{
+  "model": "sonnet",
+  "reps": 3,
+  "probeReps": 4,
+  "tasks": [
+    "pagination",
+    "discount",
+    "idempotency"
+  ],
+  "claudeVersion": "2.1.266 (Claude Code)",
+  "node": "v22.22.2",
+  "platform": "linux",
+  "at": "2026-09-09T04:30:24.036Z",
+  "cli": {
+    "hook_UserPromptSubmit": {
+      "n": 10,
+      "mean": 164.2,
+      "median": 162.9,
+      "min": 149,
+      "max": 188.3
+    },
+    "hook_Stop": {
+      "n": 10,
+      "mean": 161.9,
+      "median": 166.4,
+      "min": 149.2,
+      "max": 172.5
+    },
+    "item": {
+      "n": 10,
+      "mean": 159.7,
+      "median": 159.4,
+      "min": 149.4,
+      "max": 174.7
+    },
+    "hook_PostToolUse_fast": {
+      "n": 10,
+      "mean": 2.3,
+      "median": 2.2,
+      "min": 1.9,
+      "max": 3
+    },
+    "node_baseline": {
+      "n": 10,
+      "mean": 24.7,
+      "median": 24.9,
+      "min": 21.8,
+      "max": 27
+    },
+    "client_request": {
+      "n": 10,
+      "mean": 96.5,
+      "median": 96.3,
+      "min": 87.9,
+      "max": 104.7
+    }
+  },
+  "note": "Task suite: 3 reps x 3 tasks x 2 conditions (18 runs). Probe: 8 off / 8 on / 4 on-nohook, pooled from two passes. CLI suite: 10 samples per call."
+}

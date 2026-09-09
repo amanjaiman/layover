@@ -13,7 +13,7 @@ What was actually exercised on this machine (Windows 11, Claude Code 2.1.263, Co
 | Completion closes the run | **Pass** (`Stop`, 8 s turn). | **Pass** after making the Stop hook synchronous; with `async: true` Codex exec exited first and `SessionEnd` recorded the run as `cancelled`. |
 | Hook command form | Double-quoted path worked; unquoted forward-slash path (current default) works. | Double-quoted path **failed** (`hook: … Failed`): Codex runs hooks in PowerShell Core (verified with a probe printing `$PSVersionTable.PSEdition`). Unquoted path works; paths with spaces get `& '…'`. |
 | Hook trust | None needed. | Required once (`/hooks` in Codex). Tests used the bypass flag; the interactive trust flow was **not** exercised. |
-| Cost | Hook: ~130 ms per event with the app running (packaged shim on the app's own Node). Context line: ~70 tokens per prompt, switchable off. The `claude -p` test turn cost $0.15 total, dominated by the prompt itself. | Hook latency identical. The Codex turn used 13.7k tokens including skill reading. |
+| Cost | Hook: ~130 ms per event with the app running (packaged shim on the app's own Node). Context line: measured at 248 tokens per prompt, switchable off — see [the benchmark](../bench/RESULTS.md), which supersedes the ~70 token estimate first recorded here. The `claude -p` test turn cost $0.15 total, dominated by the prompt itself. | Hook latency identical. The Codex turn used 13.7k tokens including skill reading. |
 
 Both agents ran in scratch folders on this machine's own accounts. Each live run was a fresh non-interactive session; attachment to an already-open desktop conversation was not tested here (the `SessionStart` hook fires for `resume` and `startup`, so an open interactive session will register itself on its next prompt).
 
@@ -53,6 +53,20 @@ Not manually exercised end-to-end yet: compact mode window sizing, break reminde
 - Install: **Install and restart** from that dev instance ran `install.ps1` pinned to v0.5.1 through WMI. The installed 0.5.0 was stopped, replaced, both agents reconnected (`setup --agent all` output in `update.log`), and Layover 0.5.1 came back with its window; `/health` on 43137 reported 0.5.1. Elapsed about 3.5 minutes, nearly all of it the 111 MB download under Windows PowerShell 5.1 (its progress bar is now silenced in the script, which was the known slowdown).
 - Why WMI: a detached child of the Electron main process was killed with it on a hard kill and on a normal quit (measured with a marker file); the same worker created via `Win32_Process.Create` survived.
 - Not verified: the macOS path (`install.sh` through a detached `sh`; the script itself ran successfully by hand on the user's Mac in 0.5.1), and the six-hour re-check interval over a real day.
+
+## What Layover costs the agent (0.5.5, measured on Linux with Sonnet 5)
+
+Same three coding tasks, three repetitions, run with the skill and hooks connected and with nothing
+connected; plus a trivial-prompt probe that isolates the fixed cost. 18 task runs, all successful.
+Harness and full numbers: [`bench/`](../bench/README.md), [`bench/RESULTS.md`](../bench/RESULTS.md).
+
+- **+382 prompt tokens per turn** (+0.9% of a 44k prompt), split into 134 for the skill's entry in the system prompt (once per session) and 248 for the `UserPromptSubmit` context line (every turn). The body of `SKILL.md` is not loaded unless the agent opens the skill.
+- **+1.2 s of local time per session** — four blocking hooks at ~160 ms each — and **+13 ms per tool call** for the `PostToolUse` shim. None of it is model time.
+- **No change to turns or tool calls**: median paired difference of 0 across 9 pairs. Cost difference (+$0.001 median) sits far inside run-to-run noise, which reached 97k prompt tokens between repetitions of the same task.
+- **The agent published nothing.** Zero `layover item` calls across 9 task runs, confirmed in the transcripts and in the store. So these are Layover's fixed costs with none of its variable cost; each published item would add a CLI call (~160 ms) and one model round trip (~35k cache-read tokens here, roughly $0.01).
+
+Measured without the Electron window (a headless host serving the real store over the real loopback
+service) and from a checkout, where the CLI runs on the system Node rather than the app's.
 
 ## Known limits (honest list)
 
