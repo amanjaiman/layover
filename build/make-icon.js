@@ -4,6 +4,7 @@
 //   icon-mac.png   1024                the mark on a rounded off-white tile with the macOS margin, for .icns
 //   trayTemplate*.png                  black silhouette for the macOS menu bar (template image)
 //   src/renderer/logo.png  96          the mark in the app's rail
+//   docs/logo.png          512         the mark at the top of the README
 // No dependencies: runs on plain Node in the release workflow.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -51,4 +52,5 @@ fs.writeFileSync(path.join(here, 'icon-mac.png'), encodePng(markOn(macSize, 0.56
 fs.writeFileSync(path.join(here, 'trayTemplate.png'), encodePng(trayTemplate(16)));
 fs.writeFileSync(path.join(here, 'trayTemplate@2x.png'), encodePng(trayTemplate(32)));
 fs.writeFileSync(path.join(here, '..', 'src', 'renderer', 'logo.png'), encodePng(markOn(96, 1)));
-console.log('wrote build/icon.png, icon.ico, icon-mac.png, trayTemplate*.png and src/renderer/logo.png from build/logo.png');
+fs.writeFileSync(path.join(here, '..', 'docs', 'logo.png'), encodePng(markOn(512, 1)));
+console.log('wrote build/icon.png, icon.ico, icon-mac.png, trayTemplate*.png, src/renderer/logo.png and docs/logo.png from build/logo.png');

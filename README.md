@@ -1,10 +1,15 @@
-# Layover
+<p align="center">
+  <img src="docs/logo.png" alt="" width="112">
+</p>
 
-**Layover is a companion for the time your coding agent is working.** When Claude Code or Codex starts a turn in a project folder, Layover opens that project beside you — what the agent decided, what it needs from you, what you'll do next, and a break if you want one. When the turn ends, it says so and gets out of the way.
+<h1 align="center">Layover</h1>
 
-It makes **no model calls** and runs entirely on your machine: an Electron app hosting a loopback service, a small CLI that agents call, and lifecycle hooks that report start and finish.
+<p align="center"><b>A companion for the time your coding agent is working.</b><br>
+Windows and macOS · no model calls · runs entirely on your machine</p>
 
-Windows and macOS.
+When Claude Code or Codex starts a turn in a project folder, Layover opens that project beside you — what the agent decided, what it needs from you, what you'll do next, and a break if you want one. When the turn ends, it says so and gets out of the way.
+
+Three pieces: an Electron app hosting a loopback service, a small CLI that agents call, and lifecycle hooks that report start and finish. Nothing asks a model to remember anything.
 
 ## Install
 
