@@ -1,0 +1,14 @@
+[
+  {
+    "id": "pagination",
+    "prompt": "In this project, add pagination to the GET /orders endpoint in src/server.js so a client can page through a large result set. Wire whatever the store needs in src/store.js, and add tests for it in test/. Run `npm test` when you are done and make sure it passes."
+  },
+  {
+    "id": "discount",
+    "prompt": "In this project, add support for a percentage discount on an order: a way to set one, and have OrderStore.total() apply it. Expose it over HTTP in src/server.js too. Add tests in test/, then run `npm test` and make sure it passes."
+  },
+  {
+    "id": "idempotency",
+    "prompt": "In this project, make POST /orders idempotent: if a client repeats a request with the same Idempotency-Key header, it should get the original order back instead of a second one. Add tests in test/, then run `npm test` and make sure it passes."
+  }
+]
