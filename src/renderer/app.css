@@ -691,6 +691,9 @@ body.rail-collapsed .ws > span:nth-child(2){ display:none !important; }
 /* macOS: room for the traffic lights, which sit over the rail's top-left */
 body.mac .rail-top{ padding-left:82px; }
 body.mac.rail-collapsed .rail-top{ padding-left:0; padding-top:38px; }
+/* the three lights span about 14–68 px, so the collapsed rail is as wide as they need, margins matched */
+body.mac.rail-collapsed .app{ grid-template-columns:82px minmax(0,1fr); }
+body.mac.compact.rail-collapsed .app{ grid-template-columns:minmax(0,1fr); }
 body.mac.compact .top{ padding-left:82px; padding-right:var(--s3); }
 body.mac .top{ padding-right:var(--s3); }
 

@@ -45,7 +45,7 @@ Human-readable names travel with events (`projectName`, `title`) and are shown; 
 
 | type | fields | semantics |
 |---|---|---|
-| `session` | `name`, `source`, `sessionId`, `projectName`, `projectPath` | registers the conversation; idempotent upsert |
+| `session` | `name`, `source`, `sessionId`, `projectName`, `projectPath`, `host`, `threadTitle` | registers the conversation; idempotent upsert. `threadTitle` is the agent's own name for the conversation (Claude Code's `ai-title` or `/rename` title from the transcript; Codex's `thread_name` from `session_index.jsonl`), read by the hook on `SessionStart`, `UserPromptSubmit` and `Stop` and sent as an identity-only event whose id derives from the title, so resends are duplicates. The UI prefers it over the latest turn's prompt. A `host` found by guessing (`via: frontmost`) never replaces one found from the process tree (`via: process`) |
 | `start` | `title`, `source`, `lifecycle` (`hooks|voluntary|wrapper`) | creates the run; a hook-driven start closes any still-active hook-driven run of the same task as `cancelled` |
 | `heartbeat` | | refreshes `lastSeen` (voluntary runs only need it) |
 | `item` | `item`, `kind` (`suggestion|decision|question|opportunity`), `status` (`open|resolved|dismissed`), `revision` ≥ 1, `text` ≤ 12k, `title`, `waiting`, `origin` (`agent|notification`) | higher revision wins; same revision with different content is rejected |
