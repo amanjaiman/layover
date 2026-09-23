@@ -69,6 +69,8 @@
     return el('span', { class: 'agent-ic ' + agent + (size <= 18 ? ' sm' : ''), title: AGENT[agent] || agent, role: 'img', 'aria-label': AGENT[agent] || agent }, s);
   }
   const lbl = (long, short) => [el('span', { class: 'l', text: long }), el('span', { class: 's', text: short })];
+  /** A shortcut as this platform writes it: Ctrl+Shift+T stays on Windows, becomes ⇧⌘T on a Mac (both keys work). */
+  const keys = (k) => S.platform === 'darwin' ? String(k).replace(/Ctrl\+Shift\+/g, '⇧⌘').replace(/Ctrl\+/g, '⌘') : k;
   function ago(ts) {
     if (!ts) return '';
     const s = Math.max(0, (Date.now() - ts) / 1000);
@@ -241,7 +243,7 @@
     if (S.settings.window?.railCollapsed) toggleRail(true);
   }
   function shortcutSheet() {
-    const K = (k) => el('kbd', { text: k });
+    const K = (k) => el('kbd', { text: keys(k) });
     const rows = [['n', 'New in Next'], ['p', 'Open the prompt of the selected entry'], ['r', 'Reply to the latest item (Now)'], ['j', 'k', 'Move through Next'], ['e', 'Edit the selected entry'], ['Esc', 'Close a sheet, menu, or entry'], ['[', 'Collapse or expand the sidebar'], ['?', 'This list'], ['Ctrl+1…4', 'Now · Next · Notes · Break'], ['Ctrl+N', 'New in Next from anywhere'], ['Ctrl+Shift+C', 'Compact companion'], ['Ctrl+Shift+T', 'Tracker: every agent, ready ones first'], ['j', 'k', 'r', 's', 'Tracker: move, return, mark seen'], ['Ctrl+,', 'Settings']];
     const grid = el('div', { class: 'keys' });
     for (const r of rows) { const label = r.pop(); grid.append(el('span', {}, ...r.flatMap((k, i) => [i ? ' / ' : null, K(k)]).filter(Boolean)), el('span', { text: label })); }
@@ -342,6 +344,7 @@
     S.platform = platform;
     const mac = platform === 'darwin';
     document.body.classList.toggle('mac', mac);
+    for (const n of document.querySelectorAll('[title*="Ctrl+"]')) n.title = keys(n.title); // the static tooltips in index.html
     const b = $('#btn-rail'), home = mac ? $('.main .top') : $('.rail-top');
     if (b && home && b.parentElement !== home) { if (mac) home.prepend(b); else home.append(b); }
   }
@@ -835,7 +838,7 @@
     const send = async () => { const v = ta.value.trim(); if (!v) return; ta.value = ''; autoGrow(ta); await sendToAgent({ task: t.task.id, run: t.latest?.id, itemKey: null, text: v }); };
     ta.addEventListener('input', () => autoGrow(ta));
     ta.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } });
-    box.append(ta, el('button', { class: 'btn small primary', onclick: send, title: 'Ctrl+Enter' }, svg(ICON.arrow, 12), ...lbl('Send', 'Send')));
+    box.append(ta, el('button', { class: 'btn small primary', onclick: send, title: keys('Ctrl+Enter') }, svg(ICON.arrow, 12), ...lbl('Send', 'Send')));
     return box;
   }
   function msgEntry(m, t) {
@@ -1260,8 +1263,8 @@
         el('div', { class: 'sheet-sec' }, el('h3', { text: 'When an agent starts a turn' }),
           seg([['focus', 'Bring forward'], ['open', 'Behind my work'], ['reveal', 'Only if open'], ['never', 'Stay quiet']], s.openOnRunStart, v => { s.openOnRunStart = v; api.setSettings({ openOnRunStart: v }); }),
           el('p', { class: 't-small', text: 'Only the start of a turn can bring Layover forward; items and completions never move the window.' }),
-          switchRow('Windows notification when a turn finishes', 'Silent toast; only when Layover is not in front.', s.notifyOnComplete, v => api.setSettings({ notifyOnComplete: v })),
-          switchRow('Keep running in the tray when the window is closed', 'Needed so agents can reach it.', s.closeToTray, v => api.setSettings({ closeToTray: v })),
+          switchRow('Notify me when a turn finishes', 'A silent notification, only when Layover is not in front.', s.notifyOnComplete, v => api.setSettings({ notifyOnComplete: v })),
+          switchRow(S.platform === 'darwin' ? 'Keep running in the menu bar when the window is closed' : 'Keep running in the tray when the window is closed', 'Needed so agents can reach it.', s.closeToTray, v => api.setSettings({ closeToTray: v })),
           switchRow(S.platform === 'darwin' ? 'Menu bar icon opens the compact companion' : 'Tray icon opens the compact companion', 'A popover under the icon that closes when you click away. Off: the icon opens the main window.', s.trayPopover, v => api.setSettings({ trayPopover: v })),
           switchRow('Tell the agent its run id', 'One short line per prompt so it can publish items without guessing.', s.hookContext, v => api.setSettings({ hookContext: v }))),
         el('div', { class: 'sheet-sec' }, el('h3', { text: 'Appearance' }), el('div', { class: 'appearance' },
