@@ -11,6 +11,7 @@ import { createService } from './service.js';
 import { loadSettings, saveSettings, applySettings } from './settings.js';
 import { dataDir, dataRoot, logFile, APP_NAME, projectIdFromPath, projectNameFromPath, port } from './paths.js';
 import * as setup from '../cli/setup.js';
+import { liveMacHost, macHostRecord, macProcesses } from '../cli/host.js';
 import { resolveLatest } from '../cli/hook.js';
 import { checkForUpdate, installUpdate as startInstall } from './updates.js';
 
@@ -228,9 +229,24 @@ function focusHwnd(hwnd, owner = '') {
 async function returnToHost(taskId) {
   const t = store.tasks.get(taskId);
   if (!t?.host?.hwnd) return { ok: false, reason: 'unknown' };
-  const r = process.platform === 'darwin' ? await activateMac(t.host) : await focusHwnd(t.host.hwnd, t.host.name);
-  log('return to host', t.host.name, r);
-  return { ...r, host: t.host };
+  const host = process.platform === 'darwin' ? macHostNow(t.host) : t.host;
+  const r = process.platform === 'darwin' ? await activateMac(host) : await focusHwnd(host.hwnd, host.name);
+  log('return to host', host.name, r);
+  return { ...r, host };
+}
+
+/**
+ * macOS: the recorded host, corrected from the live process tree when its process still runs. Hosts
+ * recorded before 0.6.3 could name the agent's own bundle (see macHostFromProcesses); walking up from
+ * it now finds the terminal or app around it. The recorded tty is kept when the walk has none.
+ */
+function macHostNow(host) {
+  if (host.via === 'frontmost') return host;
+  try {
+    const found = liveMacHost(host, macProcesses());
+    const live = found && (found.pid !== Number(host.pid) || found.name !== host.name) ? macHostRecord(found) : null;
+    return live ? { ...live, tty: live.tty || host.tty } : host;
+  } catch { return host; }
 }
 
 /**
@@ -247,19 +263,24 @@ async function activateMac(host) {
     : bundle === 'com.googlecode.iterm2'
       ? `tell application id "${bundle}"\nrepeat with w in windows\nrepeat with t in tabs of w\nrepeat with s in sessions of t\nif tty of s is "${tty}" then\ntell w to select\ntell t to select\ntell s to select\nactivate\nreturn "tab"\nend if\nend repeat\nend repeat\nend repeat\nend tell`
       : '';
-  if (tab) { const r = await osascript(tab); if (r.code === 0 && r.out === 'tab') return { ok: true, reason: 'ok' }; }
-  const r = await osascript(bundle ? `tell application id "${bundle}" to activate` : `tell application "System Events" to set frontmost of (first process whose unix id is ${Number(host.pid)}) to true`);
+  // Telling an app that is not open to do anything launches it, and Return must never start anything.
+  if (bundle) { const up = await osascript(`application id "${bundle}" is running`, 5000); if (up.out === 'false') return { ok: false, reason: 'gone' }; }
+  // The tab script may wait on the one-time Automation prompt, so it gets longer than a plain activate.
+  if (tab) { const r = await osascript(tab, 20000); if (r.code === 0 && r.out === 'tab') return { ok: true, reason: 'ok' }; }
+  const r = await osascript(bundle ? `tell application id "${bundle}" to activate` : `tell application "System Events" to set frontmost of (first process whose unix id is ${Number(host.pid)}) to true`, 5000);
   return r.code === 0 ? { ok: true, reason: 'ok' } : { ok: false, reason: /can’t get|not running|-600|-1728/.test(r.err) ? 'gone' : 'refused' };
 }
 
-function osascript(script) {
+/** Run one AppleScript; a script that has not answered within `ms` is stopped and counts as failed. */
+function osascript(script, ms) {
   return new Promise((resolve) => {
     const child = spawn('osascript', ['-e', script], { stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '', err = '';
+    const timer = setTimeout(() => { err += 'timed out'; child.kill(); }, ms);
     child.stdout.on('data', d => { out += d; });
     child.stderr.on('data', d => { err += d; });
-    child.on('error', e => resolve({ code: -1, out: '', err: e.message }));
-    child.on('close', code => resolve({ code, out: out.trim(), err }));
+    child.on('error', e => { clearTimeout(timer); resolve({ code: -1, out: '', err: e.message }); });
+    child.on('close', code => { clearTimeout(timer); resolve({ code: code ?? -1, out: out.trim(), err }); });
   });
 }
 

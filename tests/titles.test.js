@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { claudeThreadTitle, codexThreadTitle, threadTitle } from '../src/cli/titles.js';
 import { mapHook } from '../src/cli/hook.js';
-import { macHostFromProcesses } from '../src/cli/host.js';
+import { macHostFromProcesses, liveMacHost } from '../src/cli/host.js';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'layover-titles-'));
 const jsonl = (rows) => rows.map(r => typeof r === 'string' ? r : JSON.stringify(r)).join('\n') + '\n';
@@ -74,10 +74,28 @@ test('macOS host: the first app bundle up the tree, iTerm2 through its detached 
     '  502   302 ttys002  tmux',
     '  600     1 ??       /Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper (Plugin).app/Contents/MacOS/Code Helper (Plugin)',
     '  601   600 ttys011  /bin/zsh',
+    // Claude Code whose binary lives in a bundle, run from Terminal, and inside the Claude desktop app
+    '  700   302 ttys002  /Users/me/.local/share/claude/Claude.app/Contents/MacOS/claude',
+    '  701   700 ??       /bin/sh',
+    '  800     1 ??       /Applications/Claude.app/Contents/MacOS/Claude',
+    '  801   800 ??       /Applications/Claude.app/Contents/Frameworks/Claude Helper.app/Contents/MacOS/Claude Helper',
+    '  802   801 ??       /Users/me/.local/share/claude/Claude.app/Contents/MacOS/claude',
+    '  803   802 ??       /bin/sh',
   ].join('\n');
   assert.deepEqual(macHostFromProcesses(304, ps), { pid: 300, app: '/System/Applications/Utilities/Terminal.app', name: 'Terminal', tty: '/dev/ttys002' });
   assert.deepEqual(macHostFromProcesses(402, ps), { pid: 400, app: '', bundle: 'com.googlecode.iterm2', name: 'iTerm2', tty: '/dev/ttys005' });
   assert.equal(macHostFromProcesses(501, ps), null); // inside tmux the tree ends at the server…
   assert.deepEqual(macHostFromProcesses(502, ps), { pid: 300, app: '/System/Applications/Utilities/Terminal.app', name: 'Terminal', tty: '/dev/ttys002' }); // …so the walk starts at the client
   assert.equal(macHostFromProcesses(601, ps).name, 'Visual Studio Code');
+  // the agent's own bundle is never its host: the outermost app is
+  assert.deepEqual(macHostFromProcesses(701, ps), { pid: 300, app: '/System/Applications/Utilities/Terminal.app', name: 'Terminal', tty: '/dev/ttys002' });
+  assert.deepEqual(macHostFromProcesses(803, ps), { pid: 800, app: '/Applications/Claude.app', name: 'Claude', tty: '' });
+  // a host recorded by the old first-bundle walk is corrected from the live tree…
+  const stale = { pid: 700, hwnd: '700', name: 'Claude', title: 'com.anthropic.claude-code', via: 'process', tty: '/dev/ttys002' };
+  assert.equal(liveMacHost(stale, ps).name, 'Terminal');
+  assert.equal(liveMacHost({ pid: 300, hwnd: '300', name: 'Terminal', title: 'com.apple.Terminal' }, ps).pid, 300); // a right one stays
+  assert.equal(liveMacHost({ pid: 400, hwnd: '400', name: 'iTerm2', title: 'com.googlecode.iterm2' }, ps).name, 'iTerm2');
+  // …but only while that pid still runs the recorded app
+  assert.equal(liveMacHost({ ...stale, pid: 302 }, ps), null);
+  assert.equal(liveMacHost({ ...stale, pid: 999 }, ps), null);
 });

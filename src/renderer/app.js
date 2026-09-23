@@ -189,8 +189,7 @@
   async function boot() {
     // Platform first: on macOS the traffic lights sit where the rail header starts, and the push that
     // also carries this can arrive before the listener below exists.
-    S.platform = api.platform || S.platform;
-    document.body.classList.toggle('mac', S.platform === 'darwin');
+    applyPlatform(api.platform || S.platform);
     S.settings = await call(api.getSettings());
     S.state = await call(api.getState());
     S.mode = S.settings.window?.mode || 'expanded';
@@ -213,7 +212,7 @@
     api.on('settings', s => { S.settings = { ...S.settings, ...s }; if (s.layout && s.layout !== S.layout) setLayout(s.layout, { save: false }); });
     api.on('window-mode', m => { S.mode = m; document.body.classList.toggle('compact', m === 'compact'); render(true); });
     api.on('run-ended', onRunEnded);
-    api.on('platform', ({ platform }) => { document.body.classList.toggle('mac', platform === 'darwin'); S.platform = platform; });
+    api.on('platform', ({ platform }) => applyPlatform(platform));
     api.on('open-settings', () => openSettings({}));
     api.on('update', onUpdate);
     S.update = await call(api.getUpdate()).catch(() => null);
@@ -325,6 +324,18 @@
       const l = card.querySelector('.status .l'), s = card.querySelector('.status .s');
       if (l) l.textContent = `Working · ${dur(Date.now() - t.latest.startedAt)}`; if (s) s.textContent = dur(Date.now() - t.latest.startedAt);
     }
+  }
+  /**
+   * On macOS the traffic lights take the sidebar's top-left corner, so the sidebar toggle moves out of
+   * the sidebar to the start of the main top bar, where it sits beside the sidebar's edge whether the
+   * sidebar is open or collapsed. Windows keeps it in the sidebar header next to the logo.
+   */
+  function applyPlatform(platform) {
+    S.platform = platform;
+    const mac = platform === 'darwin';
+    document.body.classList.toggle('mac', mac);
+    const b = $('#btn-rail'), home = mac ? $('.main .top') : $('.rail-top');
+    if (b && home && b.parentElement !== home) { if (mac) home.prepend(b); else home.append(b); }
   }
   function toggleRail(force) {
     const on = force === undefined ? !document.body.classList.contains('rail-collapsed') : !!force;
