@@ -69,12 +69,18 @@ Four views, one per thing you do while an agent works. `Ctrl+1…4` switches bet
 
 **Break** — stretch prompts, a timer, and optional reminders; it can suggest a break or start one once you stop typing.
 
+**Tracker** — for when your tickets live in Jira and your notes in Confluence, and what you need is to know which agent is done. Switch to it at the top of the sidebar (`Ctrl+Shift+T`, or the tray menu) and Layover becomes one list of every Claude Code and Codex conversation, the ones that need you on top: *Waiting on you*, then *Ready*, then *Working*, then *Idle*. Sort by project instead to see each repo's agents together, in that same order.
+
+- Each agent is one row: when, which agent, what kind of thing it last did, what it is about, and its status. Click a row for its recent questions, decisions and turns.
+- *Return* brings the agent's window forward; *Seen* (`s`) moves a finished agent to Idle. Interrupted or closed sessions go straight to Idle; finishes you never look at settle there after a day.
+- `j`/`k` move through rows, `r` returns to the agent. Idle agents older than three days fold under *older*.
+
 ### Around the views
 
 - **Workspaces** (left rail) — one per project folder, with a colour, a name, and a dot that breathes marigold while an agent works. Switching never loses your place or your unfinished writing.
 - **Return to the agent** — brings forward the window the session started in (terminal, VS Code, the Claude desktop app), recorded by the hook at session start. If it's gone, you get the session details and a copyable resume command.
 - **Compact companion** (`Ctrl+Shift+C`) — the same app at 400×580, floating. On macOS it also lives in the menu bar as a popover that closes when you click away.
-- **Keyboard** — `n` new in Next, `r` reply to the latest item, `j`/`k` through Next, `e` edit, `Esc` close, `[` collapse the sidebar, `?` for the full list.
+- **Keyboard** — `Ctrl+Shift+T` tracker, `n` new in Next, `r` reply to the latest item, `j`/`k` through Next, `e` edit, `Esc` close, `[` collapse the sidebar, `?` for the full list.
 - **Focus** — the start of a turn is the one moment Layover comes forward, because you just pressed Enter and are waiting. Items and completions never move the window. Settings → *When an agent starts a turn* offers: come forward (default), open behind my work, only if already open, stay quiet.
 
 <p align="center"><img src="docs/screenshots/compact.png" alt="The compact companion window" width="320"></p>
