@@ -348,6 +348,48 @@
     const b = $('#btn-rail'), home = mac ? $('.main .top') : $('.rail-top');
     if (b && home && b.parentElement !== home) { if (mac) home.prepend(b); else home.append(b); }
   }
+  /**
+   * Segmented controls get one pill that slides to the chosen option. Views rebuild their controls on
+   * every render, so each control's last pill position is remembered by its options and the new pill
+   * starts there. Theme and accent pickers show their choice differently and keep it.
+   */
+  const pillAt = new Map(); const pillWatched = new WeakSet();
+  function syncPills({ snap = false } = {}) {
+    for (const g of document.querySelectorAll('.seg:not(.theme-seg):not(.accent-seg), .rail-mode')) {
+      const buttons = [...g.querySelectorAll(':scope > button')];
+      const on = buttons.find(b => b.getAttribute('aria-checked') === 'true');
+      const key = buttons.map(b => b.dataset.v || b.dataset.layout || b.textContent).join('|');
+      let pill = g.querySelector(':scope > .seg-pill');
+      if (!on || !g.offsetParent) { if (pill) pill.style.opacity = '0'; continue; }
+      const fresh = !pill;
+      if (fresh) { pill = el('span', { class: 'seg-pill', 'aria-hidden': 'true' }); g.prepend(pill); g.classList.add('has-pill'); } // positioned before measuring
+      const to = { x: on.offsetLeft, y: on.offsetTop, w: on.offsetWidth, h: on.offsetHeight };
+      const at = (p) => `translate(${p.x}px, ${p.y}px) ${p.w}x${p.h}`;
+      const put = (p, animate) => {
+        if (!animate) pill.style.transition = 'none';
+        pill.style.transform = `translate(${p.x}px, ${p.y}px)`; pill.style.width = p.w + 'px'; pill.style.height = p.h + 'px'; pill.dataset.at = at(p);
+        if (!animate) { void pill.offsetWidth; pill.style.transition = ''; }
+      };
+      if (fresh) put(pillAt.get(key) || to, false);
+      pill.style.opacity = '1'; pill.style.borderRadius = getComputedStyle(on).borderRadius;
+      // Slide from wherever it is now (at once when the control itself changed size). A pill already
+      // there, or already on its way, is left alone, so a resize never cuts a slide short. The position
+      // is remembered only once the pill is at rest: a click that rebuilds the control mid-slide must
+      // start the new pill where the old one was, not where it was going.
+      if (pill.dataset.at !== at(to)) {
+        put(to, !snap);
+        if (snap) pillAt.set(key, to);
+        else pill.addEventListener('transitionend', () => { if (pill.dataset.at === at(to)) pillAt.set(key, to); }, { once: true });
+      } else if (!pillAt.has(key)) pillAt.set(key, to);
+      if (!pillWatched.has(g)) {
+        pillWatched.add(g); let first = true;
+        new ResizeObserver(() => { if (first) { first = false; return; } requestAnimationFrame(() => syncPills({ snap: true })); }).observe(g);
+      }
+    }
+  }
+  let pillFrame = 0;
+  new MutationObserver(() => { cancelAnimationFrame(pillFrame); pillFrame = requestAnimationFrame(syncPills); })
+    .observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-checked'] });
   function toggleRail(force) {
     const on = force === undefined ? !document.body.classList.contains('rail-collapsed') : !!force;
     document.body.classList.toggle('rail-collapsed', on);
@@ -600,7 +642,14 @@
     const open = S.tracker.open.has(r.task.id);
     const prev = S.tracker.bucket.get(r.task.id);
     const moved = prev !== undefined && prev !== r.bucket; // it just changed state: let it land, so the eye catches it
-    const toggle = () => { if (S.tracker.open.has(r.task.id)) S.tracker.open.delete(r.task.id); else S.tracker.open.add(r.task.id); S.tracker.sel = r.task.id; render(true); };
+    const toggle = () => {
+      S.tracker.sel = r.task.id;
+      if (!S.tracker.open.has(r.task.id)) { S.tracker.open.add(r.task.id); S.tracker.opening = r.task.id; render(true); return; }
+      // fold the history away first, then drop it
+      const wrap = row.parentElement?.querySelector(':scope > .tr-feed-wrap');
+      const done = () => { S.tracker.open.delete(r.task.id); render(true); };
+      if (wrap && !matchMedia('(prefers-reduced-motion: reduce)').matches) { wrap.classList.add('closing'); setTimeout(done, 150); } else done();
+    };
     const back = { ...(run || { agent, task: r.task.id, id: '', source: r.task.source }), project: r.pid };
     const row = el('div', { class: 'tr-row b-' + r.bucket + (open ? ' open' : '') + (moved ? ' moved' : ''), role: 'button', tabindex: '0', 'aria-expanded': open ? 'true' : 'false', dataset: { task: r.task.id },
       onclick: e => { if (!e.target.closest('button')) toggle(); }, onkeydown: e => { if (e.key === 'Enter' && e.target === row) { e.preventDefault(); toggle(); } }, onfocus: () => { S.tracker.sel = r.task.id; } },
@@ -614,7 +663,8 @@
         r.bucket === 'ready' ? el('button', { class: 'btn small ghost tr-seen', title: 'Seen: move it to Idle (s)', 'aria-label': 'Mark seen', onclick: () => ack(run.id, r.pid) }, svg(ICON.check, 12)) : null,
         el('button', { class: 'icon-btn', title: 'More', 'aria-label': 'Agent menu', onclick: e => trackerRowMenu(e.currentTarget, r) }, svg('M3 8h.01M8 8h.01M13 8h.01', 16, 'stroke-width="2.4"'))));
     if (!open) return row;
-    return el('div', { class: 'tr-entry' }, row, trackerFeed(r));
+    const opening = S.tracker.opening === r.task.id; if (opening) S.tracker.opening = null; // animate the open once, not on every refresh
+    return el('div', { class: 'tr-entry' }, row, el('div', { class: 'tr-feed-wrap' + (opening ? ' opening' : '') }, trackerFeed(r)));
   }
   function trackerRowMenu(anchor, r) {
     closePopover();
@@ -622,6 +672,11 @@
     const item = (label, fn, icon) => el('button', { class: 'menu-item', role: 'menuitem', onclick: () => { closePopover(); fn(); } }, icon ? svg(icon, 13) : null, label);
     pop.append(item(`Open ${projectName(r.p)}`, () => openInWorkspace(r.pid), ICON.arrow));
     if (r.bucket === 'ready') pop.append(item('Mark seen', () => ack(r.latest.id, r.pid), ICON.check));
+    // A turn can look stuck (the agent crashed or was closed without a signal): end it by hand.
+    if ((r.bucket === 'working' || r.bucket === 'waiting') && r.latest?.status === 'active') pop.append(item('Move to Idle', async () => {
+      try { await call(api.stopRun(r.latest.id)); toast({ text: 'Moved to Idle. If the agent is still going, it shows up again when it next reports in.', ttl: 5000 }); }
+      catch (e) { toast({ text: e.message, ttl: 5000, cls: 'gold' }); }
+    }, ICON.x));
     if (r.bucket === 'idle') pop.append(item(r.archived ? 'Bring back' : 'Clear from the list', () => setArchived(r.task.id, !r.archived, r.pid).then(() => render(true)), ICON.x));
     if (r.task.sessionId) pop.append(item('Copy session id', () => { api.copy(r.task.sessionId); toast({ text: 'Session id copied.', ttl: 3000 }); }, ICON.copy));
     place(pop, anchor);
@@ -642,7 +697,7 @@
     const feed = el('div', { class: 'tr-feed' });
     for (const e of entries.slice(0, 8)) feed.append(el('div', { class: 'tr-feed-row' },
       el('span', { class: 'tr-time', text: clock(e.at) }), el('span', { class: 'tr-kind k-' + e.kind }, el('i'), TR_KIND[e.kind]),
-      el('span', { class: 'tr-feed-text', text: e.text.split('\n')[0] }), el('span', { class: 'chip ' + e.status[1], text: e.status[0] })));
+      el('span', { class: 'tr-feed-text', text: e.text.split('\n')[0] }), (([label, time]) => el('span', { class: 'chip ' + e.status[1] }, label, time ? el('span', { class: 'chip-dur', text: time }) : null))(e.status[0].split(' · '))));
     feed.append(el('div', { class: 'tr-feed-f' }, el('span', { class: 't-small', text: entries.length > 8 ? `${entries.length - 8} earlier` : `Started ${ago(r.runs[0]?.startedAt || r.task.createdAt)}` }), el('span', { class: 'spacer' }),
       el('button', { class: 'btn small ghost', onclick: () => openInWorkspace(r.pid) }, 'Reply in the workspace', svg(ICON.arrow, 12))));
     return feed;
@@ -1138,7 +1193,12 @@
     const rect = anchor.getBoundingClientRect();
     document.body.append(pop); S.popover = pop;
     const w = pop.offsetWidth || 300;
-    pop.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - w - 8)) + 'px'; pop.style.top = Math.min(rect.bottom + 8, window.innerHeight - pop.offsetHeight - 8) + 'px';
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - w - 8)), top = Math.min(rect.bottom + 8, window.innerHeight - pop.offsetHeight - 8);
+    pop.style.left = left + 'px'; pop.style.top = top + 'px';
+    // grow from the button that opened it: its centre across, and the edge the popover hangs from
+    const ox = Math.max(0, Math.min(w, rect.left + rect.width / 2 - left)), oy = top < rect.top ? pop.offsetHeight : 0;
+    pop.style.setProperty('--pop-origin', `${Math.round(ox)}px ${oy}px`);
+    requestAnimationFrame(() => pop.classList.add('is-open'));
     setTimeout(() => document.addEventListener('pointerdown', onDocDown), 0);
   }
   /** The status chip opens a small workspace card: folder, conversations, prefix. Runs live in the threads. */
@@ -1154,11 +1214,18 @@
     place(pop, anchor);
   }
   function onDocDown(e) { if (S.popover && !S.popover.contains(e.target)) closePopover(); }
-  function closePopover() { if (S.popover) { S.popover.remove(); S.popover = null; document.removeEventListener('pointerdown', onDocDown); } }
+  function closePopover() {
+    const p = S.popover; if (!p) return;
+    S.popover = null; document.removeEventListener('pointerdown', onDocDown);
+    p.classList.remove('is-open'); p.classList.add('is-closing'); setTimeout(() => p.remove(), 150);
+  }
 
   // ---------- sheets ----------
-  function sheet(content) { closeOverlay(); const scrim = el('div', { class: 'scrim', onclick: e => { if (e.target === scrim) closeOverlay(); } }, el('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true' }, ...content)); $('#overlay').append(scrim); return scrim; }
-  function closeOverlay() { $('#overlay').textContent = ''; }
+  function sheet(content) { $('#overlay').textContent = ''; const scrim = el('div', { class: 'scrim', onclick: e => { if (e.target === scrim) closeOverlay(); } }, el('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true' }, ...content)); $('#overlay').append(scrim); return scrim; }
+  /** Close whatever sheet is open; it scales back down before it goes. A sheet opened meanwhile is left alone. */
+  function closeOverlay() {
+    for (const s of [...$('#overlay').children]) { if (s.classList.contains('is-closing')) continue; s.classList.add('is-closing'); s.inert = true; setTimeout(() => s.remove(), 150); }
+  }
 
   /** Return to the agent: bring its window forward if we know it; otherwise explain how. */
   async function returnTo(r) {
@@ -1359,6 +1426,7 @@
   // ---------- toasts ----------
   function toast({ text, actions = [], ttl = 5000, cls = '' }) {
     const t = el('div', { class: 'toast ' + cls, role: 'status' }, el('div', { class: 't' }, ...(Array.isArray(text) ? text : [text])));
+    t.remove = () => { if (t.classList.contains('is-closing')) return; t.classList.add('is-closing'); setTimeout(() => Element.prototype.remove.call(t), 250); }; // every caller's remove() sinks it away
     if (actions.length) t.append(el('div', { class: 'a' }, ...actions.map(a => el('button', { class: 'btn small' + (a.primary ? ' primary' : ' ghost'), onclick: () => { t.remove(); a.fn(); } }, a.label))));
     $('#toasts').append(t);
     if (ttl) setTimeout(() => t.remove(), ttl);
