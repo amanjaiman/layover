@@ -1139,7 +1139,7 @@
     if (t?.host?.hwnd) {
       try {
         const res = await call(api.returnFocus(t.id));
-        if (res.ok) { if (r.id) ack(r.id, r.project || S.project); return; }
+        if (res.ok) return; // going back is not the same as seeing it: the row stays until marked seen
         if (res.reason === 'gone') toast({ text: `That ${t.host.name} window is closed.`, ttl: 5000 });
       } catch { /* fall through to the sheet */ }
     }
@@ -1211,7 +1211,8 @@
         row.append(...[
           agentIcon(id, 26), el('span', { class: 'dot ' + (connected ? 'done' : 'quiet'), style: connected ? '' : 'background:var(--border-strong)', title: connected ? 'Connected' : 'Not connected' }),
           el('div', { class: 'l' }, el('b', { text: label }), el('span', { text: connected ? (stale ? 'Connected · update available' : 'Connected: skill and lifecycle hooks installed') : 'Not connected. One click installs the skill and hooks in your user settings.' }),
-            id === 'codex' && connected ? el('span', { text: 'Codex asks you to trust hooks once: type /hooks in Codex and approve the Layover entries.' }) : null, info.hooksError ? el('span', { style: 'color:var(--danger)', text: 'Hooks file could not be read: ' + info.hooksError }) : null),
+            id === 'codex' && connected ? el('span', { text: 'Codex asks you to trust hooks once: type /hooks in Codex and approve the Layover entries.' }) : null,
+            id === 'codex' && info.hooksFeature?.disabled ? el('span', { style: 'color:var(--danger)', text: 'Your Codex config.toml turns hooks off (hooks = false under [features]). Remove that line so Layover can see Codex.' }) : null, info.hooksError ? el('span', { style: 'color:var(--danger)', text: 'Hooks file could not be read: ' + info.hooksError }) : null),
           connected ? el('button', { class: 'btn small ghost', onclick: async () => { await call(api.setupRemove(id)); info = (await call(api.setupStatus()))[id]; draw(); } }, 'Disconnect') : null,
           el('button', { class: 'btn small' + (connected && !stale ? '' : ' primary'), onclick: async () => { try { const r = await call(api.setupInstall(id, {})); info = (await call(api.setupStatus()))[id]; draw(); toast({ text: label + ' connected.' + (r.notes?.length ? ' ' + r.notes[0] : ''), ttl: 8000 }); } catch (e) { toast({ text: e.message, ttl: 8000, cls: 'gold' }); } } }, connected ? (stale ? 'Update' : 'Reinstall') : 'Connect')].filter(Boolean));
       };

@@ -95,6 +95,73 @@ function hookSpec(agent, cmd, fastCmd) {
   };
 }
 
+/**
+ * Codex before 0.125 runs no hooks at all unless config.toml has `[features] codex_hooks = true`
+ * (verified 2026-09-22: 0.120 fired nothing without it, everything with it). Later builds default
+ * hooks on and still accept the key, so it is always written. The trailing comment marks our line.
+ */
+const FEATURE_MARK = '# added by Layover';
+const FEATURE_LINE = `codex_hooks = true ${FEATURE_MARK}: Codex before 0.125 keeps hooks off without it`;
+export function codexConfigFile() { return path.join(codexDir(), 'config.toml'); }
+
+/** The [features] table of a TOML text: header index and the index where the table ends. */
+function featuresTable(lines) {
+  const start = lines.findIndex(l => /^\s*\[\s*features\s*\]\s*(#.*)?$/.test(l));
+  if (start < 0) return null;
+  let end = start + 1;
+  while (end < lines.length && !/^\s*\[/.test(lines[end])) end++;
+  return { start, end };
+}
+
+/** What config.toml says about Codex hooks: codex_hooks set to true, and whether `hooks = false` turns them off. */
+export function codexHooksFeature(file = codexConfigFile()) {
+  let text = '';
+  try { text = fs.readFileSync(file, 'utf8'); } catch { return { enabled: false, disabled: false }; }
+  const lines = text.split(/\r?\n/), t = featuresTable(lines);
+  const body = t ? lines.slice(t.start + 1, t.end) : [];
+  return {
+    enabled: body.some(l => /^\s*codex_hooks\s*=\s*true\b/.test(l)),
+    disabled: body.some(l => /^\s*(codex_hooks|hooks)\s*=\s*false\b/.test(l)),
+  };
+}
+
+/** Make sure Codex runs hooks. Edits one line of config.toml and leaves the rest byte for byte. */
+export function enableCodexHooks(file = codexConfigFile()) {
+  const text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  const lines = text.split(/\r?\n/);
+  const firstTable = lines.findIndex(l => /^\s*\[/.test(l));
+  const root = firstTable < 0 ? lines : lines.slice(0, firstTable);
+  if (root.some(l => /^\s*features\s*[.=]/.test(l))) return { changed: false, reason: 'features is set inline; add codex_hooks = true to it by hand' };
+  const t = featuresTable(lines);
+  if (t) {
+    const i = lines.slice(t.start + 1, t.end).findIndex(l => /^\s*codex_hooks\s*=/.test(l));
+    if (i >= 0 && /^\s*codex_hooks\s*=\s*true\b/.test(lines[t.start + 1 + i])) return { changed: false, reason: 'already on' };
+    if (i >= 0) lines[t.start + 1 + i] = FEATURE_LINE; else lines.splice(t.start + 1, 0, FEATURE_LINE);
+  } else {
+    while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
+    if (lines.length) lines.push('');
+    lines.push('[features]', FEATURE_LINE, '');
+  }
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = file + '.tmp-layover';
+  fs.writeFileSync(tmp, lines.join(eol));
+  fs.renameSync(tmp, file);
+  return { changed: true, reason: 'turned on' };
+}
+
+/** Undo enableCodexHooks: only the line we wrote goes. */
+function disableCodexHooks(file = codexConfigFile()) {
+  if (!fs.existsSync(file)) return false;
+  const text = fs.readFileSync(file, 'utf8');
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  const lines = text.split(/\r?\n/);
+  const kept = lines.filter(l => !(/^\s*codex_hooks\s*=/.test(l) && l.includes(FEATURE_MARK)));
+  if (kept.length === lines.length) return false;
+  fs.writeFileSync(file, kept.join(eol));
+  return true;
+}
+
 function mergeHooks(existing, spec) {
   const out = stripOurs(existing);
   for (const [event, groups] of Object.entries(spec)) out[event] = [...(out[event] || []), ...groups];
@@ -113,7 +180,9 @@ export function status(agent, cliPath) {
     hooksInstalled = all.some(isOurs);
     hooksCurrent = cliPath ? all.filter(isOurs).every(h => h.command === hookCommand(cliPath, agent) || h.command === fastHookCommand(cliPath, agent)) && all.some(h => h.command === fastHookCommand(cliPath, agent)) && hooksInstalled : hooksInstalled;
   } catch (e) { hooksError = e.message; }
-  return { agent, skillPath: loc.skill, hooksPath: loc.hooks, skillInstalled, skillCurrent, hooksInstalled, hooksCurrent, hooksError, connected: skillInstalled && hooksInstalled };
+  let feature = null;
+  if (agent === 'codex') { feature = codexHooksFeature(); if (!feature.enabled) hooksCurrent = false; }
+  return { agent, hooksFeature: feature, skillPath: loc.skill, hooksPath: loc.hooks, skillInstalled, skillCurrent, hooksInstalled, hooksCurrent, hooksError, connected: skillInstalled && hooksInstalled };
 }
 
 export function install(agent, cliPath, { hooks = true, skill = true } = {}) {
@@ -130,6 +199,12 @@ export function install(agent, cliPath, { hooks = true, skill = true } = {}) {
     doc[loc.hooksKey] = mergeHooks(doc[loc.hooksKey], hookSpec(agent, hookCommand(cliPath, agent), fastHookCommand(cliPath, agent)));
     writeJson(loc.hooks, doc);
     result.wroteHooks = true;
+    if (agent === 'codex') {
+      const f = enableCodexHooks();
+      result.featureChanged = f.changed;
+      if (!f.changed && f.reason !== 'already on') result.notes.push(`Codex config: ${f.reason}.`);
+      if (codexHooksFeature().disabled) result.notes.push('Codex config.toml turns hooks off (hooks = false under [features]); remove that line so Layover can see Codex.');
+    }
     if (agent === 'codex') result.notes.push('Codex asks you to trust new hooks once: run /hooks inside Codex and approve the Layover entries.');
     result.notes.push('Sessions already running pick up hooks and skills on their next start.');
   }
@@ -151,6 +226,7 @@ export function ensureUserPath(binDir) {
 export function remove(agent) {
   const loc = locations(agent);
   const result = { agent, removedSkill: false, removedHooks: false };
+  if (agent === 'codex') result.removedFeature = disableCodexHooks();
   if (fs.existsSync(loc.skill)) { fs.rmSync(path.dirname(loc.skill), { recursive: true, force: true }); result.removedSkill = true; }
   if (fs.existsSync(loc.hooks)) {
     const doc = readJson(loc.hooks);
