@@ -107,7 +107,7 @@ The packaged CLI runs on the app's own Node runtime, so you don't need Node inst
 
 ```
 npm install            # Node 22+; then approve electron's postinstall if npm asks
-npm test               # store, hooks, setup, HTTP service
+npm test               # store, hooks, titles, setup, HTTP service; CI runs it on Windows and macOS for every PR
 npm start              # dev app (data in %LOCALAPPDATA%\Layover unless LAYOVER_DATA is set)
 npm run dist           # release/Layover-Setup-<version>.exe
 ```

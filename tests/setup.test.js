@@ -8,7 +8,11 @@ process.env.LAYOVER_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'layover-home-'
 delete process.env.CLAUDE_CONFIG_DIR; delete process.env.CODEX_HOME;
 const setup = await import('../src/cli/setup.js');
 const home = process.env.LAYOVER_HOME;
-const cli = 'C:\\Users\\Some One\\AppData\\Local\\Programs\\Layover\\bin\\layover.cmd';
+// Hook commands are shell-specific: cmd/PowerShell quoting on Windows, sh quoting elsewhere. Each
+// platform checks its own, with a space in the path so the quoting is exercised.
+const win = process.platform === 'win32';
+const cli = win ? 'C:\\Users\\Some One\\AppData\\Local\\Programs\\Layover\\bin\\layover.cmd' : '/Users/Some One/Applications/Layover.app/Contents/bin/layover';
+const quoted = (p) => win ? `"${p.replace(/\\/g, '/')}"` : `'${p}'`;
 
 test('install writes skill + hooks for both agents, preserves other settings, and is idempotent', () => {
   const settings = path.join(home, '.claude', 'settings.json');
@@ -19,13 +23,19 @@ test('install writes skill + hooks for both agents, preserves other settings, an
   const doc = JSON.parse(fs.readFileSync(settings, 'utf8'));
   assert.equal(doc.theme, 'dark');
   assert.equal(doc.hooks.Stop[0].hooks[0].command, 'echo mine');
-  assert.ok(doc.hooks.Stop.some(g => g.hooks.some(h => h.command === `"${cli.replace(/\\/g, '/')}" hook claude`)));
-  assert.equal(setup.hookCommand('C:\\Users\\amanj\\AppData\\Local\\Programs\\layover\\bin\\layover.cmd', 'codex'), 'C:/Users/amanj/AppData/Local/Programs/layover/bin/layover.cmd hook codex');
-  assert.equal(setup.hookCommand(cli, 'codex'), "& 'C:/Users/Some One/AppData/Local/Programs/Layover/bin/layover.cmd' hook codex");
+  assert.ok(doc.hooks.Stop.some(g => g.hooks.some(h => h.command === `${quoted(cli)} hook claude`)));
+  if (win) {
+    assert.equal(setup.hookCommand('C:\\Users\\amanj\\AppData\\Local\\Programs\\layover\\bin\\layover.cmd', 'codex'), 'C:/Users/amanj/AppData/Local/Programs/layover/bin/layover.cmd hook codex');
+    assert.equal(setup.hookCommand(cli, 'codex'), "& 'C:/Users/Some One/AppData/Local/Programs/Layover/bin/layover.cmd' hook codex");
+  } else {
+    assert.equal(setup.hookCommand('/Applications/Layover.app/Contents/bin/layover', 'codex'), '/Applications/Layover.app/Contents/bin/layover hook codex');
+    assert.equal(setup.hookCommand(cli, 'codex'), "'/Users/Some One/Applications/Layover.app/Contents/bin/layover' hook codex");
+    assert.equal(setup.hookCommand("/Users/o'neil/Layover.app/Contents/bin/layover", 'claude'), "'/Users/o'\\''neil/Layover.app/Contents/bin/layover' hook claude");
+  }
   assert.ok(doc.hooks.UserPromptSubmit && doc.hooks.SessionEnd && doc.hooks.Notification);
-  assert.equal(doc.hooks.PostToolUse[0].hooks[0].command, `"${cli.replace(/\\/g, '/').replace('layover.cmd', 'layover-fast.cmd')}" hook claude`);
+  assert.equal(doc.hooks.PostToolUse[0].hooks[0].command, `${quoted(cli.replace(/layover(\.cmd)?$/, 'layover-fast$1'))} hook claude`);
   const skill = fs.readFileSync(path.join(home, '.claude', 'skills', 'layover', 'SKILL.md'), 'utf8');
-  assert.match(skill, /^---\r?\nname: layover/); assert.ok(!skill.includes('__CLI__')); assert.ok(skill.includes('Layover/bin/layover.cmd'));
+  assert.match(skill, /^---\r?\nname: layover/); assert.ok(!skill.includes('__CLI__')); assert.ok(skill.includes(win ? 'Layover/bin/layover.cmd' : 'Contents/bin/layover'));
   const r2 = setup.install('claude', cli);
   assert.equal(r2.wroteSkill, false);
   const doc2 = JSON.parse(fs.readFileSync(settings, 'utf8'));

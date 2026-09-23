@@ -57,7 +57,9 @@ export function mapHook(agent, input, { hookContext = true, host = null, threadT
       break;
     }
     case 'Stop':
-      if (run) events.push({ ...base, id: `end:${run}:completed`, type: 'end', run, seq: now, status: 'completed' });
+      // A Stop can fire again for the same prompt when another Stop hook sends the agent back to work,
+      // so the id carries the time like every other end: the later stop moves the end time forward.
+      if (run) events.push({ ...base, id: `end:${run}:${now}:completed`, type: 'end', run, seq: now, status: 'completed' });
       else events.push({ ...base, id: `end:${task}:${now}`, type: 'end', run: '__latest__', seq: now, status: 'completed' });
       break;
     case 'StopFailure':

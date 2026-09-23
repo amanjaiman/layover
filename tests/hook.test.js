@@ -22,14 +22,15 @@ test('turn titles are short, tag-free, and name system-generated turns', () => {
 });
 import { projectIdFromPath } from '../src/main/paths.js';
 
-const common = { session_id: 'abc', cwd: 'C:\\work\\site', transcript_path: 'x' };
+const cwd = process.platform === 'win32' ? 'C:\\work\\site' : '/work/site'; // a folder path in this platform's form
+const common = { session_id: 'abc', cwd, transcript_path: 'x' };
 
 test('Claude prompt → hook-driven start with context line; Stop → completed end on the same run', () => {
   const s = mapHook('claude', { ...common, hook_event_name: 'UserPromptSubmit', prompt_id: 'p1', prompt: 'Build the onboarding flow\nwith email' });
   assert.equal(s.events.length, 1);
   const e = s.events[0];
   assert.equal(e.type, 'start'); assert.equal(e.lifecycle, 'hooks'); assert.equal(e.run, 'claude:abc:p1');
-  assert.equal(e.project, projectIdFromPath('C:\\work\\site')); assert.equal(e.projectName, 'site');
+  assert.equal(e.project, projectIdFromPath(cwd)); assert.equal(e.projectName, 'site');
   assert.equal(e.title, 'Build the onboarding flow with email');
   assert.match(s.context, /run claude:abc:p1/);
   assert.equal(s.open.reason, 'run-start');
@@ -71,4 +72,20 @@ test('SessionStart registers the conversation; unknown events and missing sessio
   assert.equal(mapHook('claude', { ...common, hook_event_name: 'PreToolUse' }).events.length, 0);
   assert.equal(mapHook('claude', { hook_event_name: 'Stop', cwd: 'C:\\x' }).events.length, 0);
   assert.throws(() => mapHook('gemini', common), /agent/);
+});
+
+test('a second Stop for the same prompt (another Stop hook sent the agent back) is accepted and moves the end forward', async () => {
+  const { Store } = await import('../src/main/store.js');
+  const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path');
+  const s = new Store(fs.mkdtempSync(path.join(os.tmpdir(), 'layover-stop-')));
+  s.event(mapHook('claude', { ...common, hook_event_name: 'UserPromptSubmit', prompt_id: 'p1', prompt: 'Go' }).events[0]);
+  const first = mapHook('claude', { ...common, hook_event_name: 'Stop', prompt_id: 'p1' }).events[0];
+  await new Promise(r => setTimeout(r, 5));
+  const second = mapHook('claude', { ...common, hook_event_name: 'Stop', prompt_id: 'p1' }).events[0];
+  assert.notEqual(first.id, second.id);
+  assert.equal(s.event(first).ended.status, 'completed');
+  assert.ok(s.event(second).accepted);
+  assert.deepEqual(s.event(second), { duplicate: true }); // a retry of the same post is still free
+  assert.equal(s.state().runs[0].seq, second.seq);
+  s.close();
 });
