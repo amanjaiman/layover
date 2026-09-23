@@ -76,7 +76,15 @@
     if (s < 86400) return `${Math.round(s / 3600)} h ago`; return `${Math.round(s / 86400)} d ago`;
   }
   function clock(ts) { return new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
-  function dur(ms) { const m = Math.round(ms / 60000); return m < 1 ? 'under a minute' : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`; }
+  /** A duration short enough for a status chip: <1m, 12m, 3h 53m, 2d 5h. */
+  function dur(ms) {
+    const m = Math.round(ms / 60000);
+    if (m < 1) return '<1m';
+    if (m < 60) return `${m}m`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return m % 60 ? `${h}h ${m % 60}m` : `${h}h`;
+    return h % 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : `${Math.floor(h / 24)}d`;
+  }
   const debounce = (fn, ms) => { let t; const d = (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; d.flush = (...a) => { clearTimeout(t); fn(...a); }; return d; };
   async function call(p) { const r = await p; if (!r.ok) throw Error(r.error); return r.value; }
   function autoGrow(t) { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }
@@ -575,7 +583,7 @@
 
   function trackerStatus(r) {
     if (r.bucket === 'waiting') return el('span', { class: 'chip warn', text: 'Waiting on you' });
-    if (r.bucket === 'working') return el('span', { class: 'chip gold' }, el('span', { class: 'dot working' }), ...lbl('Working · ' + dur(Date.now() - r.latest.startedAt), dur(Date.now() - r.latest.startedAt)));
+    if (r.bucket === 'working') { const d = dur(Date.now() - r.latest.startedAt); return el('span', { class: 'chip gold', title: 'Working for ' + d }, el('span', { class: 'dot working' }), el('span', { class: 'l', text: 'Working' }), el('span', { class: 'chip-dur', text: d })); }
     if (r.bucket === 'ready') return r.status === 'failed' ? el('span', { class: 'chip danger', text: 'Error' }) : r.status === 'disconnected' ? el('span', { class: 'chip warn', text: 'No signal' }) : el('span', { class: 'chip ok', text: 'Ready' });
     return el('span', { class: 'chip', text: r.archived ? 'Cleared' : 'Idle' });
   }
