@@ -42,29 +42,61 @@ while ($id -gt 4 -and $hops -lt 14) {
 
 
 /**
- * macOS: walk up the process tree to the first app bundle the agent runs under (Terminal, iTerm,
+ * macOS: walk up the process tree to the outermost app bundle the agent runs under (Terminal, iTerm,
  * VS Code, the Claude or Codex desktop app) and record its bundle id so Return can activate it,
  * plus the terminal tab's tty so Return can pick that tab. `hwnd` carries the pid.
- * iTerm2 runs shells under a detached iTermServer (its parent is launchd, not iTerm2), so that
- * server stands for iTerm2. `ps` lines are `pid ppid tty comm`.
+ * Outermost, because the agent itself can live inside a bundle (a Claude Code binary shipped in an
+ * .app): taking the first bundle up the tree recorded the agent as its own host, and Return then
+ * launched a second copy of it. GUI apps are children of launchd, so the last bundle before the top
+ * is the app the user sees. iTerm2 runs shells under a detached iTermServer (its parent is launchd,
+ * not iTerm2), so that server stands for iTerm2. `ps` lines are `pid ppid tty comm`.
  */
 export function macHostFromProcesses(pid, psOutput) {
-  const parent = new Map(), exe = new Map(), ttys = new Map();
-  for (const line of String(psOutput).split('\n')) {
-    const m = line.match(/^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.+?)\s*$/);
-    if (m) { parent.set(Number(m[1]), Number(m[2])); ttys.set(Number(m[1]), m[3]); exe.set(Number(m[1]), m[4]); }
-  }
-  let tty = '';
+  const { parent, exe, ttys } = parsePs(psOutput);
+  let tty = '', found = null;
   for (let id = pid, hops = 0; id > 1 && hops < 20; id = parent.get(id), hops++) {
     const t = ttys.get(id) || '';
     if (!tty && /^(tty)?s?\d+$/.test(t)) tty = '/dev/' + (t.startsWith('tty') ? t : 'tty' + t); // ttys003, or s003 in short form
     const cmd = exe.get(id) || '';
     const app = cmd.match(/^(.*?\/([^/]+)\.app)\/Contents\//);
-    if (app && app[2] !== 'Layover') return { pid: id, app: app[1], name: app[2], tty };
-    if (/\/iTerm2\/iTermServer[^/]*$/.test(cmd)) return { pid: id, app: '', bundle: 'com.googlecode.iterm2', name: 'iTerm2', tty };
+    if (app && app[2] !== 'Layover') found = { pid: id, app: app[1], name: app[2] };
+    if (/\/iTerm2\/iTermServer[^/]*$/.test(cmd)) found = { pid: id, app: '', bundle: 'com.googlecode.iterm2', name: 'iTerm2' };
     if (!parent.has(id)) break;
   }
-  return null;
+  return found ? { ...found, tty } : null;
+}
+
+function parsePs(psOutput) {
+  const parent = new Map(), exe = new Map(), ttys = new Map();
+  for (const line of String(psOutput).split('\n')) {
+    const m = line.match(/^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.+?)\s*$/);
+    if (m) { parent.set(Number(m[1]), Number(m[2])); ttys.set(Number(m[1]), m[3]); exe.set(Number(m[1]), m[4]); }
+  }
+  return { parent, exe, ttys };
+}
+
+/**
+ * The host of a recorded one, re-resolved from the live process tree: walks up from the recorded
+ * process, but only while that pid still runs the recorded app, so a reused pid never points
+ * Return at an unrelated app. Fixes hosts recorded by the first-bundle walk without a restart.
+ */
+export function liveMacHost(host, psOutput) {
+  const { exe } = parsePs(psOutput);
+  const cmd = exe.get(Number(host?.pid)) || '';
+  const same = host?.name === 'iTerm2' && /\/iTermServer[^/]*$/.test(cmd) || cmd.includes(`/${host?.name}.app/Contents/`);
+  return same ? macHostFromProcesses(Number(host.pid), psOutput) : null;
+}
+
+export function macProcesses() {
+  const ps = spawnSync('ps', ['-A', '-o', 'pid=,ppid=,tty=,comm='], { encoding: 'utf8', timeout: 3000 });
+  return ps.status === 0 ? ps.stdout : '';
+}
+
+/** A found bundle as a host record, or null when its bundle id cannot be read. */
+export function macHostRecord(found) {
+  let bundle = found.bundle || '';
+  if (!bundle) { const r = spawnSync('defaults', ['read', `${found.app}/Contents/Info`, 'CFBundleIdentifier'], { encoding: 'utf8', timeout: 3000 }); bundle = r.status === 0 ? r.stdout.trim() : ''; }
+  return bundle ? { pid: found.pid, hwnd: String(found.pid), name: found.name.slice(0, 80), title: bundle.slice(0, 200), via: 'process', ...(found.tty ? { tty: found.tty } : {}) } : null;
 }
 
 /** Inside tmux the agent's ancestors end at the tmux server (a launchd child); the client sits in the terminal. */
@@ -79,13 +111,10 @@ function tmuxClientPid() {
 }
 
 function findHostMac(pid, guess) {
-  const ps = spawnSync('ps', ['-A', '-o', 'pid=,ppid=,tty=,comm='], { encoding: 'utf8', timeout: 3000 });
-  const found = ps.status === 0 ? macHostFromProcesses(tmuxClientPid() || pid, ps.stdout) : null;
-  if (found) {
-    let bundle = found.bundle || '';
-    if (!bundle) { const r = spawnSync('defaults', ['read', `${found.app}/Contents/Info`, 'CFBundleIdentifier'], { encoding: 'utf8', timeout: 3000 }); bundle = r.status === 0 ? r.stdout.trim() : ''; }
-    if (bundle) return { pid: found.pid, hwnd: String(found.pid), name: found.name.slice(0, 80), title: bundle.slice(0, 200), via: 'process', ...(found.tty ? { tty: found.tty } : {}) };
-  }
+  const ps = macProcesses();
+  const found = ps ? macHostFromProcesses(tmuxClientPid() || pid, ps) : null;
+  const host = found ? macHostRecord(found) : null;
+  if (host) return host;
   // No app in the tree (ssh, screen, a launchd job): the frontmost app is only a guess, and a fair one
   // only while the user is starting the agent. On a resume or clear it may be anything (Slack).
   return guess ? findFrontmostMac() : null;
