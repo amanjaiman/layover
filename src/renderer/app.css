@@ -853,3 +853,73 @@ body.compact .tr-card[class*=" s-"] .tr-row .tr-proj{ display:flex; }
 .tr-card.folded .tr-card-in{ opacity:0; filter:blur(2px); transition-duration:var(--dur-close); }
 body:not(.compact) .tr-card.folded .tr-card-h{ padding-bottom:var(--s3); } /* a folded card closes evenly under its header */
 @media (prefers-reduced-motion: reduce){ .tr-card-body, .tr-card-in, .tr-fold svg{ transition:none; } }
+
+/* ==========================================================
+   Flight style (Settings → Appearance): the same room dressed as an airport.
+   Looks only: every rule restyles something that is already there, and nothing moves or hides.
+   ========================================================== */
+:root[data-style="flight"]{
+  --board:#1D201C; --board-top:#2B2F29; --board-text:#F2B84B; --board-2:#E7E1D2; --board-faint:#9C9582;
+  --plane:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1.2c.7 0 1.2.8 1.2 1.8v3.1l5.3 3.1v1.9L9.2 9.5v2.6l1.7 1.3v1.4L8 14l-2.9.8v-1.4l1.7-1.3V9.5l-5.3 1.6V9.2l5.3-3.1V3c0-1 .5-1.8 1.2-1.8Z'/%3E%3C/svg%3E");
+}
+:root[data-style="flight"][data-theme="dark"]{ --board:#0C0E0B; --board-top:#1A1D18; }
+
+/* the mark takes a small plane, heading out */
+:root[data-style="flight"] .rail-top .mark > span::after{ content:""; display:inline-block; width:12px; height:12px; margin-left:7px; vertical-align:-1px; background:var(--accent); -webkit-mask:var(--plane) center/contain no-repeat; mask:var(--plane) center/contain no-repeat; transform:rotate(90deg); }
+
+/* a working agent is a plane in the air instead of a breathing dot */
+:root[data-style="flight"] .dot.working{ width:12px; height:12px; border-radius:0; -webkit-mask:var(--plane) center/contain no-repeat; mask:var(--plane) center/contain no-repeat; animation:cruise 1400ms var(--ease-soft) infinite alternate; }
+:root[data-style="flight"] .chip .dot.working{ width:10px; height:10px; }
+:root[data-style="flight"] body.rail-collapsed .ws .dot.working{ border:none; width:10px; height:10px; }
+@keyframes cruise{ from{ opacity:.55; transform:rotate(45deg) translateY(1px);} to{ opacity:1; transform:rotate(45deg) translateY(-1px);} }
+
+/* tabs read like a departures board; the chosen one sits on a runway centre line */
+:root[data-style="flight"] .tab, :root[data-style="flight"] .cnav button{ font-family:var(--f-mono); text-transform:uppercase; letter-spacing:.12em; font-size:12px; }
+:root[data-style="flight"] body.compact .cnav button{ font-size:11px; letter-spacing:.08em; }
+:root[data-style="flight"] .tab[aria-selected="true"]::after{ background:repeating-linear-gradient(90deg, var(--accent) 0 10px, transparent 10px 15px); border-radius:0; }
+
+/* counts and flight numbers on split-flap tiles: two flaps, the upper one a shade lighter (a line through the middle would read as struck out) */
+:root[data-style="flight"] .tr-n, :root[data-style="flight"] .tab .count, :root[data-style="flight"] .tk-key{
+  display:inline-block; padding:0 5px; border-radius:3px; font-family:var(--f-mono); font-weight:500; color:var(--board-text);
+  background:linear-gradient(var(--board-top) 50%, var(--board) 50%); }
+:root[data-style="flight"] .tab .count.hot{ color:#FFD27A; }
+:root[data-style="flight"] .tk-key{ text-align:center; line-height:1.7; }
+:root[data-style="flight"] .tk-row.closed .tk-key{ color:var(--board-faint); }
+
+/* the Tracker is the board itself: an amber header, and each row's history on the dark panel */
+:root[data-style="flight"] .tr-cols{ background:var(--board); border-top-color:var(--board); }
+:root[data-style="flight"] .tr-cols span{ color:var(--board-text); }
+:root[data-style="flight"] .tr-feed{ background:var(--board); border-top-color:var(--board); }
+:root[data-style="flight"] .tr-feed .tr-time{ color:var(--board-text); }
+:root[data-style="flight"] .tr-feed-text{ color:var(--board-2); }
+:root[data-style="flight"] .tr-feed .tr-kind, :root[data-style="flight"] .tr-feed-f .t-small{ color:var(--board-faint); }
+:root[data-style="flight"] .tr-feed .btn.ghost{ color:var(--board-2); }
+:root[data-style="flight"] .tr-feed .btn.ghost:hover{ background:rgba(255,255,255,.08); color:#fff; }
+:root[data-style="flight"] .tr-feed .chip{ background:rgba(255,255,255,.07); color:var(--board-2); }
+:root[data-style="flight"] .tr-feed .chip.ok{ color:#7FD49A; } :root[data-style="flight"] .tr-feed .chip.gold{ color:var(--board-text); }
+:root[data-style="flight"] .tr-feed .chip.warn{ color:#F0B35A; } :root[data-style="flight"] .tr-feed .chip.danger{ color:#F2907C; }
+
+/* a conversation and an entry's detail are boarding passes: a perforation under the header, notched at both edges */
+:root[data-style="flight"] .thread{ --edge:var(--border-soft); overflow:visible; }
+:root[data-style="flight"] .thread.working{ --edge:color-mix(in oklab, var(--gold) 35%, var(--border-soft)); }
+:root[data-style="flight"] .thread.attention{ --edge:color-mix(in oklab, var(--warn) 45%, var(--border-soft)); }
+:root[data-style="flight"] .thread-h{ position:relative; border-bottom:2px dashed var(--border); border-radius:var(--r-lg) var(--r-lg) 0 0; }
+:root[data-style="flight"] .thread.collapsed .thread-h{ border-radius:var(--r-lg); }
+:root[data-style="flight"] .thread-h::before, :root[data-style="flight"] .thread-h::after,
+:root[data-style="flight"] .tk-detail-h::before, :root[data-style="flight"] .tk-detail-h::after{
+  content:""; position:absolute; bottom:-10px; width:18px; height:18px; border-radius:var(--r-full); background:var(--bg); box-shadow:inset 0 0 0 1px var(--edge); pointer-events:none; }
+:root[data-style="flight"] .thread-h::before{ left:-10px; clip-path:inset(0 0 0 50%); }
+:root[data-style="flight"] .thread-h::after{ right:-10px; clip-path:inset(0 50% 0 0); }
+:root[data-style="flight"] .thread.collapsed .thread-h::before, :root[data-style="flight"] .thread.collapsed .thread-h::after{ display:none; }
+:root[data-style="flight"] .tk-detail{ --edge:var(--border-soft); overflow:visible; }
+:root[data-style="flight"] .tk-detail-h{ position:relative; margin:0 calc(-1 * var(--s4)); padding:0 var(--s4) var(--s2); border-bottom:2px dashed var(--border); }
+:root[data-style="flight"] .tk-detail-h::before{ left:-10px; bottom:-10px; clip-path:inset(0 0 0 50%); }
+:root[data-style="flight"] .tk-detail-h::after{ right:-10px; bottom:-10px; clip-path:inset(0 50% 0 0); }
+
+/* the break timer runs on a dashed runway */
+:root[data-style="flight"] .ring .track{ stroke:var(--border); stroke-dasharray:12 9; }
+
+/* an empty room shows a plane waiting on the apron */
+:root[data-style="flight"] .empty::before{ content:""; display:block; width:26px; height:26px; margin-bottom:var(--s2); background:var(--text-faint); -webkit-mask:var(--plane) center/contain no-repeat; mask:var(--plane) center/contain no-repeat; transform:rotate(45deg); }
+
+@media (prefers-reduced-motion: reduce){ :root[data-style="flight"] .dot.working{ animation:none; opacity:1; transform:rotate(45deg); } }

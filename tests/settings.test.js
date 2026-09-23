@@ -25,3 +25,11 @@ test('the tracker remembers which groups are folded, and a new list replaces the
   assert.throws(() => validateSettings({ window: { trackerFolded: 'idle' } }), /folded/);
   assert.throws(() => validateSettings({ window: { trackerFolded: ['<script>'] } }), /folded/);
 });
+
+test('style defaults to the plain look and accepts flight', () => {
+  assert.equal(DEFAULTS.style, 'default');
+  const s = applySettings(structuredClone(DEFAULTS), { style: 'flight' });
+  assert.equal(s.style, 'flight');
+  assert.equal(s.theme, 'system');
+  assert.throws(() => validateSettings({ style: 'boat' }), /Invalid style/);
+});

@@ -353,7 +353,9 @@ function onRunEnded({ run, status }) {
   if (!settings.notifyOnComplete || !Notification.isSupported()) return;
   if (win?.isFocused()) return; // the app is already in front; the in-app banner is enough
   const agent = r.agent === 'claude' ? 'Claude Code' : r.agent === 'codex' ? 'Codex' : r.agent;
-  const title = status === 'completed' ? 'Ready when you are' : status === 'failed' ? 'A run stopped with an error' : status === 'cancelled' ? 'A run was interrupted' : 'A run went quiet';
+  const title = settings.style === 'flight' // the flight style only renames things
+    ? (status === 'completed' ? 'Landed · at the gate' : status === 'failed' ? 'A flight was diverted' : status === 'cancelled' ? 'A flight was cancelled' : 'Lost contact with a flight')
+    : status === 'completed' ? 'Ready when you are' : status === 'failed' ? 'A run stopped with an error' : status === 'cancelled' ? 'A run was interrupted' : 'A run went quiet';
   const name = store.tasks.get(r.task)?.threadTitle || r.title;
   const n = new Notification({ title, body: `${agent} · ${p?.displayName || p?.name || ''}${name ? ' · ' + name : ''}`, silent: true, icon: iconPath('png') });
   n.on('click', () => { reveal({ focus: true }); broadcast('open-request', { project: r.project, task: r.task, run, reason: 'notification', explicit: true, engaged: false, requestedAt: Date.now() }); });

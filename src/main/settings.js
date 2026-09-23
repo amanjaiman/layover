@@ -9,6 +9,7 @@ export const DEFAULTS = {
   theme: 'system',                 // system | light | dark
   layout: 'full',                  // full: workspaces with Now · Next · Notes · Break | tracker: every agent across projects, as a to-do list
   accent: 'teal',                  // teal | ink | mulberry | ember | oxblood | umber (foundations v0.7)
+  style: 'default',                // default | flight: airport words and a departures-board look; copy and styling only, never behaviour
   openOnRunStart: 'focus',         // focus: bring Layover forward | open: show it behind your work | reveal: only if already open | never
   notifyOnComplete: true,          // Windows toast when a run finishes
   closeToTray: true,               // closing the window keeps Layover in the tray
@@ -48,6 +49,7 @@ export function validateSettings(patch) {
   if (patch.theme !== undefined) { if (!['system', 'light', 'dark'].includes(patch.theme)) throw Error('Invalid theme'); out.theme = patch.theme; }
   if (patch.layout !== undefined) { if (!['full', 'tracker'].includes(patch.layout)) throw Error('Invalid layout'); out.layout = patch.layout; }
   if (patch.accent !== undefined) { if (!['teal', 'ink', 'mulberry', 'ember', 'oxblood', 'umber'].includes(patch.accent)) throw Error('Invalid accent'); out.accent = patch.accent; }
+  if (patch.style !== undefined) { if (!['default', 'flight'].includes(patch.style)) throw Error('Invalid style'); out.style = patch.style; }
   if (patch.openOnRunStart !== undefined) { if (!['focus', 'open', 'reveal', 'never'].includes(patch.openOnRunStart)) throw Error('Invalid openOnRunStart'); out.openOnRunStart = patch.openOnRunStart; }
   for (const k of ['notifyOnComplete', 'closeToTray', 'hookContext', 'onboarded', 'trayPopover']) if (patch[k] !== undefined) out[k] = !!patch[k];
   if (patch.breakReminder !== undefined) {

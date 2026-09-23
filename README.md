@@ -81,6 +81,7 @@ Four views, one per thing you do while an agent works. `Ctrl+1…4` switches bet
 - **Return to the agent** — brings forward the window the session started in (terminal, VS Code, the Claude desktop app), recorded by the hook at session start. If it's gone, you get the session details and a copyable resume command.
 - **Compact companion** (`Ctrl+Shift+C`) — the same app at 400×580, floating. On macOS it also lives in the menu bar as a popover that closes when you click away.
 - **Keyboard** — `Ctrl+Shift+T` tracker, `n` new in Next, `r` reply to the latest item, `j`/`k` through Next, `e` edit, `Esc` close, `[` collapse the sidebar, `?` for the full list.
+- **Flight style** — Settings → Appearance has a style switch next to theme and accent: the cup is the everyday look, the plane dresses the whole app as an airport. Now becomes *Arrivals*, Next *Departures*, Notes the *Logbook*, Break the *Lounge*; workspaces are *Gates*, the Tracker is the *Tower* with a departures-board header, working agents are *In flight* and finished ones *At the gate*. Words and looks only: every button, shortcut and behaviour stays the same.
 - **Focus** — the start of a turn is the one moment Layover comes forward, because you just pressed Enter and are waiting. Items and completions never move the window. Settings → *When an agent starts a turn* offers: come forward (default), open behind my work, only if already open, stay quiet.
 
 <p align="center"><img src="docs/screenshots/compact.png" alt="The compact companion window" width="320"></p>
