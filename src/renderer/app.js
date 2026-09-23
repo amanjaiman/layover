@@ -37,7 +37,7 @@
     state: null, settings: null, project: null, view: 'now', mode: 'expanded', users: {},
     viewKey: '', pendingRefresh: false, acked: {}, offers: new Map(), theme: 'system',
     brk: { timer: null, left: 300, total: 300, stretch: 0, lastStretchAt: 0 }, lastBreak: Date.now(), reminderShown: 0, reminderToast: null,
-    layout: 'full', tracker: { sort: 'status', open: new Set(), older: new Set(), bucket: new Map(), sel: null },
+    layout: 'full', tracker: { sort: 'status', open: new Set(), older: new Set(), folded: new Set(), bucket: new Map(), sel: null },
     lastInteraction: 0, popover: null, notesConflict: null, ticket: null, ticketFilter: 'active', expandedThreads: new Set(), flushers: {}, promptOpen: new Set(), editingTitle: null,
   };
 
@@ -206,6 +206,7 @@
     S.layout = S.settings.layout === 'tracker' ? 'tracker' : 'full';
     document.body.classList.toggle('tracker', S.layout === 'tracker');
     S.tracker.sort = S.settings.window?.trackerSort === 'project' ? 'project' : 'status';
+    S.tracker.folded = new Set(S.settings.window?.trackerFolded || []);
     document.body.classList.toggle('compact', S.mode === 'compact');
     applyTheme({ theme: S.settings.theme, dark: matchMedia('(prefers-color-scheme: dark)').matches });
     const visible = visibleProjects();
@@ -607,15 +608,22 @@
       const showOlder = S.tracker.older.has(g.key);
       const rows = g.rows.filter(r => !r.older || showOlder);
       const olderN = g.rows.filter(r => r.older).length;
-      const card = el('section', { class: 'tr-card' + (byStatus ? ' s-' + g.key : g.rows.some(r => r.bucket === 'waiting') ? ' attention' : '') });
-      if (byStatus) card.append(el('div', { class: 'tr-card-h' }, el('span', { class: 'dot ' + { waiting: 'attention', ready: 'done', working: 'working', idle: 'quiet' }[g.key] }),
+      const folded = S.tracker.folded.has(g.key);
+      const card = el('section', { class: 'tr-card' + (byStatus ? ' s-' + g.key : g.rows.some(r => r.bucket === 'waiting') ? ' attention' : '') + (folded ? ' folded' : '') });
+      // Any group folds to its header (Idle is the one that grows); the header, or its chevron, toggles it.
+      const chev = el('button', { class: 'icon-btn chev tr-fold', 'aria-label': folded ? 'Expand' : 'Collapse', 'aria-expanded': folded ? 'false' : 'true', onclick: () => toggleFold(g.key, card, chev) }, svg('M6 4l4 4-4 4', 14));
+      const head = (...kids) => el('div', { class: 'tr-card-h', onclick: e => { if (!e.target.closest('button')) toggleFold(g.key, card, chev); } }, chev, ...kids);
+      if (byStatus) card.append(head(el('span', { class: 'dot ' + { waiting: 'attention', ready: 'done', working: 'working', idle: 'quiet' }[g.key] }),
         el('div', { class: 'tr-card-t' }, el('b', {}, BUCKET_LABEL[g.key], el('span', { class: 'tr-n', text: String(g.rows.length - (showOlder ? 0 : olderN)) })))));
-      else { const p = g.rows[0].p; card.append(el('div', { class: 'tr-card-h' }, projTok(p),
+      else { const p = g.rows[0].p; card.append(head(projTok(p),
         el('div', { class: 'tr-card-t' }, el('b', { text: projectName(p) }), el('span', { text: [countLine(trackerCounts(g.rows)), p.path].filter(Boolean).join(' · '), title: p.path || null })),
         el('button', { class: 'btn small ghost l', title: 'Open this workspace', onclick: () => openInWorkspace(p.id) }, 'Workspace', svg(ICON.arrow, 12)))); }
-      if (rows.length && S.mode !== 'compact') card.append(el('div', { class: 'tr-cols', 'aria-hidden': 'true' }, ...['Time', 'Agent', byStatus ? 'Project' : 'Kind', 'Item', 'Status', ''].map(x => el('span', { text: x }))));
-      for (const r of rows) card.append(trackerRow(r, byStatus));
-      if (olderN) card.append(el('div', { class: 'tr-foot' }, el('button', { class: 'btn small ghost', onclick: () => { if (showOlder) S.tracker.older.delete(g.key); else S.tracker.older.add(g.key); render(true); } }, showOlder ? 'Hide older' : `${olderN} older`)));
+      const body = el('div', { class: 'tr-card-in' });
+      card.append(el('div', { class: 'tr-card-body' }, body));
+      if (rows.length && S.mode !== 'compact') body.append(el('div', { class: 'tr-cols', 'aria-hidden': 'true' }, ...['Time', 'Agent', byStatus ? 'Project' : 'Kind', 'Item', 'Status', ''].map(x => el('span', { text: x }))));
+      for (const r of rows) body.append(trackerRow(r, byStatus));
+      if (folded) body.inert = true; // folded rows are out of reach for Tab as well as the eye
+      if (olderN) body.append(el('div', { class: 'tr-foot' }, el('button', { class: 'btn small ghost', onclick: () => { if (showOlder) S.tracker.older.delete(g.key); else S.tracker.older.add(g.key); render(true); } }, showOlder ? 'Hide older' : `${olderN} older`)));
       wrap.append(card);
     }
     if (!all.length) wrap.append(el('div', { class: 'empty' }, el('p', {}, el('b', { text: 'No agents yet.' }), ' Every Claude Code and Codex conversation shows up here as soon as it starts, the ones that need you on top. Connect them in Settings.'), el('p', { style: 'margin-top:12px' }, el('button', { class: 'btn', onclick: () => openSettings({ tab: 'agents' }) }, 'Open Settings'))));
@@ -703,11 +711,21 @@
     return feed;
   }
   /** j/k move through rows, Enter opens one, r returns to the agent, s marks it seen. */
+  /** Fold or unfold one Tracker group in place (the CSS animates it) and remember it across restarts. */
+  function toggleFold(key, card, chev) {
+    const folded = !S.tracker.folded.has(key);
+    if (folded) S.tracker.folded.add(key); else S.tracker.folded.delete(key);
+    card.classList.toggle('folded', folded);
+    card.querySelector('.tr-card-in').inert = folded;
+    chev.setAttribute('aria-expanded', folded ? 'false' : 'true'); chev.setAttribute('aria-label', folded ? 'Expand' : 'Collapse');
+    S.settings.window.trackerFolded = [...S.tracker.folded];
+    api.setSettings({ window: { trackerFolded: S.settings.window.trackerFolded } });
+  }
   function trackerKey(e, mod) {
     if (mod || e.altKey || typing() || $('#overlay').firstChild || S.popover) return false;
     if (e.key === 'j' || e.key === 'k') {
       e.preventDefault();
-      const rows = [...document.querySelectorAll('.tr-row')]; if (!rows.length) return true;
+      const rows = [...document.querySelectorAll('.tr-card:not(.folded) .tr-row')]; if (!rows.length) return true;
       const i = rows.indexOf(document.activeElement);
       const next = rows[Math.max(0, Math.min(rows.length - 1, i < 0 ? 0 : i + (e.key === 'j' ? 1 : -1)))];
       next.focus(); next.scrollIntoView({ block: 'nearest' }); return true;

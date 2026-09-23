@@ -842,3 +842,14 @@ body.compact .tr-card[class*=" s-"] .tr-row .tr-proj{ display:flex; }
   .pop{ filter:none; transform:none; }
   .sheet, .toast, .scrim.is-closing, .scrim.is-closing .sheet, .toast.is-closing, .tr-feed-wrap.opening, .tr-feed-wrap.closing{ animation-duration:1ms; }
 }
+/* Tracker groups fold to their header; the chevron turns like a thread's */
+.tr-card-h{ cursor:pointer; }
+.tr-fold{ width:24px; height:24px; flex:none; margin-left:-6px; }
+.tr-fold svg{ transform:rotate(90deg); transition:transform var(--dur-open) var(--ease-out); }
+.tr-card.folded .tr-fold svg{ transform:none; }
+.tr-card-body{ display:grid; grid-template-rows:1fr; transition:grid-template-rows var(--dur-open) var(--ease-out); }
+.tr-card-in{ min-height:0; overflow:hidden; transition:opacity var(--dur-open) var(--ease-out), filter var(--dur-open) var(--ease-out); }
+.tr-card.folded .tr-card-body{ grid-template-rows:0fr; transition-duration:var(--dur-close); }
+.tr-card.folded .tr-card-in{ opacity:0; filter:blur(2px); transition-duration:var(--dur-close); }
+body:not(.compact) .tr-card.folded .tr-card-h{ padding-bottom:var(--s3); } /* a folded card closes evenly under its header */
+@media (prefers-reduced-motion: reduce){ .tr-card-body, .tr-card-in, .tr-fold svg{ transition:none; } }

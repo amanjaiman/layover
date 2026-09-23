@@ -15,3 +15,13 @@ test('the tracker remembers its sort without touching the rest of window', () =>
   assert.equal(s.window.mode, 'expanded');
   assert.throws(() => validateSettings({ window: { trackerSort: 'name' } }), /Invalid tracker sort/);
 });
+
+test('the tracker remembers which groups are folded, and a new list replaces the old one', () => {
+  let s = applySettings(structuredClone(DEFAULTS), { window: { trackerFolded: ['idle', 'p_abc123', 'idle'] } });
+  assert.deepEqual(s.window.trackerFolded, ['idle', 'p_abc123']);
+  s = applySettings(s, { window: { trackerFolded: [] } });
+  assert.deepEqual(s.window.trackerFolded, []);
+  assert.equal(s.window.trackerSort ?? 'status', 'status');
+  assert.throws(() => validateSettings({ window: { trackerFolded: 'idle' } }), /folded/);
+  assert.throws(() => validateSettings({ window: { trackerFolded: ['<script>'] } }), /folded/);
+});
