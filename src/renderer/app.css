@@ -21,7 +21,8 @@
   --s1:6px; --s2:12px; --s3:18px; --s4:24px; --s5:36px; --s6:48px; --s7:72px;
   --r-sm:6px; --r-md:12px; --r-lg:18px; --r-xl:24px; --r-full:999px;
   --dur-quick:120ms; --dur-calm:240ms; --dur-slow:480ms;
-  --ease-out:cubic-bezier(.2,.8,.3,1); --ease-soft:cubic-bezier(.4,.14,.3,1);
+  --dur-open:250ms; --dur-close:150ms; /* surfaces arrive at the calm pace and leave faster */
+  --ease-out:cubic-bezier(.22,1,.36,1); --ease-soft:cubic-bezier(.4,.14,.3,1);
   --titlebar:42px;
   color-scheme:light;
 }
@@ -800,3 +801,55 @@ body.compact .tr-feed-row .tr-kind{ display:none; }
 body.compact .tr-feed-f{ padding:4px var(--s2); }
 @media (prefers-reduced-motion: reduce){ .tr-row.moved{ animation:none; } }
 body.compact .tr-card[class*=" s-"] .tr-row .tr-proj{ display:flex; }
+
+/* ==========================================================
+   v0.6.4 — motion: surfaces grow from where they come from and leave faster than they arrive.
+   After transitions.dev: one ease-out curve, ~250 ms in and ~150 ms out, small scales, and a
+   2 px blur on the way in and out, so things settle rather than pop.
+   ========================================================== */
+/* menus and the workspace card grow from the button that opened them (--pop-origin, set by place) */
+.pop{ animation:none; opacity:0; transform:scale(.97); filter:blur(2px); transform-origin:var(--pop-origin, top left);
+  transition:opacity var(--dur-open) var(--ease-out), transform var(--dur-open) var(--ease-out), filter var(--dur-open) var(--ease-out); }
+.pop.is-open{ opacity:1; transform:none; filter:none; }
+.pop.is-closing{ opacity:0; transform:scale(.99); filter:blur(2px); pointer-events:none; transition-duration:var(--dur-close); }
+/* sheets (Settings, Shortcuts, Return) scale up from the middle and back down on close */
+@keyframes sheetIn{ from{ opacity:0; transform:scale(.96); filter:blur(2px);} }
+@keyframes sheetOut{ to{ opacity:0; transform:scale(.96); filter:blur(2px);} }
+@keyframes fadeOut{ to{ opacity:0;} }
+.sheet{ animation:sheetIn var(--dur-open) var(--ease-out); }
+.scrim.is-closing{ animation:fadeOut var(--dur-close) var(--ease-out) forwards; pointer-events:none; }
+.scrim.is-closing .sheet{ animation:sheetOut var(--dur-close) var(--ease-out) forwards; }
+/* toasts rise into place and sink away */
+@keyframes toastIn{ from{ opacity:0; transform:translateY(16px) scale(.97); filter:blur(2px);} }
+@keyframes toastOut{ to{ opacity:0; transform:translateY(8px) scale(.97); filter:blur(2px);} }
+.toast{ animation:toastIn 350ms var(--ease-out); }
+.toast.is-closing{ animation:toastOut 250ms var(--ease-out) forwards; pointer-events:none; }
+/* segmented controls: one pill slides to the chosen option instead of the highlight jumping (syncPills) */
+.has-pill{ position:relative; isolation:isolate; }
+.has-pill > button{ position:relative; z-index:1; }
+.has-pill > button[aria-checked="true"]{ background:transparent; box-shadow:none; }
+.seg-pill{ position:absolute; top:0; left:0; z-index:0; pointer-events:none; background:var(--surface); box-shadow:var(--e1);
+  transition:transform var(--dur-open) var(--ease-out), width var(--dur-open) var(--ease-out), height var(--dur-open) var(--ease-out); }
+/* a Tracker row's history grows open and folds away */
+@keyframes feedOpen{ from{ grid-template-rows:0fr; opacity:0; filter:blur(2px);} }
+@keyframes feedClose{ to{ grid-template-rows:0fr; opacity:0; filter:blur(2px);} }
+.tr-feed-wrap{ display:grid; grid-template-rows:1fr; }
+.tr-feed-wrap > .tr-feed{ min-height:0; overflow:hidden; }
+.tr-feed-wrap.opening{ animation:feedOpen var(--dur-open) var(--ease-out); }
+.tr-feed-wrap.closing{ animation:feedClose var(--dur-close) var(--ease-out) forwards; }
+@media (prefers-reduced-motion: reduce){
+  .pop, .seg-pill{ transition:none; }
+  .pop{ filter:none; transform:none; }
+  .sheet, .toast, .scrim.is-closing, .scrim.is-closing .sheet, .toast.is-closing, .tr-feed-wrap.opening, .tr-feed-wrap.closing{ animation-duration:1ms; }
+}
+/* Tracker groups fold to their header; the chevron turns like a thread's */
+.tr-card-h{ cursor:pointer; }
+.tr-fold{ width:24px; height:24px; flex:none; margin-left:-6px; }
+.tr-fold svg{ transform:rotate(90deg); transition:transform var(--dur-open) var(--ease-out); }
+.tr-card.folded .tr-fold svg{ transform:none; }
+.tr-card-body{ display:grid; grid-template-rows:1fr; transition:grid-template-rows var(--dur-open) var(--ease-out); }
+.tr-card-in{ min-height:0; overflow:hidden; transition:opacity var(--dur-open) var(--ease-out), filter var(--dur-open) var(--ease-out); }
+.tr-card.folded .tr-card-body{ grid-template-rows:0fr; transition-duration:var(--dur-close); }
+.tr-card.folded .tr-card-in{ opacity:0; filter:blur(2px); transition-duration:var(--dur-close); }
+body:not(.compact) .tr-card.folded .tr-card-h{ padding-bottom:var(--s3); } /* a folded card closes evenly under its header */
+@media (prefers-reduced-motion: reduce){ .tr-card-body, .tr-card-in, .tr-fold svg{ transition:none; } }

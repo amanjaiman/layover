@@ -228,3 +228,17 @@ test('manual projects survive restart and a torn last line is ignored', () => {
   assert.equal(s.state().runs.length, 1);
   s.close();
 });
+
+test('moving a stuck turn to Idle ends it as cancelled, and the agent\'s own later end still wins', () => {
+  const s = new Store(tmp());
+  s.event(start('r1'));
+  const changes = []; s.onChange(c => changes.push(c));
+  const now = Date.now();
+  s.event({ ...base, id: `end:r1:${now}:user`, type: 'end', run: 'r1', seq: now, status: 'cancelled', note: 'Moved to Idle by you.', by: 'user' });
+  assert.equal(s.state().runs[0].status, 'cancelled');
+  assert.equal(changes[0].event.by, 'user'); // main skips the banner and notification on this
+  assert.deepEqual(changes[0].ended, { run: 'r1', status: 'cancelled' });
+  s.event({ ...base, id: 'end:r1:late:completed', type: 'end', run: 'r1', seq: now + 5, status: 'completed' });
+  assert.equal(s.state().runs[0].status, 'completed');
+  s.close();
+});

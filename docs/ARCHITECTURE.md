@@ -49,7 +49,7 @@ Human-readable names travel with events (`projectName`, `title`) and are shown; 
 | `start` | `title`, `source`, `lifecycle` (`hooks|voluntary|wrapper`) | creates the run; a hook-driven start closes any still-active hook-driven run of the same task as `cancelled` |
 | `heartbeat` | | refreshes `lastSeen` (voluntary runs only need it) |
 | `item` | `item`, `kind` (`suggestion|decision|question|opportunity`), `status` (`open|resolved|dismissed`), `revision` ≥ 1, `text` ≤ 12k, `title`, `waiting`, `origin` (`agent|notification`) | higher revision wins; same revision with different content is rejected |
-| `end` | `status` (`completed|failed|cancelled|unknown`), `note` | higher `seq` wins; a delayed `start` never reopens |
+| `end` | `status` (`completed|failed|cancelled|unknown`), `note`, `by` | higher `seq` wins; a delayed `start` never reopens. `by: user` marks a turn you moved to Idle from the Tracker (ended as `cancelled`, no banner or notification); the agent's own later end still wins |
 
 Rules the store enforces: an `id` used twice must carry identical JSON (retries are free, reuse is an error); project/task/agent of a run never change; a task's project/agent never change. Statuses are computed at read time: a voluntary run with no event for 2 minutes shows `disconnected` ("no recent signal", not failure); a hook-driven run does so after 6 hours. A notification item resolves itself when its run ends.
 

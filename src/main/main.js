@@ -65,7 +65,8 @@ async function boot() {
   process.on('layover:stop', () => { quitting = true; app.quit(); });
   store.onChange(change => {
     broadcast('state', store.state());
-    if (change.ended) onRunEnded(change.ended);
+    if (change.ended && change.event?.by !== 'user') onRunEnded(change.ended); // you ended it yourself: no banner, no notification
+    else if (change.ended) updateTray();
   });
   await app.whenReady();
   if (app.isPackaged && process.platform === 'win32') { try { log('path', setup.ensureUserPath(path.dirname(cliCommand()))); } catch (e) { log('path setup failed', e.message); } }
@@ -223,6 +224,20 @@ function focusHwnd(hwnd, owner = '') {
     child.on('error', e => resolve({ ok: false, reason: e.message }));
     child.on('close', () => { const r = out.trim(); resolve({ ok: r === 'ok', reason: r || 'no result' }); });
   });
+}
+
+/**
+ * "Move to Idle": end a turn that is stuck as working (or waiting) the way an agent's own end would,
+ * as cancelled, so every view agrees. If the agent was in fact still going, its own end carries a
+ * later seq and wins, and its next prompt starts a new turn as usual.
+ */
+function stopRun(runId) {
+  const r = store.runs.get(runId);
+  if (!r) throw Error('No such turn');
+  if (r.status !== 'active') return { stopped: false };
+  const now = Date.now();
+  store.event({ id: `end:${r.id}:${now}:user`, type: 'end', project: r.project, task: r.task, agent: r.agent, run: r.id, seq: Math.max(now, r.seq + 1), status: 'cancelled', note: 'Moved to Idle by you.', by: 'user' });
+  return { stopped: true };
 }
 
 /** "Return to the agent": focus the window the session started in, if we know it and it still exists. */
@@ -474,6 +489,7 @@ handle('clipboard:write', (text) => { clipboard.writeText(String(text ?? '')); r
 handle('shell:openPath', (p) => shell.openPath(String(p)));
 handle('shell:openExternal', (url) => { const u = new URL(String(url)); if (!['https:', 'http:'].includes(u.protocol)) throw Error('Only web links can be opened'); return shell.openExternal(u.href); });
 handle('return:focus', (taskId) => returnToHost(String(taskId)));
+handle('run:stop', (runId) => stopRun(String(runId)));
 handle('outbox:send', (m) => store.queueMessage(m));
 handle('outbox:cancel', (id) => store.cancelMessage(String(id)));
 handle('bridge:target', (run) => bridge.target({ run }));

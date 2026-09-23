@@ -63,7 +63,7 @@ export function validateSettings(patch) {
     if (u.check !== undefined) out.updates.check = !!u.check;
     if (u.skip !== undefined) { if (typeof u.skip !== 'string' || u.skip.length > 40) throw Error('Invalid skip version'); out.updates.skip = u.skip; }
   }
-  if (patch.window !== undefined) { const w = patch.window || {}; out.window = {}; if (w.mode !== undefined) { if (!['expanded', 'compact'].includes(w.mode)) throw Error('Invalid window mode'); out.window.mode = w.mode; } if (w.railCollapsed !== undefined) out.window.railCollapsed = !!w.railCollapsed; if (w.trackerSort !== undefined) { if (!['status', 'project'].includes(w.trackerSort)) throw Error('Invalid tracker sort'); out.window.trackerSort = w.trackerSort; } }
+  if (patch.window !== undefined) { const w = patch.window || {}; out.window = {}; if (w.mode !== undefined) { if (!['expanded', 'compact'].includes(w.mode)) throw Error('Invalid window mode'); out.window.mode = w.mode; } if (w.railCollapsed !== undefined) out.window.railCollapsed = !!w.railCollapsed; if (w.trackerSort !== undefined) { if (!['status', 'project'].includes(w.trackerSort)) throw Error('Invalid tracker sort'); out.window.trackerSort = w.trackerSort; } if (w.trackerFolded !== undefined) { if (!Array.isArray(w.trackerFolded) || w.trackerFolded.length > 200 || !w.trackerFolded.every(k => typeof k === 'string' && /^[\w.:-]{1,180}$/.test(k))) throw Error('Invalid tracker folded groups'); out.window.trackerFolded = [...new Set(w.trackerFolded)]; } }
   return out;
 }
 

@@ -37,7 +37,7 @@
     state: null, settings: null, project: null, view: 'now', mode: 'expanded', users: {},
     viewKey: '', pendingRefresh: false, acked: {}, offers: new Map(), theme: 'system',
     brk: { timer: null, left: 300, total: 300, stretch: 0, lastStretchAt: 0 }, lastBreak: Date.now(), reminderShown: 0, reminderToast: null,
-    layout: 'full', tracker: { sort: 'status', open: new Set(), older: new Set(), bucket: new Map(), sel: null },
+    layout: 'full', tracker: { sort: 'status', open: new Set(), older: new Set(), folded: new Set(), bucket: new Map(), sel: null },
     lastInteraction: 0, popover: null, notesConflict: null, ticket: null, ticketFilter: 'active', expandedThreads: new Set(), flushers: {}, promptOpen: new Set(), editingTitle: null,
   };
 
@@ -69,6 +69,8 @@
     return el('span', { class: 'agent-ic ' + agent + (size <= 18 ? ' sm' : ''), title: AGENT[agent] || agent, role: 'img', 'aria-label': AGENT[agent] || agent }, s);
   }
   const lbl = (long, short) => [el('span', { class: 'l', text: long }), el('span', { class: 's', text: short })];
+  /** A shortcut as this platform writes it: Ctrl+Shift+T stays on Windows, becomes ⇧⌘T on a Mac (both keys work). */
+  const keys = (k) => S.platform === 'darwin' ? String(k).replace(/Ctrl\+Shift\+/g, '⇧⌘').replace(/Ctrl\+/g, '⌘') : k;
   function ago(ts) {
     if (!ts) return '';
     const s = Math.max(0, (Date.now() - ts) / 1000);
@@ -204,6 +206,7 @@
     S.layout = S.settings.layout === 'tracker' ? 'tracker' : 'full';
     document.body.classList.toggle('tracker', S.layout === 'tracker');
     S.tracker.sort = S.settings.window?.trackerSort === 'project' ? 'project' : 'status';
+    S.tracker.folded = new Set(S.settings.window?.trackerFolded || []);
     document.body.classList.toggle('compact', S.mode === 'compact');
     applyTheme({ theme: S.settings.theme, dark: matchMedia('(prefers-color-scheme: dark)').matches });
     const visible = visibleProjects();
@@ -241,7 +244,7 @@
     if (S.settings.window?.railCollapsed) toggleRail(true);
   }
   function shortcutSheet() {
-    const K = (k) => el('kbd', { text: k });
+    const K = (k) => el('kbd', { text: keys(k) });
     const rows = [['n', 'New in Next'], ['p', 'Open the prompt of the selected entry'], ['r', 'Reply to the latest item (Now)'], ['j', 'k', 'Move through Next'], ['e', 'Edit the selected entry'], ['Esc', 'Close a sheet, menu, or entry'], ['[', 'Collapse or expand the sidebar'], ['?', 'This list'], ['Ctrl+1…4', 'Now · Next · Notes · Break'], ['Ctrl+N', 'New in Next from anywhere'], ['Ctrl+Shift+C', 'Compact companion'], ['Ctrl+Shift+T', 'Tracker: every agent, ready ones first'], ['j', 'k', 'r', 's', 'Tracker: move, return, mark seen'], ['Ctrl+,', 'Settings']];
     const grid = el('div', { class: 'keys' });
     for (const r of rows) { const label = r.pop(); grid.append(el('span', {}, ...r.flatMap((k, i) => [i ? ' / ' : null, K(k)]).filter(Boolean)), el('span', { text: label })); }
@@ -342,9 +345,52 @@
     S.platform = platform;
     const mac = platform === 'darwin';
     document.body.classList.toggle('mac', mac);
+    for (const n of document.querySelectorAll('[title*="Ctrl+"]')) n.title = keys(n.title); // the static tooltips in index.html
     const b = $('#btn-rail'), home = mac ? $('.main .top') : $('.rail-top');
     if (b && home && b.parentElement !== home) { if (mac) home.prepend(b); else home.append(b); }
   }
+  /**
+   * Segmented controls get one pill that slides to the chosen option. Views rebuild their controls on
+   * every render, so each control's last pill position is remembered by its options and the new pill
+   * starts there. Theme and accent pickers show their choice differently and keep it.
+   */
+  const pillAt = new Map(); const pillWatched = new WeakSet();
+  function syncPills({ snap = false } = {}) {
+    for (const g of document.querySelectorAll('.seg:not(.theme-seg):not(.accent-seg), .rail-mode')) {
+      const buttons = [...g.querySelectorAll(':scope > button')];
+      const on = buttons.find(b => b.getAttribute('aria-checked') === 'true');
+      const key = buttons.map(b => b.dataset.v || b.dataset.layout || b.textContent).join('|');
+      let pill = g.querySelector(':scope > .seg-pill');
+      if (!on || !g.offsetParent) { if (pill) pill.style.opacity = '0'; continue; }
+      const fresh = !pill;
+      if (fresh) { pill = el('span', { class: 'seg-pill', 'aria-hidden': 'true' }); g.prepend(pill); g.classList.add('has-pill'); } // positioned before measuring
+      const to = { x: on.offsetLeft, y: on.offsetTop, w: on.offsetWidth, h: on.offsetHeight };
+      const at = (p) => `translate(${p.x}px, ${p.y}px) ${p.w}x${p.h}`;
+      const put = (p, animate) => {
+        if (!animate) pill.style.transition = 'none';
+        pill.style.transform = `translate(${p.x}px, ${p.y}px)`; pill.style.width = p.w + 'px'; pill.style.height = p.h + 'px'; pill.dataset.at = at(p);
+        if (!animate) { void pill.offsetWidth; pill.style.transition = ''; }
+      };
+      if (fresh) put(pillAt.get(key) || to, false);
+      pill.style.opacity = '1'; pill.style.borderRadius = getComputedStyle(on).borderRadius;
+      // Slide from wherever it is now (at once when the control itself changed size). A pill already
+      // there, or already on its way, is left alone, so a resize never cuts a slide short. The position
+      // is remembered only once the pill is at rest: a click that rebuilds the control mid-slide must
+      // start the new pill where the old one was, not where it was going.
+      if (pill.dataset.at !== at(to)) {
+        put(to, !snap);
+        if (snap) pillAt.set(key, to);
+        else pill.addEventListener('transitionend', () => { if (pill.dataset.at === at(to)) pillAt.set(key, to); }, { once: true });
+      } else if (!pillAt.has(key)) pillAt.set(key, to);
+      if (!pillWatched.has(g)) {
+        pillWatched.add(g); let first = true;
+        new ResizeObserver(() => { if (first) { first = false; return; } requestAnimationFrame(() => syncPills({ snap: true })); }).observe(g);
+      }
+    }
+  }
+  let pillFrame = 0;
+  new MutationObserver(() => { cancelAnimationFrame(pillFrame); pillFrame = requestAnimationFrame(syncPills); })
+    .observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-checked'] });
   function toggleRail(force) {
     const on = force === undefined ? !document.body.classList.contains('rail-collapsed') : !!force;
     document.body.classList.toggle('rail-collapsed', on);
@@ -562,15 +608,22 @@
       const showOlder = S.tracker.older.has(g.key);
       const rows = g.rows.filter(r => !r.older || showOlder);
       const olderN = g.rows.filter(r => r.older).length;
-      const card = el('section', { class: 'tr-card' + (byStatus ? ' s-' + g.key : g.rows.some(r => r.bucket === 'waiting') ? ' attention' : '') });
-      if (byStatus) card.append(el('div', { class: 'tr-card-h' }, el('span', { class: 'dot ' + { waiting: 'attention', ready: 'done', working: 'working', idle: 'quiet' }[g.key] }),
+      const folded = S.tracker.folded.has(g.key);
+      const card = el('section', { class: 'tr-card' + (byStatus ? ' s-' + g.key : g.rows.some(r => r.bucket === 'waiting') ? ' attention' : '') + (folded ? ' folded' : '') });
+      // Any group folds to its header (Idle is the one that grows); the header, or its chevron, toggles it.
+      const chev = el('button', { class: 'icon-btn chev tr-fold', 'aria-label': folded ? 'Expand' : 'Collapse', 'aria-expanded': folded ? 'false' : 'true', onclick: () => toggleFold(g.key, card, chev) }, svg('M6 4l4 4-4 4', 14));
+      const head = (...kids) => el('div', { class: 'tr-card-h', onclick: e => { if (!e.target.closest('button')) toggleFold(g.key, card, chev); } }, chev, ...kids);
+      if (byStatus) card.append(head(el('span', { class: 'dot ' + { waiting: 'attention', ready: 'done', working: 'working', idle: 'quiet' }[g.key] }),
         el('div', { class: 'tr-card-t' }, el('b', {}, BUCKET_LABEL[g.key], el('span', { class: 'tr-n', text: String(g.rows.length - (showOlder ? 0 : olderN)) })))));
-      else { const p = g.rows[0].p; card.append(el('div', { class: 'tr-card-h' }, projTok(p),
+      else { const p = g.rows[0].p; card.append(head(projTok(p),
         el('div', { class: 'tr-card-t' }, el('b', { text: projectName(p) }), el('span', { text: [countLine(trackerCounts(g.rows)), p.path].filter(Boolean).join(' · '), title: p.path || null })),
         el('button', { class: 'btn small ghost l', title: 'Open this workspace', onclick: () => openInWorkspace(p.id) }, 'Workspace', svg(ICON.arrow, 12)))); }
-      if (rows.length && S.mode !== 'compact') card.append(el('div', { class: 'tr-cols', 'aria-hidden': 'true' }, ...['Time', 'Agent', byStatus ? 'Project' : 'Kind', 'Item', 'Status', ''].map(x => el('span', { text: x }))));
-      for (const r of rows) card.append(trackerRow(r, byStatus));
-      if (olderN) card.append(el('div', { class: 'tr-foot' }, el('button', { class: 'btn small ghost', onclick: () => { if (showOlder) S.tracker.older.delete(g.key); else S.tracker.older.add(g.key); render(true); } }, showOlder ? 'Hide older' : `${olderN} older`)));
+      const body = el('div', { class: 'tr-card-in' });
+      card.append(el('div', { class: 'tr-card-body' }, body));
+      if (rows.length && S.mode !== 'compact') body.append(el('div', { class: 'tr-cols', 'aria-hidden': 'true' }, ...['Time', 'Agent', byStatus ? 'Project' : 'Kind', 'Item', 'Status', ''].map(x => el('span', { text: x }))));
+      for (const r of rows) body.append(trackerRow(r, byStatus));
+      if (folded) body.inert = true; // folded rows are out of reach for Tab as well as the eye
+      if (olderN) body.append(el('div', { class: 'tr-foot' }, el('button', { class: 'btn small ghost', onclick: () => { if (showOlder) S.tracker.older.delete(g.key); else S.tracker.older.add(g.key); render(true); } }, showOlder ? 'Hide older' : `${olderN} older`)));
       wrap.append(card);
     }
     if (!all.length) wrap.append(el('div', { class: 'empty' }, el('p', {}, el('b', { text: 'No agents yet.' }), ' Every Claude Code and Codex conversation shows up here as soon as it starts, the ones that need you on top. Connect them in Settings.'), el('p', { style: 'margin-top:12px' }, el('button', { class: 'btn', onclick: () => openSettings({ tab: 'agents' }) }, 'Open Settings'))));
@@ -597,7 +650,14 @@
     const open = S.tracker.open.has(r.task.id);
     const prev = S.tracker.bucket.get(r.task.id);
     const moved = prev !== undefined && prev !== r.bucket; // it just changed state: let it land, so the eye catches it
-    const toggle = () => { if (S.tracker.open.has(r.task.id)) S.tracker.open.delete(r.task.id); else S.tracker.open.add(r.task.id); S.tracker.sel = r.task.id; render(true); };
+    const toggle = () => {
+      S.tracker.sel = r.task.id;
+      if (!S.tracker.open.has(r.task.id)) { S.tracker.open.add(r.task.id); S.tracker.opening = r.task.id; render(true); return; }
+      // fold the history away first, then drop it
+      const wrap = row.parentElement?.querySelector(':scope > .tr-feed-wrap');
+      const done = () => { S.tracker.open.delete(r.task.id); render(true); };
+      if (wrap && !matchMedia('(prefers-reduced-motion: reduce)').matches) { wrap.classList.add('closing'); setTimeout(done, 150); } else done();
+    };
     const back = { ...(run || { agent, task: r.task.id, id: '', source: r.task.source }), project: r.pid };
     const row = el('div', { class: 'tr-row b-' + r.bucket + (open ? ' open' : '') + (moved ? ' moved' : ''), role: 'button', tabindex: '0', 'aria-expanded': open ? 'true' : 'false', dataset: { task: r.task.id },
       onclick: e => { if (!e.target.closest('button')) toggle(); }, onkeydown: e => { if (e.key === 'Enter' && e.target === row) { e.preventDefault(); toggle(); } }, onfocus: () => { S.tracker.sel = r.task.id; } },
@@ -611,7 +671,8 @@
         r.bucket === 'ready' ? el('button', { class: 'btn small ghost tr-seen', title: 'Seen: move it to Idle (s)', 'aria-label': 'Mark seen', onclick: () => ack(run.id, r.pid) }, svg(ICON.check, 12)) : null,
         el('button', { class: 'icon-btn', title: 'More', 'aria-label': 'Agent menu', onclick: e => trackerRowMenu(e.currentTarget, r) }, svg('M3 8h.01M8 8h.01M13 8h.01', 16, 'stroke-width="2.4"'))));
     if (!open) return row;
-    return el('div', { class: 'tr-entry' }, row, trackerFeed(r));
+    const opening = S.tracker.opening === r.task.id; if (opening) S.tracker.opening = null; // animate the open once, not on every refresh
+    return el('div', { class: 'tr-entry' }, row, el('div', { class: 'tr-feed-wrap' + (opening ? ' opening' : '') }, trackerFeed(r)));
   }
   function trackerRowMenu(anchor, r) {
     closePopover();
@@ -619,6 +680,11 @@
     const item = (label, fn, icon) => el('button', { class: 'menu-item', role: 'menuitem', onclick: () => { closePopover(); fn(); } }, icon ? svg(icon, 13) : null, label);
     pop.append(item(`Open ${projectName(r.p)}`, () => openInWorkspace(r.pid), ICON.arrow));
     if (r.bucket === 'ready') pop.append(item('Mark seen', () => ack(r.latest.id, r.pid), ICON.check));
+    // A turn can look stuck (the agent crashed or was closed without a signal): end it by hand.
+    if ((r.bucket === 'working' || r.bucket === 'waiting') && r.latest?.status === 'active') pop.append(item('Move to Idle', async () => {
+      try { await call(api.stopRun(r.latest.id)); toast({ text: 'Moved to Idle. If the agent is still going, it shows up again when it next reports in.', ttl: 5000 }); }
+      catch (e) { toast({ text: e.message, ttl: 5000, cls: 'gold' }); }
+    }, ICON.x));
     if (r.bucket === 'idle') pop.append(item(r.archived ? 'Bring back' : 'Clear from the list', () => setArchived(r.task.id, !r.archived, r.pid).then(() => render(true)), ICON.x));
     if (r.task.sessionId) pop.append(item('Copy session id', () => { api.copy(r.task.sessionId); toast({ text: 'Session id copied.', ttl: 3000 }); }, ICON.copy));
     place(pop, anchor);
@@ -639,17 +705,27 @@
     const feed = el('div', { class: 'tr-feed' });
     for (const e of entries.slice(0, 8)) feed.append(el('div', { class: 'tr-feed-row' },
       el('span', { class: 'tr-time', text: clock(e.at) }), el('span', { class: 'tr-kind k-' + e.kind }, el('i'), TR_KIND[e.kind]),
-      el('span', { class: 'tr-feed-text', text: e.text.split('\n')[0] }), el('span', { class: 'chip ' + e.status[1], text: e.status[0] })));
+      el('span', { class: 'tr-feed-text', text: e.text.split('\n')[0] }), (([label, time]) => el('span', { class: 'chip ' + e.status[1] }, label, time ? el('span', { class: 'chip-dur', text: time }) : null))(e.status[0].split(' · '))));
     feed.append(el('div', { class: 'tr-feed-f' }, el('span', { class: 't-small', text: entries.length > 8 ? `${entries.length - 8} earlier` : `Started ${ago(r.runs[0]?.startedAt || r.task.createdAt)}` }), el('span', { class: 'spacer' }),
       el('button', { class: 'btn small ghost', onclick: () => openInWorkspace(r.pid) }, 'Reply in the workspace', svg(ICON.arrow, 12))));
     return feed;
   }
   /** j/k move through rows, Enter opens one, r returns to the agent, s marks it seen. */
+  /** Fold or unfold one Tracker group in place (the CSS animates it) and remember it across restarts. */
+  function toggleFold(key, card, chev) {
+    const folded = !S.tracker.folded.has(key);
+    if (folded) S.tracker.folded.add(key); else S.tracker.folded.delete(key);
+    card.classList.toggle('folded', folded);
+    card.querySelector('.tr-card-in').inert = folded;
+    chev.setAttribute('aria-expanded', folded ? 'false' : 'true'); chev.setAttribute('aria-label', folded ? 'Expand' : 'Collapse');
+    S.settings.window.trackerFolded = [...S.tracker.folded];
+    api.setSettings({ window: { trackerFolded: S.settings.window.trackerFolded } });
+  }
   function trackerKey(e, mod) {
     if (mod || e.altKey || typing() || $('#overlay').firstChild || S.popover) return false;
     if (e.key === 'j' || e.key === 'k') {
       e.preventDefault();
-      const rows = [...document.querySelectorAll('.tr-row')]; if (!rows.length) return true;
+      const rows = [...document.querySelectorAll('.tr-card:not(.folded) .tr-row')]; if (!rows.length) return true;
       const i = rows.indexOf(document.activeElement);
       const next = rows[Math.max(0, Math.min(rows.length - 1, i < 0 ? 0 : i + (e.key === 'j' ? 1 : -1)))];
       next.focus(); next.scrollIntoView({ block: 'nearest' }); return true;
@@ -835,7 +911,7 @@
     const send = async () => { const v = ta.value.trim(); if (!v) return; ta.value = ''; autoGrow(ta); await sendToAgent({ task: t.task.id, run: t.latest?.id, itemKey: null, text: v }); };
     ta.addEventListener('input', () => autoGrow(ta));
     ta.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } });
-    box.append(ta, el('button', { class: 'btn small primary', onclick: send, title: 'Ctrl+Enter' }, svg(ICON.arrow, 12), ...lbl('Send', 'Send')));
+    box.append(ta, el('button', { class: 'btn small primary', onclick: send, title: keys('Ctrl+Enter') }, svg(ICON.arrow, 12), ...lbl('Send', 'Send')));
     return box;
   }
   function msgEntry(m, t) {
@@ -1135,7 +1211,12 @@
     const rect = anchor.getBoundingClientRect();
     document.body.append(pop); S.popover = pop;
     const w = pop.offsetWidth || 300;
-    pop.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - w - 8)) + 'px'; pop.style.top = Math.min(rect.bottom + 8, window.innerHeight - pop.offsetHeight - 8) + 'px';
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - w - 8)), top = Math.min(rect.bottom + 8, window.innerHeight - pop.offsetHeight - 8);
+    pop.style.left = left + 'px'; pop.style.top = top + 'px';
+    // grow from the button that opened it: its centre across, and the edge the popover hangs from
+    const ox = Math.max(0, Math.min(w, rect.left + rect.width / 2 - left)), oy = top < rect.top ? pop.offsetHeight : 0;
+    pop.style.setProperty('--pop-origin', `${Math.round(ox)}px ${oy}px`);
+    requestAnimationFrame(() => pop.classList.add('is-open'));
     setTimeout(() => document.addEventListener('pointerdown', onDocDown), 0);
   }
   /** The status chip opens a small workspace card: folder, conversations, prefix. Runs live in the threads. */
@@ -1151,11 +1232,18 @@
     place(pop, anchor);
   }
   function onDocDown(e) { if (S.popover && !S.popover.contains(e.target)) closePopover(); }
-  function closePopover() { if (S.popover) { S.popover.remove(); S.popover = null; document.removeEventListener('pointerdown', onDocDown); } }
+  function closePopover() {
+    const p = S.popover; if (!p) return;
+    S.popover = null; document.removeEventListener('pointerdown', onDocDown);
+    p.classList.remove('is-open'); p.classList.add('is-closing'); setTimeout(() => p.remove(), 150);
+  }
 
   // ---------- sheets ----------
-  function sheet(content) { closeOverlay(); const scrim = el('div', { class: 'scrim', onclick: e => { if (e.target === scrim) closeOverlay(); } }, el('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true' }, ...content)); $('#overlay').append(scrim); return scrim; }
-  function closeOverlay() { $('#overlay').textContent = ''; }
+  function sheet(content) { $('#overlay').textContent = ''; const scrim = el('div', { class: 'scrim', onclick: e => { if (e.target === scrim) closeOverlay(); } }, el('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true' }, ...content)); $('#overlay').append(scrim); return scrim; }
+  /** Close whatever sheet is open; it scales back down before it goes. A sheet opened meanwhile is left alone. */
+  function closeOverlay() {
+    for (const s of [...$('#overlay').children]) { if (s.classList.contains('is-closing')) continue; s.classList.add('is-closing'); s.inert = true; setTimeout(() => s.remove(), 150); }
+  }
 
   /** Return to the agent: bring its window forward if we know it; otherwise explain how. */
   async function returnTo(r) {
@@ -1260,8 +1348,8 @@
         el('div', { class: 'sheet-sec' }, el('h3', { text: 'When an agent starts a turn' }),
           seg([['focus', 'Bring forward'], ['open', 'Behind my work'], ['reveal', 'Only if open'], ['never', 'Stay quiet']], s.openOnRunStart, v => { s.openOnRunStart = v; api.setSettings({ openOnRunStart: v }); }),
           el('p', { class: 't-small', text: 'Only the start of a turn can bring Layover forward; items and completions never move the window.' }),
-          switchRow('Windows notification when a turn finishes', 'Silent toast; only when Layover is not in front.', s.notifyOnComplete, v => api.setSettings({ notifyOnComplete: v })),
-          switchRow('Keep running in the tray when the window is closed', 'Needed so agents can reach it.', s.closeToTray, v => api.setSettings({ closeToTray: v })),
+          switchRow('Notify me when a turn finishes', 'A silent notification, only when Layover is not in front.', s.notifyOnComplete, v => api.setSettings({ notifyOnComplete: v })),
+          switchRow(S.platform === 'darwin' ? 'Keep running in the menu bar when the window is closed' : 'Keep running in the tray when the window is closed', 'Needed so agents can reach it.', s.closeToTray, v => api.setSettings({ closeToTray: v })),
           switchRow(S.platform === 'darwin' ? 'Menu bar icon opens the compact companion' : 'Tray icon opens the compact companion', 'A popover under the icon that closes when you click away. Off: the icon opens the main window.', s.trayPopover, v => api.setSettings({ trayPopover: v })),
           switchRow('Tell the agent its run id', 'One short line per prompt so it can publish items without guessing.', s.hookContext, v => api.setSettings({ hookContext: v }))),
         el('div', { class: 'sheet-sec' }, el('h3', { text: 'Appearance' }), el('div', { class: 'appearance' },
@@ -1356,6 +1444,7 @@
   // ---------- toasts ----------
   function toast({ text, actions = [], ttl = 5000, cls = '' }) {
     const t = el('div', { class: 'toast ' + cls, role: 'status' }, el('div', { class: 't' }, ...(Array.isArray(text) ? text : [text])));
+    t.remove = () => { if (t.classList.contains('is-closing')) return; t.classList.add('is-closing'); setTimeout(() => Element.prototype.remove.call(t), 250); }; // every caller's remove() sinks it away
     if (actions.length) t.append(el('div', { class: 'a' }, ...actions.map(a => el('button', { class: 'btn small' + (a.primary ? ' primary' : ' ghost'), onclick: () => { t.remove(); a.fn(); } }, a.label))));
     $('#toasts').append(t);
     if (ttl) setTimeout(() => t.remove(), ttl);
