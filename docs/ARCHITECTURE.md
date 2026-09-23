@@ -5,7 +5,7 @@ Layover is three pieces that share one event contract. The UI never talks to an 
 ```
  Claude Code / Codex ──hooks──▶ layover.cmd hook <agent> ──HTTP──▶ ┌───────────────────────┐
                      ──skill──▶ layover item / begin / end ──HTTP──▶ │  Layover.exe (main)    │
-                                                                    │  store.js  service.js  │◀──IPC──▶ renderer (Now · Next · Notes · Break)
+                                                                    │  store.js  service.js  │◀──IPC──▶ renderer (Now · Next · Notes · Break | Tracker)
                                                                     │  bridge.js settings.js │
                                                                     └───────────────────────┘
                                                                      %LOCALAPPDATA%\Layover\data\{events.jsonl,user.json}
@@ -53,7 +53,7 @@ Human-readable names travel with events (`projectName`, `title`) and are shown; 
 
 Rules the store enforces: an `id` used twice must carry identical JSON (retries are free, reuse is an error); project/task/agent of a run never change; a task's project/agent never change. Statuses are computed at read time: a voluntary run with no event for 2 minutes shows `disconnected` ("no recent signal", not failure); a hook-driven run does so after 6 hours. A notification item resolves itself when its run ends.
 
-User content (notes, tickets, responses to items, dismissals, place) lives in `user.json` and is never sent anywhere. Tickets carry `number` (per-workspace counter), `status` (`backlog|todo|progress|done|cancelled`), `priority` (0–4), `description` and a `prompt` draft; the displayed key is the workspace prefix plus the number. Phase-two "Next" entries migrate to tickets on first load. Notes use optimistic revisions: a stale save returns a conflict and the UI keeps both texts.
+User content (notes, tickets, responses to items, dismissals, place) lives in `user.json` and is never sent anywhere. The tracker layout (`settings.layout: full|tracker`) is a renderer-only view over the same state: one list of every task, sorted by status or grouped by project (`window.trackerSort`), bucketed waiting (an open waiting item on an active run) > ready (latest run completed, failed or disconnected, not acknowledged, ended within 24 h) > working > idle; acknowledgement is the same per-project `place.acked` the Now view writes. Tickets carry `number` (per-workspace counter), `status` (`backlog|todo|progress|done|cancelled`), `priority` (0–4), `description` and a `prompt` draft; the displayed key is the workspace prefix plus the number. Phase-two "Next" entries migrate to tickets on first load. Notes use optimistic revisions: a stale save returns a conflict and the UI keeps both texts.
 
 ## Hook mapping
 

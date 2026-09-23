@@ -699,3 +699,94 @@ body.mac .top{ padding-right:var(--s3); }
 .rail-btn.update:hover{ color:var(--accent-text); background:var(--accent-wash); }
 .rail-btn.update:disabled{ opacity:.6; cursor:default; }
 .notes-pre{ white-space:pre-wrap; font-size:13px; line-height:1.5; color:var(--text-muted); max-height:260px; overflow:auto; padding:var(--s2) var(--s3); background:var(--surface-2); border-radius:var(--r-sm); }
+
+/* ==========================================================
+   v0.6 — tracker: every agent across projects, as a to-do list
+   ========================================================== */
+/* layout switch at the top of the rail */
+.rail-mode{ display:grid; grid-template-columns:1fr 1fr; gap:2px; margin:var(--s1) var(--s2) 0; padding:3px; border-radius:var(--r-md); background:var(--surface-2); }
+.rail-mode button{ display:flex; align-items:center; justify-content:center; gap:6px; padding:5px 6px; border:none; border-radius:var(--r-sm); background:transparent; color:var(--text-muted); font-size:12.5px; font-weight:500; cursor:pointer; min-width:0; }
+.rail-mode button:hover{ color:var(--text); }
+.rail-mode button[aria-checked="true"]{ background:var(--surface); color:var(--text); box-shadow:var(--e1); }
+.rail-mode svg{ flex:none; display:none; }
+body.rail-collapsed .rail-mode svg{ display:block; }
+.rail-mode .lbl{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+body.rail-collapsed .rail-mode{ grid-template-columns:1fr; margin:var(--s1) auto 0; width:44px; }
+body.rail-collapsed .rail-mode .lbl{ display:none; }
+body.rail-collapsed .rail-mode button{ padding:6px 0; }
+/* the tracker is one list across projects: the rail keeps only the switch */
+body.tracker .rail-h{ display:none; }
+.tr-head{ align-items:center; padding-bottom:var(--s3); border-bottom:1px solid var(--border-soft); }
+.tr-head .grow{ flex:1; }
+body.compact .tr-head{ padding-bottom:var(--s2); gap:var(--s2); }
+.ws-tok.sm{ width:20px; height:20px; font-size:9.5px; border-radius:5px; flex:none; }
+.tr-proj{ display:flex; align-items:center; gap:7px; min-width:0; font-size:13px; color:var(--text-2); }
+.tr-proj > span:last-child{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tr-n{ margin-left:8px; font-family:var(--f-mono); font-size:11px; font-weight:400; color:var(--text-faint); }
+.tr-card.s-waiting{ border-color:color-mix(in oklab, var(--warn) 40%, var(--border-soft)); }
+.tr-card.s-idle{ background:color-mix(in oklab, var(--surface) 60%, var(--bg)); }
+
+.view-tracker .view-in{ max-width:1080px; display:grid; gap:var(--s3); }
+.tr-card{ background:var(--surface); border:1px solid var(--border-soft); border-radius:var(--r-lg); overflow:hidden; }
+.tr-card.attention{ border-color:color-mix(in oklab, var(--warn) 40%, var(--border-soft)); }
+.tr-card-h{ display:flex; align-items:center; gap:var(--s2); padding:var(--s2) var(--s3); }
+body:not(.compact) .tr-card-h{ padding:var(--s3) var(--s4) var(--s2); }
+.tr-card-t{ flex:1; min-width:0; display:grid; gap:1px; }
+.tr-card-t b{ font-family:var(--f-display); font-weight:600; font-size:16px; letter-spacing:-.005em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tr-card-t span{ font-size:12.5px; color:var(--text-faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* the table: time · agent · kind · item · status · actions */
+.tr-cols, .tr-row{ display:grid; grid-template-columns:64px 64px 104px minmax(0,1fr) 136px 116px; gap:var(--s2); align-items:center; padding:0 var(--s4); }
+.tr-cols{ padding-top:8px; padding-bottom:8px; background:var(--surface-2); border-top:1px solid var(--border-soft); }
+.tr-cols span{ font-family:var(--f-mono); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--text-faint); }
+.tr-row{ min-height:52px; padding-top:8px; padding-bottom:8px; border-top:1px solid var(--border-soft); cursor:pointer; outline-offset:-2px; }
+.tr-row:hover{ background:color-mix(in oklab, var(--surface-2) 55%, var(--surface)); }
+.tr-row:focus-visible{ border-radius:0; }
+.tr-row.moved{ animation:land var(--dur-slow) var(--ease-out); }
+.tr-row.b-idle .tr-item b{ color:var(--text-muted); font-weight:500; }
+.tr-time{ font-family:var(--f-mono); font-size:12px; color:var(--text-faint); }
+.tr-agent{ justify-self:start; padding:2px 9px; border-radius:var(--r-sm); font-size:12px; font-weight:600; background:var(--surface-sunk); color:var(--text); }
+.tr-agent.claude{ background:#F5E9E1; color:#B85A3B; }
+:root[data-theme="dark"] .tr-agent.claude{ background:#3A2418; color:#E8916B; }
+.tr-kind{ display:inline-flex; align-items:center; gap:7px; font-family:var(--f-mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-muted); white-space:nowrap; }
+.tr-kind i{ width:7px; height:7px; border-radius:var(--r-full); background:var(--border-strong); flex:none; }
+.tr-kind.k-question i{ background:var(--warn); } .tr-kind.k-decision i{ background:var(--accent); } .tr-kind.k-opportunity i{ background:var(--ws-plum); } .tr-kind.k-suggestion i{ background:var(--accent-mid); }
+.tr-kind.k-turn i{ background:transparent; box-shadow:inset 0 0 0 1.5px var(--text-faint); } .tr-kind.k-done i{ background:var(--ok); } .tr-kind.k-error i{ background:var(--danger); } .tr-kind.k-quiet i{ background:var(--warn); }
+.tr-item{ min-width:0; display:grid; }
+.tr-item b{ font-weight:500; font-size:14.5px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tr-item span{ font-size:12.5px; color:var(--text-faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tr-row .chip{ justify-self:start; white-space:nowrap; }
+.chip.danger{ background:var(--danger-wash); color:var(--danger); }
+.chip .dot{ width:6px; height:6px; }
+.tr-act{ display:flex; align-items:center; justify-content:flex-end; gap:4px; }
+.tr-act .btn.small{ flex:none; }
+
+/* expanded row: the agent's recent items, like an arrivals board */
+.tr-entry .tr-row{ background:color-mix(in oklab, var(--surface-2) 55%, var(--surface)); }
+.tr-feed{ border-top:1px solid var(--border-soft); background:var(--surface-sunk); padding:var(--s1) 0; }
+.tr-feed-row{ display:grid; grid-template-columns:64px 104px minmax(0,1fr) auto; gap:var(--s2); align-items:center; padding:6px var(--s4) 6px calc(var(--s4) + 64px + var(--s2)); font-size:13.5px; }
+.tr-feed-text{ min-width:0; color:var(--text-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tr-feed-f{ display:flex; align-items:center; gap:var(--s2); padding:6px var(--s4) 4px calc(var(--s4) + 64px + var(--s2)); }
+.tr-feed-f .spacer{ flex:1; }
+.tr-foot{ border-top:1px solid var(--border-soft); padding:6px var(--s3); }
+
+/* narrower windows and the compact companion: agent · item · status · actions */
+@media (max-width: 860px){
+  .tr-cols, .tr-row{ grid-template-columns:62px minmax(0,1fr) 128px 118px; padding-left:var(--s3); padding-right:var(--s3); }
+  .tr-cols span:nth-child(1), .tr-cols span:nth-child(3), .tr-row .tr-time, .tr-row .tr-kind, .tr-row .tr-proj{ display:none; }
+  .tr-feed-row{ grid-template-columns:48px minmax(0,1fr) auto; padding-left:var(--s3); padding-right:var(--s3); }
+  .tr-feed-row .tr-kind{ display:none; }
+  .tr-feed-f{ padding-left:var(--s3); padding-right:var(--s3); }
+}
+body.compact .tr-cols, body.compact .tr-row{ grid-template-columns:minmax(0,1fr) auto auto; gap:var(--s1); padding:6px var(--s2); min-height:44px; }
+body.compact .tr-row .tr-time, body.compact .tr-row .tr-kind, body.compact .tr-row .tr-agent, body.compact .tr-row .tr-proj > span:last-child{ display:none; }
+body.compact .tr-card[class*=" s-"] .tr-row{ grid-template-columns:20px minmax(0,1fr) auto auto; }
+body.compact .tr-item b{ font-size:13.5px; }
+body.compact .tr-card-h{ padding:var(--s1) var(--s2); }
+body.compact .tr-card-t b{ font-size:14px; }
+body.compact .view-tracker .view-in{ gap:var(--s2); }
+body.compact .tr-feed-row{ grid-template-columns:62px minmax(0,1fr) auto; padding:5px var(--s2); font-size:12.5px; }
+body.compact .tr-feed-row .tr-kind{ display:none; }
+body.compact .tr-feed-f{ padding:4px var(--s2); }
+@media (prefers-reduced-motion: reduce){ .tr-row.moved{ animation:none; } }
+body.compact .tr-card[class*=" s-"] .tr-row .tr-proj{ display:flex; }

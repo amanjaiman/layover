@@ -37,6 +37,7 @@
     state: null, settings: null, project: null, view: 'now', mode: 'expanded', users: {},
     viewKey: '', pendingRefresh: false, acked: {}, offers: new Map(), theme: 'system',
     brk: { timer: null, left: 300, total: 300, stretch: 0, lastStretchAt: 0 }, lastBreak: Date.now(), reminderShown: 0, reminderToast: null,
+    layout: 'full', tracker: { sort: 'status', open: new Set(), older: new Set(), bucket: new Map(), sel: null },
     lastInteraction: 0, popover: null, notesConflict: null, ticket: null, ticketFilter: 'active', expandedThreads: new Set(), flushers: {}, promptOpen: new Set(), editingTitle: null,
   };
 
@@ -114,7 +115,7 @@
     return (S.state?.items || []).filter(i => i.project === id).map(i => ({ ...i, userDismissed: !!u.dismissed[i.key] }));
   }
   function openItems(id) { return itemsOf(id).filter(i => i.status === 'open' && !i.userDismissed); }
-  function isAcked(runId) { return !!(S.acked[runId] || user()?.place?.acked?.[runId]); }
+  function isAcked(runId, pid = S.project) { return !!(S.acked[runId] || user(pid)?.place?.acked?.[runId]); }
   function projectStatus(id) {
     const active = activeRuns(id);
     const waiting = openItems(id).find(i => i.waiting && i.runStatus === 'active');
@@ -172,11 +173,11 @@
       const i = u.tickets.findIndex(x => x.id === t.id); if (i >= 0) u.tickets[i] = saved;
     }
   }
-  async function setArchived(taskId, on) {
-    const u = user(); if (!u) return;
+  async function setArchived(taskId, on, pid = S.project) {
+    const u = user(pid); if (!u) return;
     u.place.archived = { ...(u.place.archived || {}) };
     if (on) u.place.archived[taskId] = Date.now(); else delete u.place.archived[taskId];
-    await api.setPlace(S.project, { archived: u.place.archived });
+    await api.setPlace(pid, { archived: u.place.archived });
     render(true);
   }
 
@@ -189,19 +190,23 @@
     S.settings = await call(api.getSettings());
     S.state = await call(api.getState());
     S.mode = S.settings.window?.mode || 'expanded';
+    S.layout = S.settings.layout === 'tracker' ? 'tracker' : 'full';
+    document.body.classList.toggle('tracker', S.layout === 'tracker');
+    S.tracker.sort = S.settings.window?.trackerSort === 'project' ? 'project' : 'status';
     document.body.classList.toggle('compact', S.mode === 'compact');
     applyTheme({ theme: S.settings.theme, dark: matchMedia('(prefers-color-scheme: dark)').matches });
     const visible = visibleProjects();
     S.project = visible.find(p => p.id === S.settings.window?.lastProject)?.id || visible[0]?.id || null;
     if (S.project) await loadUser(S.project);
     restorePlace();
+    if (S.layout === 'tracker') await loadAllUsers();
     await linkRuns().catch(() => {});
     render(true);
     if (!S.settings.onboarded) openSettings({ onboarding: true });
     api.on('state', st => { S.state = st; onState(); });
     api.on('open-request', onOpenRequest);
     api.on('theme', applyTheme);
-    api.on('settings', s => { S.settings = { ...S.settings, ...s }; });
+    api.on('settings', s => { S.settings = { ...S.settings, ...s }; if (s.layout && s.layout !== S.layout) setLayout(s.layout, { save: false }); });
     api.on('window-mode', m => { S.mode = m; document.body.classList.toggle('compact', m === 'compact'); render(true); });
     api.on('run-ended', onRunEnded);
     api.on('platform', ({ platform }) => { document.body.classList.toggle('mac', platform === 'darwin'); S.platform = platform; });
@@ -219,13 +224,14 @@
     $('#btn-update').addEventListener('click', updateSheet);
     $('#btn-compact').addEventListener('click', () => api.setWindowMode('compact'));
     $('#btn-expand').addEventListener('click', () => api.setWindowMode('expanded'));
-    $('#compact-ws').addEventListener('click', e => workspaceMenu(e.currentTarget));
+    $('#compact-ws').addEventListener('click', e => (S.layout === 'tracker' ? trackerMenu : workspaceMenu)(e.currentTarget));
     $('#btn-rail').addEventListener('click', () => toggleRail());
+    for (const b of document.querySelectorAll('#rail-mode [data-layout]')) b.addEventListener('click', () => setLayout(b.dataset.layout));
     if (S.settings.window?.railCollapsed) toggleRail(true);
   }
   function shortcutSheet() {
     const K = (k) => el('kbd', { text: k });
-    const rows = [['n', 'New in Next'], ['p', 'Open the prompt of the selected entry'], ['r', 'Reply to the latest item (Now)'], ['j', 'k', 'Move through Next'], ['e', 'Edit the selected entry'], ['Esc', 'Close a sheet, menu, or entry'], ['[', 'Collapse or expand the sidebar'], ['?', 'This list'], ['Ctrl+1…4', 'Now · Next · Notes · Break'], ['Ctrl+N', 'New in Next from anywhere'], ['Ctrl+Shift+C', 'Compact companion'], ['Ctrl+,', 'Settings']];
+    const rows = [['n', 'New in Next'], ['p', 'Open the prompt of the selected entry'], ['r', 'Reply to the latest item (Now)'], ['j', 'k', 'Move through Next'], ['e', 'Edit the selected entry'], ['Esc', 'Close a sheet, menu, or entry'], ['[', 'Collapse or expand the sidebar'], ['?', 'This list'], ['Ctrl+1…4', 'Now · Next · Notes · Break'], ['Ctrl+N', 'New in Next from anywhere'], ['Ctrl+Shift+C', 'Compact companion'], ['Ctrl+Shift+T', 'Tracker: every agent, ready ones first'], ['j', 'k', 'r', 's', 'Tracker: move, return, mark seen'], ['Ctrl+,', 'Settings']];
     const grid = el('div', { class: 'keys' });
     for (const r of rows) { const label = r.pop(); grid.append(el('span', {}, ...r.flatMap((k, i) => [i ? ' / ' : null, K(k)]).filter(Boolean)), el('span', { text: label })); }
     sheet([el('h2', { text: 'Shortcuts' }), el('p', { class: 't-small', text: 'Single keys work when you are not typing in a field.' }), grid, el('div', { class: 'card-actions', style: 'justify-content:flex-end' }, el('button', { class: 'btn primary', onclick: closeOverlay }, 'Close'))]);
@@ -265,6 +271,7 @@
   function onState() {
     if (!S.project || !S.state.projects.some(p => p.id === S.project)) S.project = visibleProjects()[0]?.id || null;
     if (S.project && !user(S.project)) loadUser(S.project).then(() => render());
+    if (S.layout === 'tracker' && visibleProjects().some(p => !user(p.id))) loadAllUsers().then(() => render());
     linkRuns().catch(() => {});
     renderRail(); renderHead(); renderCompactNav();
     if (isEngaged()) { deferRefresh(); return; }
@@ -272,6 +279,7 @@
   }
   function onOpenRequest(req) {
     if (!S.state) return;
+    if (S.layout === 'tracker') return; // every agent is already on the list; nothing to switch to
     if (!S.state.projects.some(p => p.id === req.project)) return;
     if (req.project === S.project) { if (req.reason === 'notification' || req.explicit) setView('now'); return; }
     const engaged = req.engaged || isEngaged();
@@ -287,7 +295,7 @@
     S.offers.set(req.project, t);
   }
   function onRunEnded({ run, status, project: pid }) {
-    if (pid === S.project) return; // the thread shows it
+    if (S.layout === 'tracker' || pid === S.project) return; // the thread (or the tracker row) shows it
     const r = S.state.runs.find(x => x.id === run); const p = S.state.projects.find(x => x.id === pid);
     if (!r || !p) return;
     const label = status === 'completed' ? 'finished' : status === 'failed' ? 'stopped with an error' : status === 'cancelled' ? 'was interrupted' : 'went quiet';
@@ -295,6 +303,7 @@
   }
   function tick() {
     if (!isEngaged() && S.pendingRefresh) { S.pendingRefresh = false; render(); }
+    else if (S.layout === 'tracker') render();
     else { renderRail(); renderHead(); refreshElapsed(); }
     const br = S.settings.breakReminder;
     const toastAlive = S.reminderToast && S.reminderToast.isConnected;
@@ -321,6 +330,8 @@
   }
   function onKey(e) {
     const mod = e.ctrlKey || e.metaKey;
+    if (mod && e.shiftKey && e.key.toLowerCase() === 't') { e.preventDefault(); setLayout(S.layout === 'tracker' ? 'full' : 'tracker'); return; }
+    if (S.layout === 'tracker' && trackerKey(e, mod)) return;
     if (e.key === 'Escape') {
       if ($('#overlay').firstChild || S.popover) { closeOverlay(); closePopover(); return; }
       if (S.view === 'tickets' && S.ticket) { S.ticket = null; savePlace(); refreshTicketDetail(); return; }
@@ -355,6 +366,8 @@
   function render(force = false) { renderRail(); renderHead(); renderCompactNav(); renderView(force); }
 
   function renderRail() {
+    for (const b of document.querySelectorAll('#rail-mode [data-layout]')) b.setAttribute('aria-checked', b.dataset.layout === S.layout ? 'true' : 'false');
+    if (S.layout === 'tracker') { renderTrackerRail(); return; }
     const list = $('#ws-list'); list.textContent = '';
     const ps = visibleProjects();
     if (!ps.length) list.append(el('p', { class: 't-small', style: 'padding:8px 10px' }, 'No workspaces yet'));
@@ -373,6 +386,7 @@
 
   function renderHead() {
     const h = $('#head'); h.textContent = '';
+    if (S.layout === 'tracker') { renderTrackerHead(h); return; }
     const p = project();
     if (!p) { h.append(el('h1', { text: 'Layover' })); return; }
     const st = projectStatus(p.id);
@@ -390,16 +404,17 @@
 
   function renderCompactNav() {
     const n = $('#cnav'); n.textContent = '';
-    if (S.mode !== 'compact' || !S.project) return;
+    if (S.mode !== 'compact' || !S.project || S.layout === 'tracker') return;
     const open = openItems(S.project).length, active = (user()?.tickets || []).filter(t => FILTERS.active.includes(t.status)).length;
     for (const [id, label] of VIEWS) n.append(el('button', { 'aria-selected': S.view === id ? 'true' : 'false', onclick: () => setView(id) }, label, id === 'now' && open ? el('span', { class: 'count', text: String(open) }) : id === 'tickets' && active ? el('span', { class: 'count', text: String(active) }) : id === 'break' && S.brk.timer ? el('span', { class: 'count brk-chip', text: fmt(S.brk.left) }) : null));
   }
 
-  function ack(runId) { S.acked[runId] = true; const u = user(); if (u) { u.place.acked = { ...(u.place.acked || {}), [runId]: Date.now() }; api.setPlace(S.project, { acked: u.place.acked }); } renderHead(); renderRail(); }
+  function ack(runId, pid = S.project) { S.acked[runId] = true; const u = user(pid); if (u) { u.place.acked = { ...(u.place.acked || {}), [runId]: Date.now() }; api.setPlace(pid, { acked: u.place.acked }); } renderHead(); renderRail(); if (S.layout === 'tracker') renderView(true); }
 
   function renderView(force = false) {
-    const key = `${S.project}|${S.view}|${S.mode}`;
     const v = $('#view');
+    if (S.layout === 'tracker') { renderTrackerView(v); return; }
+    const key = `${S.project}|${S.view}|${S.mode}`;
     if (!force && key === S.viewKey && S.view !== 'now') return;
     if (S.view === 'now' && !force && key === S.viewKey && isEngaged()) { deferRefresh(); return; }
     const changed = key !== S.viewKey;
@@ -413,6 +428,216 @@
     if (changed) wrap.classList.add('enter'); // a new page settles in; an in-place refresh stays still
     v.append(wrap);
     if (keepScroll) v.scrollTop = keepScroll;
+  }
+
+  // ---------- Tracker: every agent across projects, as one to-do list ----------
+  // One row per conversation. Sorted by status, the list reads top-down as what needs you;
+  // sorted by project, each project is a group with its own rows in that same order.
+  const BUCKET_ORDER = ['waiting', 'ready', 'working', 'idle'];
+  const BUCKET_LABEL = { waiting: 'Waiting on you', ready: 'Ready', working: 'Working', idle: 'Idle' };
+  const TR_KIND = { question: 'Question', decision: 'Decision', suggestion: 'Think ahead', opportunity: 'Opportunity', turn: 'Turn', done: 'Done', error: 'Error', stopped: 'Stopped', quiet: 'No signal', idle: 'Idle' };
+  const READY_MS = 24 * 3600000;   // an unacknowledged finish stays "ready" for a day, then settles into idle
+  const IDLE_MS = 3 * 86400000;    // idle conversations older than this (or cleared) fold under "older"
+
+  async function loadAllUsers() { await Promise.all(visibleProjects().filter(p => !user(p.id)).map(p => loadUser(p.id).catch(() => null))); }
+  async function setLayout(layout, { save = true } = {}) {
+    layout = layout === 'tracker' ? 'tracker' : 'full';
+    if (layout === S.layout) return;
+    flushAll(); closePopover();
+    S.layout = layout; S.settings.layout = layout;
+    document.body.classList.toggle('tracker', layout === 'tracker');
+    if (save) api.setSettings({ layout });
+    if (layout === 'tracker') await loadAllUsers();
+    else if (S.project && !user(S.project)) await loadUser(S.project);
+    S.viewKey = '';
+    render(true);
+  }
+  function setTrackerSort(sort) {
+    S.tracker.sort = sort === 'project' ? 'project' : 'status'; S.settings.window.trackerSort = S.tracker.sort;
+    api.setSettings({ window: { trackerSort: S.tracker.sort } });
+    render(true);
+  }
+  /** Open the full thread for a row: back to the workspace layout, on that project's Now. */
+  async function openInWorkspace(pid) { await setLayout('full'); await switchProject(pid, { view: 'now' }); if (S.view !== 'now') setView('now'); }
+
+  function trackerRows(p) {
+    const now = Date.now(), pid = p.id;
+    return threadsOf(pid).map(t => {
+      const r = t.latest;
+      const waitingItem = t.waiting ? [...t.items].reverse().find(i => i.waiting && i.status === 'open' && !i.userDismissed && i.runStatus === 'active') : null;
+      let bucket = 'idle', since = t.lastActivity;
+      if (waitingItem) { bucket = 'waiting'; since = waitingItem.updatedAt; }
+      else if (t.status === 'working' || t.status === 'attention') { bucket = 'working'; since = r.startedAt; }
+      // Interrupted or closed sessions were your own doing; only outcomes you have not seen are "ready".
+      else if (r && ['completed', 'failed', 'disconnected'].includes(t.status) && !isAcked(r.id, pid) && now - (r.endedAt || r.lastSeen) < READY_MS) { bucket = 'ready'; since = r.endedAt || r.lastSeen; }
+      const older = bucket === 'idle' && (t.archived || now - t.lastActivity > IDLE_MS);
+      return { ...t, pid, p, bucket, since, waitingItem, older };
+    });
+  }
+  const byBucket = (a, b) => BUCKET_ORDER.indexOf(a.bucket) - BUCKET_ORDER.indexOf(b.bucket) || b.since - a.since;
+  function trackerAll() { return visibleProjects().flatMap(trackerRows).sort(byBucket); }
+  function trackerCounts(rows) { const c = { waiting: 0, ready: 0, working: 0, idle: 0 }; for (const r of rows) if (!r.older) c[r.bucket]++; return c; }
+  function countLine(c) {
+    const parts = [c.waiting && `${c.waiting} waiting`, c.ready && `${c.ready} ready`, c.working && `${c.working} working`].filter(Boolean);
+    return parts.length ? parts.join(' · ') : c.idle ? `${c.idle} idle` : 'Quiet';
+  }
+  const projTok = (p, small) => el('span', { class: 'ws-tok' + (small ? ' sm' : ''), style: `background:var(--ws-${p.color})`, title: projectName(p) }, initials(projectName(p)));
+
+  /** In the tracker the rail holds only the layout switch; the compact pill just says where you are. */
+  function renderTrackerRail() {
+    $('#ws-list').textContent = '';
+    const sel = $('#compact-ws'); sel.textContent = '';
+    sel.append(el('span', { class: 'wsbtn-name', text: 'Tracker' }), svg('M4 6l4 4 4-4', 12));
+    $('#compact-ws').hidden = S.mode !== 'compact'; $('#compact-mark').hidden = S.mode !== 'compact'; $('#btn-expand').hidden = S.mode !== 'compact';
+  }
+  function trackerMenu(anchor) {
+    closePopover();
+    const pop = el('div', { class: 'pop menu', role: 'menu' });
+    for (const [id, label] of [['status', 'Sort by status'], ['project', 'Sort by project']]) pop.append(el('button', { class: 'menu-item' + (S.tracker.sort === id ? ' on' : ''), role: 'menuitem', onclick: () => { closePopover(); setTrackerSort(id); } }, label));
+    pop.append(el('button', { class: 'menu-item', role: 'menuitem', onclick: () => { closePopover(); setLayout('full'); } }, svg(ICON.back, 13), 'Back to workspaces'));
+    place(pop, anchor);
+  }
+
+  function renderTrackerHead(h) {
+    const rows = trackerAll(), c = trackerCounts(rows);
+    const cls = c.waiting ? 'attention' : c.ready ? 'done' : c.working ? 'working' : 'quiet';
+    const need = c.waiting + c.ready;
+    const label = need ? `${need} need${need === 1 ? 's' : ''} you` + (c.working ? ` · ${c.working} working` : '') : c.working ? `${c.working} working` : 'All quiet';
+    const seenable = rows.filter(r => r.bucket === 'ready');
+    h.append(el('div', { class: 'head-row tr-head' }, S.mode === 'compact' ? null : el('h1', { text: 'Tracker' }),
+      el('span', { class: 'status ' + cls }, el('span', { class: 'dot ' + cls }), label),
+      seenable.length ? el('button', { class: 'btn small ghost', title: 'Mark every ready agent as seen; they move to Idle', onclick: () => markSeen(seenable) }, svg(ICON.check, 12), ...lbl('Mark all seen', 'All seen')) : null,
+      el('span', { class: 'grow' }),
+      el('span', { class: 't-small l', text: 'Sort' }),
+      seg([['status', 'Status'], ['project', 'Project']], S.tracker.sort, setTrackerSort)));
+  }
+  /** Acknowledge several finished runs with one write per project. */
+  function markSeen(rows) {
+    const byProject = new Map();
+    for (const r of rows) if (r.latest) { S.acked[r.latest.id] = true; if (!byProject.has(r.pid)) byProject.set(r.pid, []); byProject.get(r.pid).push(r.latest.id); }
+    for (const [pid, ids] of byProject) { const u = user(pid); if (!u) continue; u.place.acked = { ...(u.place.acked || {}) }; for (const id of ids) u.place.acked[id] = Date.now(); api.setPlace(pid, { acked: u.place.acked }); }
+    render(true);
+  }
+
+  function renderTrackerView(v) {
+    // Nothing in the tracker is editable, so a refresh never lands under a cursor in a field.
+    const hadFocus = v.contains(document.activeElement);
+    const key = 'tracker|' + S.mode + '|' + S.tracker.sort;
+    const changed = S.viewKey !== key;
+    const keepScroll = changed ? 0 : v.scrollTop;
+    S.viewKey = key; S.pendingRefresh = false;
+    v.textContent = ''; v.className = 'view view-tracker';
+    const wrap = el('div', { class: 'view-in' });
+    const all = trackerAll();
+    const seen = new Map(all.map(r => [r.task.id, r.bucket]));
+    const byStatus = S.tracker.sort !== 'project';
+    // Status: one card per non-empty status. Project: one card per project, most urgent project first.
+    const groups = byStatus
+      ? BUCKET_ORDER.map(b => ({ key: b, rows: all.filter(r => r.bucket === b) })).filter(g => g.rows.length)
+      : [...new Set(all.map(r => r.pid))].map(pid => ({ key: pid, rows: all.filter(r => r.pid === pid) }));
+    for (const g of groups) {
+      const showOlder = S.tracker.older.has(g.key);
+      const rows = g.rows.filter(r => !r.older || showOlder);
+      const olderN = g.rows.filter(r => r.older).length;
+      const card = el('section', { class: 'tr-card' + (byStatus ? ' s-' + g.key : g.rows.some(r => r.bucket === 'waiting') ? ' attention' : '') });
+      if (byStatus) card.append(el('div', { class: 'tr-card-h' }, el('span', { class: 'dot ' + { waiting: 'attention', ready: 'done', working: 'working', idle: 'quiet' }[g.key] }),
+        el('div', { class: 'tr-card-t' }, el('b', {}, BUCKET_LABEL[g.key], el('span', { class: 'tr-n', text: String(g.rows.length - (showOlder ? 0 : olderN)) })))));
+      else { const p = g.rows[0].p; card.append(el('div', { class: 'tr-card-h' }, projTok(p),
+        el('div', { class: 'tr-card-t' }, el('b', { text: projectName(p) }), el('span', { text: [countLine(trackerCounts(g.rows)), p.path].filter(Boolean).join(' · '), title: p.path || null })),
+        el('button', { class: 'btn small ghost l', title: 'Open this workspace', onclick: () => openInWorkspace(p.id) }, 'Workspace', svg(ICON.arrow, 12)))); }
+      if (rows.length && S.mode !== 'compact') card.append(el('div', { class: 'tr-cols', 'aria-hidden': 'true' }, ...['Time', 'Agent', byStatus ? 'Project' : 'Kind', 'Item', 'Status', ''].map(x => el('span', { text: x }))));
+      for (const r of rows) card.append(trackerRow(r, byStatus));
+      if (olderN) card.append(el('div', { class: 'tr-foot' }, el('button', { class: 'btn small ghost', onclick: () => { if (showOlder) S.tracker.older.delete(g.key); else S.tracker.older.add(g.key); render(true); } }, showOlder ? 'Hide older' : `${olderN} older`)));
+      wrap.append(card);
+    }
+    if (!all.length) wrap.append(el('div', { class: 'empty' }, el('p', {}, el('b', { text: 'No agents yet.' }), ' Every Claude Code and Codex conversation shows up here as soon as it starts, the ones that need you on top. Connect them in Settings.'), el('p', { style: 'margin-top:12px' }, el('button', { class: 'btn', onclick: () => openSettings({ tab: 'agents' }) }, 'Open Settings'))));
+    S.tracker.bucket = seen;
+    if (changed) wrap.classList.add('enter');
+    v.append(wrap);
+    if (keepScroll) v.scrollTop = keepScroll;
+    if (hadFocus && S.tracker.sel) v.querySelector(`.tr-row[data-task="${CSS.escape(S.tracker.sel)}"]`)?.focus({ preventScroll: true });
+  }
+
+  function trackerStatus(r) {
+    if (r.bucket === 'waiting') return el('span', { class: 'chip warn', text: 'Waiting on you' });
+    if (r.bucket === 'working') return el('span', { class: 'chip gold' }, el('span', { class: 'dot working' }), ...lbl('Working · ' + dur(Date.now() - r.latest.startedAt), dur(Date.now() - r.latest.startedAt)));
+    if (r.bucket === 'ready') return r.status === 'failed' ? el('span', { class: 'chip danger', text: 'Error' }) : r.status === 'disconnected' ? el('span', { class: 'chip warn', text: 'No signal' }) : el('span', { class: 'chip ok', text: 'Ready' });
+    return el('span', { class: 'chip', text: r.archived ? 'Cleared' : 'Idle' });
+  }
+  function trackerRow(r, byStatus) {
+    const agent = r.task.agent, who = AGENT[agent] || agent;
+    const run = r.latest;
+    const title = cleanTitle(run?.title) || (r.task.name && !/^(claude|codex):/.test(r.task.name) ? r.task.name : 'Conversation');
+    const item = r.waitingItem || (run ? [...r.items].reverse().find(i => i.run === run.id && !i.userDismissed) : null);
+    const kind = item ? item.kind : !run ? 'idle' : r.status === 'working' || r.status === 'attention' ? 'turn' : r.status === 'completed' ? 'done' : r.status === 'failed' ? 'error' : r.status === 'cancelled' ? 'stopped' : r.status === 'disconnected' ? 'quiet' : 'idle';
+    const open = S.tracker.open.has(r.task.id);
+    const prev = S.tracker.bucket.get(r.task.id);
+    const moved = prev !== undefined && prev !== r.bucket; // it just changed state: let it land, so the eye catches it
+    const toggle = () => { if (S.tracker.open.has(r.task.id)) S.tracker.open.delete(r.task.id); else S.tracker.open.add(r.task.id); S.tracker.sel = r.task.id; render(true); };
+    const back = { ...(run || { agent, task: r.task.id, id: '', source: r.task.source }), project: r.pid };
+    const row = el('div', { class: 'tr-row b-' + r.bucket + (open ? ' open' : '') + (moved ? ' moved' : ''), role: 'button', tabindex: '0', 'aria-expanded': open ? 'true' : 'false', dataset: { task: r.task.id },
+      onclick: e => { if (!e.target.closest('button')) toggle(); }, onkeydown: e => { if (e.key === 'Enter' && e.target === row) { e.preventDefault(); toggle(); } }, onfocus: () => { S.tracker.sel = r.task.id; } },
+      el('span', { class: 'tr-time', text: clock(r.since), title: ago(r.since) }),
+      el('span', { class: 'tr-agent ' + agent, text: AGENT_SHORT[agent] || agent, title: who }),
+      byStatus ? el('span', { class: 'tr-proj' }, projTok(r.p, true), el('span', { text: projectName(r.p) })) : el('span', { class: 'tr-kind k-' + kind }, el('i'), TR_KIND[kind]),
+      el('span', { class: 'tr-item' }, el('b', { text: title }), item ? el('span', { text: (item.title || item.text).split('\n')[0] }) : null),
+      trackerStatus(r),
+      el('span', { class: 'tr-act' },
+        el('button', { class: 'btn small tr-return' + (r.bucket === 'waiting' || r.bucket === 'ready' ? ' primary' : ' ghost'), title: r.task.host ? `Bring ${r.task.host.name} forward (r)` : `How to return to ${who} (r)`, 'aria-label': 'Return to ' + who, onclick: () => returnTo(back) }, el('span', { class: 'l', text: 'Return' }), svg(ICON.arrow, 12)),
+        r.bucket === 'ready' ? el('button', { class: 'btn small ghost tr-seen', title: 'Seen: move it to Idle (s)', 'aria-label': 'Mark seen', onclick: () => ack(run.id, r.pid) }, svg(ICON.check, 12)) : null,
+        el('button', { class: 'icon-btn', title: 'More', 'aria-label': 'Agent menu', onclick: e => trackerRowMenu(e.currentTarget, r) }, svg('M3 8h.01M8 8h.01M13 8h.01', 16, 'stroke-width="2.4"'))));
+    if (!open) return row;
+    return el('div', { class: 'tr-entry' }, row, trackerFeed(r));
+  }
+  function trackerRowMenu(anchor, r) {
+    closePopover();
+    const pop = el('div', { class: 'pop menu', role: 'menu' });
+    const item = (label, fn, icon) => el('button', { class: 'menu-item', role: 'menuitem', onclick: () => { closePopover(); fn(); } }, icon ? svg(icon, 13) : null, label);
+    pop.append(item(`Open ${projectName(r.p)}`, () => openInWorkspace(r.pid), ICON.arrow));
+    if (r.bucket === 'ready') pop.append(item('Mark seen', () => ack(r.latest.id, r.pid), ICON.check));
+    if (r.bucket === 'idle') pop.append(item(r.archived ? 'Bring back' : 'Clear from the list', () => setArchived(r.task.id, !r.archived, r.pid).then(() => render(true)), ICON.x));
+    if (r.task.sessionId) pop.append(item('Copy session id', () => { api.copy(r.task.sessionId); toast({ text: 'Session id copied.', ttl: 3000 }); }, ICON.copy));
+    place(pop, anchor);
+  }
+  /** The agent's recent history, newest first: what it asked, what it decided, each turn and how it ended. */
+  function trackerFeed(r) {
+    const entries = [];
+    for (const run of r.runs) {
+      const st = run.status === 'active' ? ['Working', 'gold'] : run.status === 'completed' ? ['Done · ' + dur((run.endedAt || run.lastSeen) - run.startedAt), 'ok'] : run.status === 'failed' ? ['Error', 'danger'] : run.status === 'cancelled' ? ['Stopped', ''] : ['No signal', 'warn'];
+      entries.push({ at: run.startedAt, kind: 'turn', text: cleanTitle(run.title) || 'Turn', status: st });
+    }
+    for (const i of r.items) {
+      if (i.userDismissed) continue;
+      const st = i.waiting && i.status === 'open' && i.runStatus === 'active' ? ['Waiting on you', 'warn'] : i.status !== 'open' ? [i.status === 'resolved' ? 'Resolved' : 'Dismissed', ''] : i.kind === 'question' ? ['Asked', 'warn'] : i.kind === 'decision' ? ['Logged', ''] : ['Open', ''];
+      entries.push({ at: i.createdAt, kind: i.kind, text: i.title ? i.title + ' · ' + i.text : i.text, status: st });
+    }
+    entries.sort((a, b) => b.at - a.at);
+    const feed = el('div', { class: 'tr-feed' });
+    for (const e of entries.slice(0, 8)) feed.append(el('div', { class: 'tr-feed-row' },
+      el('span', { class: 'tr-time', text: clock(e.at) }), el('span', { class: 'tr-kind k-' + e.kind }, el('i'), TR_KIND[e.kind]),
+      el('span', { class: 'tr-feed-text', text: e.text.split('\n')[0] }), el('span', { class: 'chip ' + e.status[1], text: e.status[0] })));
+    feed.append(el('div', { class: 'tr-feed-f' }, el('span', { class: 't-small', text: entries.length > 8 ? `${entries.length - 8} earlier` : `Started ${ago(r.runs[0]?.startedAt || r.task.createdAt)}` }), el('span', { class: 'spacer' }),
+      el('button', { class: 'btn small ghost', onclick: () => openInWorkspace(r.pid) }, 'Reply in the workspace', svg(ICON.arrow, 12))));
+    return feed;
+  }
+  /** j/k move through rows, Enter opens one, r returns to the agent, s marks it seen. */
+  function trackerKey(e, mod) {
+    if (mod || e.altKey || typing() || $('#overlay').firstChild || S.popover) return false;
+    if (e.key === 'j' || e.key === 'k') {
+      e.preventDefault();
+      const rows = [...document.querySelectorAll('.tr-row')]; if (!rows.length) return true;
+      const i = rows.indexOf(document.activeElement);
+      const next = rows[Math.max(0, Math.min(rows.length - 1, i < 0 ? 0 : i + (e.key === 'j' ? 1 : -1)))];
+      next.focus(); next.scrollIntoView({ block: 'nearest' }); return true;
+    }
+    if (e.key === 'n' || e.key === 'r' || e.key === 's') { // n (new ticket) has no place here
+      e.preventDefault();
+      const cur = document.activeElement?.closest?.('.tr-row');
+      if (cur && e.key === 'r') cur.querySelector('.tr-return')?.click();
+      if (cur && e.key === 's') cur.querySelector('.tr-seen')?.click();
+      return true;
+    }
+    return false;
   }
 
   // ---------- Now: threads ----------
@@ -914,16 +1139,17 @@
     if (t?.host?.hwnd) {
       try {
         const res = await call(api.returnFocus(t.id));
-        if (res.ok) { if (r.id) ack(r.id); return; }
+        if (res.ok) { if (r.id) ack(r.id, r.project || S.project); return; }
         if (res.reason === 'gone') toast({ text: `That ${t.host.name} window is closed.`, ttl: 5000 });
       } catch { /* fall through to the sheet */ }
     }
     returnSheet(r);
   }
   function returnSheet(r) {
-    const t = S.state.tasks.find(x => x.id === r.task); const who = AGENT[r.agent] || r.agent; const p = project();
+    const t = S.state.tasks.find(x => x.id === r.task); const who = AGENT[r.agent] || r.agent;
+    const pid = r.project || t?.project || S.project; const p = S.state.projects.find(x => x.id === pid) || null;
     const host = t?.host || null;
-    const responses = Object.entries(user()?.responses || {}).filter(([k]) => k.startsWith((r.id || '§') + ':')).map(([, v]) => v.body).filter(Boolean);
+    const responses = Object.entries(user(pid)?.responses || {}).filter(([k]) => k.startsWith((r.id || '§') + ':')).map(([, v]) => v.body).filter(Boolean);
     const source = r.source || t?.source || `Return to the ${who} window where this work started.`;
     const resume = source.match(/(claude --resume \S+|codex resume \S+)/)?.[1];
     sheet([
@@ -935,7 +1161,7 @@
         resume ? el('button', { class: 'btn', onclick: () => { api.copy(resume); toast({ text: 'Resume command copied.', ttl: 3500 }); } }, svg(ICON.copy, 12), 'Copy resume command') : null,
         responses.length ? el('button', { class: 'btn primary', onclick: () => { api.copy(responses.join('\n\n')); toast({ text: 'Your replies are on the clipboard.', ttl: 3500 }); } }, svg(ICON.copy, 12), `Copy my repl${responses.length === 1 ? 'y' : 'ies'}`) : null,
         p?.path ? el('button', { class: 'btn ghost', onclick: () => api.openPath(p.path) }, 'Open folder') : null),
-      el('div', { class: 'card-actions', style: 'justify-content:flex-end' }, el('button', { class: 'btn ghost', onclick: closeOverlay }, 'Close'), r.id ? el('button', { class: 'btn primary', onclick: () => { ack(r.id); closeOverlay(); render(true); } }, 'Got it') : null),
+      el('div', { class: 'card-actions', style: 'justify-content:flex-end' }, el('button', { class: 'btn ghost', onclick: closeOverlay }, 'Close'), r.id ? el('button', { class: 'btn primary', onclick: () => { ack(r.id, r.project || S.project); closeOverlay(); render(true); } }, 'Got it') : null),
     ]);
   }
 

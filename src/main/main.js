@@ -355,6 +355,7 @@ function updateTray() {
     { label: 'Open Layover', click: () => reveal({ focus: true }) },
     ...(u.latest && !u.skipped ? [{ label: u.installing ? `Installing Layover ${u.latest.version}…` : `Install Layover ${u.latest.version}…`, enabled: !u.installing, click: () => installUpdate().catch(e => log('update install failed', e.message)) }] : []),
     { label: settings.window.mode === 'compact' ? 'Expanded workspace' : 'Compact companion', click: () => { setWindowMode(settings.window.mode === 'compact' ? 'expanded' : 'compact'); reveal({ focus: true }); } },
+    { label: 'Tracker', type: 'checkbox', checked: settings.layout === 'tracker', click: () => { settings = applySettings(settings, { layout: settings.layout === 'tracker' ? 'full' : 'tracker' }); saveSettings(settings); broadcast('settings', settings); updateTray(); reveal({ focus: true }); } },
     { type: 'separator' },
     { label: 'Quit Layover', click: () => { quitting = true; app.quit(); } },
   ]));
