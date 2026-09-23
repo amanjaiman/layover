@@ -199,7 +199,7 @@ function nativeFocus() {
   focusHwnd(hwnd).catch(e => log('native focus failed', e.message));
 }
 
-const FOCUS_DEFS = '[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, IntPtr p); [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId(); [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint a, uint b, bool f); [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h); [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr h); [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n); [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h); [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h); [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h); [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n); [DllImport("user32.dll")] public static extern void keybd_event(byte k, byte s, uint f, UIntPtr e);';
+const FOCUS_DEFS = '[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, IntPtr p); [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId(); [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint a, uint b, bool f); [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h); [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr h); [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n); [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h); [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h); [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h); [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n); [DllImport("user32.dll")] public static extern void keybd_event(byte k, byte s, uint f, UIntPtr e); [DllImport("user32.dll", EntryPoint="GetWindowThreadProcessId")] public static extern uint WindowPid(IntPtr h, out uint p);';
 
 /**
  * Bring any top-level window forward by handle. Resolves {ok, reason}. The helper is a child of
@@ -207,11 +207,14 @@ const FOCUS_DEFS = '[DllImport("user32.dll")] public static extern IntPtr GetFor
  * if that is refused, the Alt-nudge releases the foreground lock the way AutoHotkey does.
  * Success means the window really is in front afterwards: SetForegroundWindow can return true and
  * only flash the taskbar. Windows Terminal hides a window when it closes and keeps the handle alive,
- * so a hidden terminal window counts as gone rather than being shown again.
+ * so a hidden terminal window counts as gone rather than being shown again. Windows reuses handles,
+ * so with `owner` (the process name recorded with the handle) a window now owned by another app
+ * counts as gone too, rather than bringing that app forward.
  */
-function focusHwnd(hwnd) {
+function focusHwnd(hwnd, owner = '') {
   if (!/^\d{1,20}$/.test(String(hwnd))) return Promise.resolve({ ok: false, reason: 'bad handle' });
-  const script = `Add-Type -Namespace L -Name W -MemberDefinition '${FOCUS_DEFS}'; $h=[IntPtr]::new([Int64]${hwnd}); if(-not [L.W]::IsWindow($h)){ 'gone'; exit 0 }; $cls=New-Object System.Text.StringBuilder 64; [void][L.W]::GetClassName($h,$cls,64); if(-not [L.W]::IsWindowVisible($h) -and -not [L.W]::IsIconic($h) -and $cls.ToString() -eq 'CASCADIA_HOSTING_WINDOW_CLASS'){ 'gone'; exit 0 }; if([L.W]::IsIconic($h)){ [void][L.W]::ShowWindow($h,9) } else { [void][L.W]::ShowWindow($h,5) }; if([L.W]::GetForegroundWindow() -eq $h){ 'ok'; exit 0 }; $fg=[L.W]::GetForegroundWindow(); $ft=[L.W]::GetWindowThreadProcessId($fg,[IntPtr]::Zero); $ct=[L.W]::GetCurrentThreadId(); $a=[L.W]::AttachThreadInput($ft,$ct,$true); [void][L.W]::BringWindowToTop($h); $ok=[L.W]::SetForegroundWindow($h); if($a){ [void][L.W]::AttachThreadInput($ft,$ct,$false) }; if(-not $ok){ [L.W]::keybd_event(0x12,0,0,[UIntPtr]::Zero); [L.W]::keybd_event(0x12,0,2,[UIntPtr]::Zero); [void][L.W]::BringWindowToTop($h); $ok=[L.W]::SetForegroundWindow($h) }; Start-Sleep -Milliseconds 150; if([L.W]::GetForegroundWindow() -eq $h){ 'ok' } else { 'refused' }`;
+  const check = /^[\w .-]{1,80}$/.test(owner) && owner !== 'window' ? `$wp=[uint32]0; [void][L.W]::WindowPid($h,[ref]$wp); $gp=Get-Process -Id $wp -ErrorAction SilentlyContinue; if(-not $gp -or $gp.ProcessName -ne '${owner}'){ 'gone'; exit 0 };` : '';
+  const script = `Add-Type -Namespace L -Name W -MemberDefinition '${FOCUS_DEFS}'; $h=[IntPtr]::new([Int64]${hwnd}); if(-not [L.W]::IsWindow($h)){ 'gone'; exit 0 }; ${check} $cls=New-Object System.Text.StringBuilder 64; [void][L.W]::GetClassName($h,$cls,64); if(-not [L.W]::IsWindowVisible($h) -and -not [L.W]::IsIconic($h) -and $cls.ToString() -eq 'CASCADIA_HOSTING_WINDOW_CLASS'){ 'gone'; exit 0 }; if([L.W]::IsIconic($h)){ [void][L.W]::ShowWindow($h,9) } else { [void][L.W]::ShowWindow($h,5) }; if([L.W]::GetForegroundWindow() -eq $h){ 'ok'; exit 0 }; $fg=[L.W]::GetForegroundWindow(); $ft=[L.W]::GetWindowThreadProcessId($fg,[IntPtr]::Zero); $ct=[L.W]::GetCurrentThreadId(); $a=[L.W]::AttachThreadInput($ft,$ct,$true); [void][L.W]::BringWindowToTop($h); $ok=[L.W]::SetForegroundWindow($h); if($a){ [void][L.W]::AttachThreadInput($ft,$ct,$false) }; if(-not $ok){ [L.W]::keybd_event(0x12,0,0,[UIntPtr]::Zero); [L.W]::keybd_event(0x12,0,2,[UIntPtr]::Zero); [void][L.W]::BringWindowToTop($h); $ok=[L.W]::SetForegroundWindow($h) }; Start-Sleep -Milliseconds 150; if([L.W]::GetForegroundWindow() -eq $h){ 'ok' } else { 'refused' }`;
   return new Promise((resolve) => {
     let out = '';
     const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-Command', script], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
@@ -225,21 +228,38 @@ function focusHwnd(hwnd) {
 async function returnToHost(taskId) {
   const t = store.tasks.get(taskId);
   if (!t?.host?.hwnd) return { ok: false, reason: 'unknown' };
-  const r = process.platform === 'darwin' ? await activateMac(t.host) : await focusHwnd(t.host.hwnd);
+  const r = process.platform === 'darwin' ? await activateMac(t.host) : await focusHwnd(t.host.hwnd, t.host.name);
   log('return to host', t.host.name, r);
   return { ...r, host: t.host };
 }
 
-/** macOS: activate the recorded app by bundle id (stored in host.title) or pid. */
-function activateMac(host) {
+/**
+ * macOS: activate the recorded app by bundle id (stored in host.title) or pid. In Terminal and iTerm2
+ * the tab whose tty the agent runs on is selected first, so Return lands on the agent rather than on
+ * whichever window of that app was last in front. That needs Automation permission once; if it is
+ * refused, or the tab is gone, the app alone comes forward.
+ */
+async function activateMac(host) {
+  const bundle = String(host.title || '').replace(/[^\w.-]/g, '');
+  const tty = /^\/dev\/[\w.]{1,40}$/.test(host.tty || '') ? host.tty : '';
+  const tab = !tty ? '' : bundle === 'com.apple.Terminal'
+    ? `tell application id "${bundle}"\nrepeat with w in windows\nrepeat with t in tabs of w\nif tty of t is "${tty}" then\nset selected of t to true\nset miniaturized of w to false\nset index of w to 1\nactivate\nreturn "tab"\nend if\nend repeat\nend repeat\nend tell`
+    : bundle === 'com.googlecode.iterm2'
+      ? `tell application id "${bundle}"\nrepeat with w in windows\nrepeat with t in tabs of w\nrepeat with s in sessions of t\nif tty of s is "${tty}" then\ntell w to select\ntell t to select\ntell s to select\nactivate\nreturn "tab"\nend if\nend repeat\nend repeat\nend repeat\nend tell`
+      : '';
+  if (tab) { const r = await osascript(tab); if (r.code === 0 && r.out === 'tab') return { ok: true, reason: 'ok' }; }
+  const r = await osascript(bundle ? `tell application id "${bundle}" to activate` : `tell application "System Events" to set frontmost of (first process whose unix id is ${Number(host.pid)}) to true`);
+  return r.code === 0 ? { ok: true, reason: 'ok' } : { ok: false, reason: /can’t get|not running|-600|-1728/.test(r.err) ? 'gone' : 'refused' };
+}
+
+function osascript(script) {
   return new Promise((resolve) => {
-    const script = host.title ? `tell application id "${host.title.replace(/"/g, '')}" to activate`
-      : `tell application "System Events" to set frontmost of (first process whose unix id is ${Number(host.pid)}) to true`;
-    const child = spawn('osascript', ['-e', script], { stdio: ['ignore', 'ignore', 'pipe'] });
-    let err = '';
+    const child = spawn('osascript', ['-e', script], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = '', err = '';
+    child.stdout.on('data', d => { out += d; });
     child.stderr.on('data', d => { err += d; });
-    child.on('error', e => resolve({ ok: false, reason: e.message }));
-    child.on('close', code => resolve(code === 0 ? { ok: true, reason: 'ok' } : { ok: false, reason: /can’t get|not running|-600/.test(err) ? 'gone' : 'refused' }));
+    child.on('error', e => resolve({ code: -1, out: '', err: e.message }));
+    child.on('close', code => resolve({ code, out: out.trim(), err }));
   });
 }
 
@@ -298,7 +318,8 @@ function onRunEnded({ run, status }) {
   if (win?.isFocused()) return; // the app is already in front; the in-app banner is enough
   const agent = r.agent === 'claude' ? 'Claude Code' : r.agent === 'codex' ? 'Codex' : r.agent;
   const title = status === 'completed' ? 'Ready when you are' : status === 'failed' ? 'A run stopped with an error' : status === 'cancelled' ? 'A run was interrupted' : 'A run went quiet';
-  const n = new Notification({ title, body: `${agent} · ${p?.displayName || p?.name || ''}${r.title ? ' · ' + r.title : ''}`, silent: true, icon: iconPath('png') });
+  const name = store.tasks.get(r.task)?.threadTitle || r.title;
+  const n = new Notification({ title, body: `${agent} · ${p?.displayName || p?.name || ''}${name ? ' · ' + name : ''}`, silent: true, icon: iconPath('png') });
   n.on('click', () => { reveal({ focus: true }); broadcast('open-request', { project: r.project, task: r.task, run, reason: 'notification', explicit: true, engaged: false, requestedAt: Date.now() }); });
   n.show();
 }

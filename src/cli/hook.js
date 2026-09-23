@@ -23,7 +23,7 @@ export function turnTitle(prompt) {
 }
 
 /** Turn a hook payload into {events, context, open}. `context` is printed to stdout when allowed. */
-export function mapHook(agent, input, { hookContext = true, host = null } = {}) {
+export function mapHook(agent, input, { hookContext = true, host = null, threadTitle = '' } = {}) {
   if (!['claude', 'codex'].includes(agent)) throw Error('agent must be claude or codex');
   if (!input || typeof input !== 'object') throw Error('hook input must be JSON');
   const name = input.hook_event_name;
@@ -81,6 +81,12 @@ export function mapHook(agent, input, { hookContext = true, host = null } = {}) 
     }
     default:
       break;
+  }
+  // The agent's own name for the conversation, first so a completion notice can already use it. The id
+  // comes from the title, so the same title sent again is a duplicate the store ignores.
+  if (threadTitle && events.length) {
+    const h = crypto.createHash('sha1').update(threadTitle).digest('hex').slice(0, 12);
+    events.unshift({ id: `title:${task}:${h}`, type: 'session', project, task, agent, threadTitle }); // identity only, so a resend is byte-identical
   }
   return { events, context, open };
 }

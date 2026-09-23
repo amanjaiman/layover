@@ -3,8 +3,9 @@
 // Claude desktop app); on macOS the app the agent runs under.
 import { spawnSync } from 'node:child_process';
 
-export function findHostWindow(pid = process.pid) {
-  if (process.platform === 'darwin') return findHostMac(pid);
+/** `guess`: on macOS, may the frontmost app stand in when the process tree names no app? */
+export function findHostWindow(pid = process.pid, { guess = true } = {}) {
+  if (process.platform === 'darwin') return findHostMac(pid, guess);
   if (process.platform !== 'win32') return null;
   // Windows Terminal runs every window in one process, so that process's MainWindowHandle is just
   // whichever window it picked, often not the agent's. The agent's console knows better: a
@@ -42,32 +43,52 @@ while ($id -gt 4 -and $hops -lt 14) {
 
 /**
  * macOS: walk up the process tree to the first app bundle the agent runs under (Terminal, iTerm,
- * VS Code, the Claude or Codex desktop app) and record its bundle id so Return can activate it.
- * `hwnd` carries the pid. When no ancestor is an app (tmux, ssh), fall back to the frontmost app.
+ * VS Code, the Claude or Codex desktop app) and record its bundle id so Return can activate it,
+ * plus the terminal tab's tty so Return can pick that tab. `hwnd` carries the pid.
+ * iTerm2 runs shells under a detached iTermServer (its parent is launchd, not iTerm2), so that
+ * server stands for iTerm2. `ps` lines are `pid ppid tty comm`.
  */
 export function macHostFromProcesses(pid, psOutput) {
-  const parent = new Map(), exe = new Map();
+  const parent = new Map(), exe = new Map(), ttys = new Map();
   for (const line of String(psOutput).split('\n')) {
-    const m = line.match(/^\s*(\d+)\s+(\d+)\s+(.+?)\s*$/);
-    if (m) { parent.set(Number(m[1]), Number(m[2])); exe.set(Number(m[1]), m[3]); }
+    const m = line.match(/^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.+?)\s*$/);
+    if (m) { parent.set(Number(m[1]), Number(m[2])); ttys.set(Number(m[1]), m[3]); exe.set(Number(m[1]), m[4]); }
   }
+  let tty = '';
   for (let id = pid, hops = 0; id > 1 && hops < 20; id = parent.get(id), hops++) {
-    const app = (exe.get(id) || '').match(/^(.*?\/([^/]+)\.app)\/Contents\//);
-    if (app && app[2] !== 'Layover') return { pid: id, app: app[1], name: app[2] };
+    const t = ttys.get(id) || '';
+    if (!tty && /^(tty)?s?\d+$/.test(t)) tty = '/dev/' + (t.startsWith('tty') ? t : 'tty' + t); // ttys003, or s003 in short form
+    const cmd = exe.get(id) || '';
+    const app = cmd.match(/^(.*?\/([^/]+)\.app)\/Contents\//);
+    if (app && app[2] !== 'Layover') return { pid: id, app: app[1], name: app[2], tty };
+    if (/\/iTerm2\/iTermServer[^/]*$/.test(cmd)) return { pid: id, app: '', bundle: 'com.googlecode.iterm2', name: 'iTerm2', tty };
     if (!parent.has(id)) break;
   }
   return null;
 }
 
-function findHostMac(pid) {
-  const ps = spawnSync('ps', ['-A', '-o', 'pid=,ppid=,comm='], { encoding: 'utf8', timeout: 3000 });
-  const found = ps.status === 0 ? macHostFromProcesses(pid, ps.stdout) : null;
-  if (found) {
-    const r = spawnSync('defaults', ['read', `${found.app}/Contents/Info`, 'CFBundleIdentifier'], { encoding: 'utf8', timeout: 3000 });
-    const bundle = r.status === 0 ? r.stdout.trim() : '';
-    if (bundle) return { pid: found.pid, hwnd: String(found.pid), name: found.name.slice(0, 80), title: bundle.slice(0, 200) };
+/** Inside tmux the agent's ancestors end at the tmux server (a launchd child); the client sits in the terminal. */
+function tmuxClientPid() {
+  if (!process.env.TMUX) return 0;
+  for (const args of [['display-message', '-p', '#{client_pid}'], ['list-clients', '-F', '#{client_pid}']]) {
+    const r = spawnSync('tmux', args, { encoding: 'utf8', timeout: 2000 });
+    const p = Number((r.stdout || '').trim().split('\n')[0]);
+    if (r.status === 0 && Number.isSafeInteger(p) && p > 1) return p;
   }
-  return findFrontmostMac();
+  return 0;
+}
+
+function findHostMac(pid, guess) {
+  const ps = spawnSync('ps', ['-A', '-o', 'pid=,ppid=,tty=,comm='], { encoding: 'utf8', timeout: 3000 });
+  const found = ps.status === 0 ? macHostFromProcesses(tmuxClientPid() || pid, ps.stdout) : null;
+  if (found) {
+    let bundle = found.bundle || '';
+    if (!bundle) { const r = spawnSync('defaults', ['read', `${found.app}/Contents/Info`, 'CFBundleIdentifier'], { encoding: 'utf8', timeout: 3000 }); bundle = r.status === 0 ? r.stdout.trim() : ''; }
+    if (bundle) return { pid: found.pid, hwnd: String(found.pid), name: found.name.slice(0, 80), title: bundle.slice(0, 200), via: 'process', ...(found.tty ? { tty: found.tty } : {}) };
+  }
+  // No app in the tree (ssh, screen, a launchd job): the frontmost app is only a guess, and a fair one
+  // only while the user is starting the agent. On a resume or clear it may be anything (Slack).
+  return guess ? findFrontmostMac() : null;
 }
 
 function findFrontmostMac() {
@@ -78,5 +99,5 @@ function findFrontmostMac() {
   if (!line || r.status !== 0) return null;
   const [pid, bundle, name] = line.split('|');
   if (!/^\d+$/.test(pid || '') || /^com\.layover\./.test(bundle || '') || name === 'Layover') return null; // Layover itself is never where the agent lives
-  return { pid: Number(pid), hwnd: String(pid), name: String(name || bundle || '').slice(0, 80), title: String(bundle || '').slice(0, 200) };
+  return { pid: Number(pid), hwnd: String(pid), name: String(name || bundle || '').slice(0, 80), title: String(bundle || '').slice(0, 200), via: 'frontmost' };
 }

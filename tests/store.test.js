@@ -131,6 +131,34 @@ test('a session can record the host window; a bad host is rejected', () => {
   s.event({ ...base, id: 's1', type: 'session', name: 'Claude Code · Demo', host: { pid: 5, hwnd: '4242', name: 'Code', title: 'demo - VS Code' } });
   assert.equal(s.state().tasks[0].host.hwnd, '4242');
   assert.throws(() => s.event({ ...base, id: 's2', type: 'session', host: { pid: 'x', hwnd: 'nope' } }), /host/);
+  assert.throws(() => s.event({ ...base, id: 's3', type: 'session', host: { pid: 5, hwnd: '5', tty: '/dev/ttys001"; do shell script "x' } }), /tty/);
+  s.close();
+});
+
+test('a window found from the process tree is kept over a later frontmost-app guess', () => {
+  const s = new Store(tmp());
+  const iterm = { pid: 7, hwnd: '7', name: 'iTerm2', title: 'com.googlecode.iterm2', via: 'process', tty: '/dev/ttys004' };
+  s.event({ ...base, id: 'h1', type: 'session', host: iterm });
+  s.event({ ...base, id: 'h2', type: 'session', host: { pid: 9, hwnd: '9', name: 'Slack', title: 'com.tinyspeck.slackmacgap', via: 'frontmost' } });
+  assert.deepEqual(s.state().tasks[0].host, iterm);
+  const term = { pid: 8, hwnd: '8', name: 'Terminal', title: 'com.apple.Terminal', via: 'process' };
+  s.event({ ...base, id: 'h3', type: 'session', host: term });
+  assert.deepEqual(s.state().tasks[0].host, term); // a newer real one does replace it
+  s.close();
+});
+
+test('the agent\'s own conversation title is kept on the task, and a rename replaces it', () => {
+  const dir = tmp();
+  let s = new Store(dir);
+  s.event(start('r1'));
+  s.event({ id: 'title:claude:s1:a', type: 'session', project: 'p1', task: 'claude:s1', agent: 'claude', threadTitle: 'Fix login redirect' });
+  assert.equal(s.state().tasks[0].threadTitle, 'Fix login redirect');
+  assert.equal(s.state().tasks[0].name, 'Build onboarding');
+  s.event({ id: 'title:claude:s1:b', type: 'session', project: 'p1', task: 'claude:s1', agent: 'claude', threadTitle: 'Login redirect loop' });
+  s.close();
+  s = new Store(dir);
+  assert.equal(s.state().tasks[0].threadTitle, 'Login redirect loop');
+  assert.throws(() => s.event({ id: 'title:x', type: 'session', project: 'p1', task: 'claude:s1', agent: 'claude', threadTitle: 'x'.repeat(201) }), /threadTitle/);
   s.close();
 });
 

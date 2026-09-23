@@ -158,11 +158,14 @@ export class Store {
     if (e.type !== 'session' && !isId(e.run)) throw Error('Invalid run');
     if (e.type !== 'session' && (!Number.isSafeInteger(e.seq) || e.seq < 0)) throw Error('seq must be a nonnegative integer');
     for (const k of ['title', 'projectName', 'projectPath', 'source', 'name', 'sessionId', 'note']) text(e[k], MAX_META, k);
+    text(e.threadTitle, 200, 'threadTitle');
     if (e.type === 'start' && e.lifecycle !== undefined && !LIFECYCLES.has(e.lifecycle)) throw Error('Invalid lifecycle');
     if (e.host !== undefined) {
       const h = e.host;
       if (!h || typeof h !== 'object' || !Number.isSafeInteger(h.pid) || typeof h.hwnd !== 'string' || !/^\d{1,20}$/.test(h.hwnd)) throw Error('Invalid host');
       text(h.name, 80, 'host.name'); text(h.title, 200, 'host.title');
+      if (h.tty !== undefined && (typeof h.tty !== 'string' || !/^\/dev\/[\w.]{1,40}$/.test(h.tty))) throw Error('Invalid host.tty');
+      if (h.via !== undefined && !['process', 'frontmost'].includes(h.via)) throw Error('Invalid host.via');
     }
     if (e.type === 'end' && !TERMINAL.has(e.status)) throw Error('Invalid terminal status');
     if (e.type === 'item') {
@@ -222,11 +225,13 @@ export class Store {
   ensureTask(e, received) {
     let t = this.tasks.get(e.task);
     if (!t) {
-      t = { id: e.task, project: e.project, agent: e.agent, name: e.name || e.title || e.task, source: e.source || '', sessionId: e.sessionId || '', host: e.host || null, createdAt: received, lastSeen: received };
+      t = { id: e.task, project: e.project, agent: e.agent, name: e.name || e.title || e.task, source: e.source || '', sessionId: e.sessionId || '', host: e.host || null, threadTitle: e.threadTitle || '', createdAt: received, lastSeen: received };
       this.tasks.set(t.id, t);
     } else {
-      if (e.type === 'session') { if (e.name) t.name = e.name; if (e.source) t.source = e.source; if (e.sessionId) t.sessionId = e.sessionId; if (e.host) t.host = e.host; }
-      else if (e.type === 'start' && t.name === t.id && e.title) t.name = e.title;
+      if (e.type === 'session') {
+        if (e.name) t.name = e.name; if (e.source) t.source = e.source; if (e.sessionId) t.sessionId = e.sessionId; if (e.threadTitle) t.threadTitle = e.threadTitle;
+        if (e.host && !(e.host.via === 'frontmost' && t.host?.via === 'process')) t.host = e.host; // a guess never replaces a window found from the process tree
+      } else if (e.type === 'start' && t.name === t.id && e.title) t.name = e.title;
       if (e.source && !t.source) t.source = e.source;
     }
     t.lastSeen = Math.max(t.lastSeen, received);

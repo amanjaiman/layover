@@ -101,6 +101,10 @@
     if (m) t = m[1];
     return t.length > 80 ? t.slice(0, 79) + '…' : t;
   }
+  /** A conversation's name: the one the agent gave it (its sidebar title), else the latest turn's prompt. */
+  function threadName(task, run) {
+    return task.threadTitle || cleanTitle(run?.title) || (task.name && !/^(claude|codex):/.test(task.name) ? task.name : 'Conversation');
+  }
   function typing() { const a = document.activeElement; return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable); }
 
   // ---------- derived ----------
@@ -567,7 +571,8 @@
   function trackerRow(r, byStatus) {
     const agent = r.task.agent, who = AGENT[agent] || agent;
     const run = r.latest;
-    const title = cleanTitle(run?.title) || (r.task.name && !/^(claude|codex):/.test(r.task.name) ? r.task.name : 'Conversation');
+    const title = threadName(r.task, run);
+    const turn = r.task.threadTitle ? cleanTitle(run?.title) : ''; // with the agent's own name up front, the line under it says what the latest turn was
     const item = r.waitingItem || (run ? [...r.items].reverse().find(i => i.run === run.id && !i.userDismissed) : null);
     const kind = item ? item.kind : !run ? 'idle' : r.status === 'working' || r.status === 'attention' ? 'turn' : r.status === 'completed' ? 'done' : r.status === 'failed' ? 'error' : r.status === 'cancelled' ? 'stopped' : r.status === 'disconnected' ? 'quiet' : 'idle';
     const open = S.tracker.open.has(r.task.id);
@@ -580,7 +585,7 @@
       el('span', { class: 'tr-time', text: clock(r.since), title: ago(r.since) }),
       el('span', { class: 'tr-agent ' + agent, text: AGENT_SHORT[agent] || agent, title: who }),
       byStatus ? el('span', { class: 'tr-proj' }, projTok(r.p, true), el('span', { text: projectName(r.p) })) : el('span', { class: 'tr-kind k-' + kind }, el('i'), TR_KIND[kind]),
-      el('span', { class: 'tr-item' }, el('b', { text: title }), item ? el('span', { text: (item.title || item.text).split('\n')[0] }) : null),
+      el('span', { class: 'tr-item' }, el('b', { text: title }), item ? el('span', { text: (item.title || item.text).split('\n')[0] }) : turn && turn !== title ? el('span', { text: turn }) : null),
       trackerStatus(r),
       el('span', { class: 'tr-act' },
         el('button', { class: 'btn small tr-return' + (r.bucket === 'waiting' || r.bucket === 'ready' ? ' primary' : ' ghost'), title: r.task.host ? `Bring ${r.task.host.name} forward (r)` : `How to return to ${who} (r)`, 'aria-label': 'Return to ' + who, onclick: () => returnTo(back) }, el('span', { class: 'l', text: 'Return' }), svg(ICON.arrow, 12)),
@@ -698,7 +703,7 @@
       await api.setPlace(S.project, { collapsed: u.place.collapsed });
     };
     // header
-    const title = cleanTitle(latest?.title) || (t.task.name && !/^(claude|codex):/.test(t.task.name) ? t.task.name : 'Conversation');
+    const title = threadName(t.task, latest);
     const statusChip = t.status === 'working' ? el('span', { class: 'status working' }, el('span', { class: 'dot working' }), ...lbl(`Working · ${dur(Date.now() - latest.startedAt)}`, dur(Date.now() - latest.startedAt)))
       : t.status === 'attention' ? el('span', { class: 'status attention' }, el('span', { class: 'dot attention' }), ...lbl('Waiting on you', 'Waiting'))
       : t.status === 'completed' ? el('span', { class: 'status done' }, el('span', { class: 'dot done' }), ...lbl(`Finished ${ago(latest.endedAt)}`, 'Done'))
@@ -716,7 +721,7 @@
     // timeline entries in time order
     const entries = [];
     for (const r of t.runs) {
-      if (t.runs.length > 1) entries.push({ at: r.startedAt, kind: 'turn', run: r }); // a single turn is already the thread title
+      if (t.runs.length > 1 || t.task.threadTitle) entries.push({ at: r.startedAt, kind: 'turn', run: r }); // a single turn is the thread title unless the agent named it
       if (r.status !== 'active') entries.push({ at: r.endedAt || r.lastSeen, kind: 'end', run: r });
     }
     for (const i of t.items) if (!i.userDismissed) entries.push({ at: i.createdAt, kind: 'item', item: i });

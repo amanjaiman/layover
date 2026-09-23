@@ -77,8 +77,12 @@ async function runHook(agent) {
   const settings = readSettings();
   // Once per session, remember which window the agent lives in so "Return" can bring it forward.
   let host = null;
-  if (input?.hook_event_name === 'SessionStart') { try { const { findHostWindow } = await import('./host.js'); host = findHostWindow(); } catch { host = null; } }
-  const { events, context, open } = mapHook(agent, input, { hookContext: settings.hookContext !== false, host });
+  // Only a fresh start may fall back to the frontmost app: on a resume the user may be anywhere.
+  if (input?.hook_event_name === 'SessionStart') { try { const { findHostWindow } = await import('./host.js'); host = findHostWindow(process.pid, { guess: !input.source || input.source === 'startup' }); } catch { host = null; } }
+  // The name the agent gave the conversation (its sidebar title), read once the turn has one.
+  let threadTitle = '';
+  if (['SessionStart', 'UserPromptSubmit', 'Stop'].includes(input?.hook_event_name)) { try { const t = await import('./titles.js'); threadTitle = t.threadTitle(agent, input); } catch { threadTitle = ''; } }
+  const { events, context, open } = mapHook(agent, input, { hookContext: settings.hookContext !== false, host, threadTitle });
   const hookName = input?.hook_event_name;
   const deliveryMoment = { PostToolUse: 'mid-turn', Stop: 'turn-end', UserPromptSubmit: 'next-prompt' }[hookName];
   const session = String(input?.session_id || input?.thread_id || '');
