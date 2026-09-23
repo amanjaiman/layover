@@ -1145,7 +1145,7 @@
       try {
         const res = await call(api.returnFocus(t.id));
         if (res.ok) return; // going back is not the same as seeing it: the row stays until marked seen
-        if (res.reason === 'gone') toast({ text: `That ${t.host.name} window is closed.`, ttl: 5000 });
+        if (res.reason === 'gone') toast({ text: S.platform === 'darwin' ? `${t.host.name} is not running.` : `That ${t.host.name} window is closed.`, ttl: 5000 });
       } catch { /* fall through to the sheet */ }
     }
     returnSheet(r);
@@ -1157,10 +1157,14 @@
     const responses = Object.entries(user(pid)?.responses || {}).filter(([k]) => k.startsWith((r.id || '§') + ':')).map(([, v]) => v.body).filter(Boolean);
     const source = r.source || t?.source || `Return to the ${who} window where this work started.`;
     const resume = source.match(/(claude --resume \S+|codex resume \S+)/)?.[1];
+    // macOS records the app (host.title is its bundle id); Windows records a window (host.title is its caption).
+    const mac = S.platform === 'darwin';
+    const switcher = mac ? [el('kbd', { text: '⌘' }), ' + ', el('kbd', { text: 'Tab' })] : [el('kbd', { text: 'Alt' }), ' + ', el('kbd', { text: 'Tab' })];
+    const refused = mac ? 'macOS did not let Layover switch to it. Use ⌘ Tab to get there.' : 'Windows would not hand it focus. Alt+Tab to it.';
     sheet([
       el('h2', { text: `Back to ${who}` }),
-      host ? el('p', { class: 't-body' }, 'This session lives in ', el('b', { text: host.title || host.name }), ' (', host.name, '). ', el('button', { class: 'btn small', onclick: async () => { const res = await call(api.returnFocus(t.id)); if (res.ok) closeOverlay(); else toast({ text: res.reason === 'gone' ? 'That window is closed.' : 'Windows would not hand it focus. Alt+Tab to it.', ttl: 5000 }); } }, 'Bring it forward'))
-        : el('p', { class: 't-body' }, 'Layover did not see which window this session started in. Switch to the ', el('b', { text: who }), ' session below with ', el('kbd', { text: 'Alt' }), ' + ', el('kbd', { text: 'Tab' }), ', or resume it from a terminal in the project folder.'),
+      host ? el('p', { class: 't-body' }, 'This session lives in ', el('b', { text: mac ? host.name : host.title || host.name }), mac ? '. ' : ` (${host.name}). `, el('button', { class: 'btn small', onclick: async () => { const res = await call(api.returnFocus(t.id)); if (res.ok) closeOverlay(); else toast({ text: res.reason === 'gone' ? (mac ? `${host.name} is not running.` : 'That window is closed.') : refused, ttl: 5000 }); } }, 'Bring it forward'))
+        : el('p', { class: 't-body' }, 'Layover did not see which window this session started in. Switch to the ', el('b', { text: who }), ' session below with ', ...switcher, ', or resume it from a terminal in the project folder.'),
       el('pre', { class: 'src', text: source }),
       el('div', { class: 'card-actions', style: 'margin-top:0' },
         resume ? el('button', { class: 'btn', onclick: () => { api.copy(resume); toast({ text: 'Resume command copied.', ttl: 3500 }); } }, svg(ICON.copy, 12), 'Copy resume command') : null,

@@ -1,0 +1,25 @@
+# Runs the unit tests on both platforms Layover ships for, on every pull request and push to main.
+# The tests need no packages (node:test and the repo's own modules), so nothing is installed and the
+# Electron download is skipped. The syntax check also covers the renderer, which no test loads.
+name: test
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24 }
+      - name: Syntax check
+        shell: bash
+        run: for f in $(git ls-files 'src/*.js' 'src/*.cjs'); do node --check "$f" || exit 1; done
+      - run: npm test
