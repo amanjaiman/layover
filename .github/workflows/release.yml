@@ -1,13 +1,42 @@
-# Builds installers on a tag push (v0.5.0) and attaches them to a GitHub release, plus stable
-# "latest" names the install scripts download. macOS artifacts are built on a macOS runner.
+# Builds installers and attaches them to a GitHub release, plus stable "latest" names the install
+# scripts download. macOS artifacts are built on a macOS runner.
+# Two ways in: pushing a tag (v0.5.0) by hand, or merging to main with a package.json version that has
+# no tag yet, which tags that commit and releases it. A tag pushed from here does not start this
+# workflow again (GitHub's rule for its own token), so a release is never built twice.
 name: release
 on:
   push:
     tags: ['v*']
+    branches: [main]
 permissions:
   contents: write
+concurrency:
+  group: release
+  cancel-in-progress: false
 jobs:
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.t.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }   # every tag, to see whether this version was already released
+      - id: t
+        name: Tag to release (empty when this version already has one)
+        shell: bash
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"; exit 0; fi
+          tag="v$(node -p "require('./package.json').version")"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then echo "$tag is already tagged; nothing to release."; exit 0; fi
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' tag -a "$tag" -m "$tag" "$GITHUB_SHA"
+          git push origin "refs/tags/$tag"
+          echo "Tagged $GITHUB_SHA as $tag."
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
   build:
+    needs: tag
+    if: needs.tag.outputs.tag != ''
+    env:
+      TAG: ${{ needs.tag.outputs.tag }}
     strategy:
       fail-fast: false
       matrix:
@@ -19,7 +48,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }   # the notes step needs the previous tag
+        with: { fetch-depth: 0, ref: '${{ needs.tag.outputs.tag }}' }   # the notes step needs the previous tag
       - uses: actions/setup-node@v4
         with: { node-version: 24 }
       - run: npm ci --no-audit --no-fund
@@ -41,12 +70,13 @@ jobs:
         shell: bash
         run: |
           set +e
-          prev=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null)
-          { if [ -n "$prev" ]; then git log --no-merges --format='- %s' "$prev..${GITHUB_REF_NAME}"; else git log --no-merges --format='- %s' -n 20; fi; } > release/NOTES.md
+          prev=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null)
+          { if [ -n "$prev" ]; then git log --no-merges --format='- %s' "$prev..${TAG}"; else git log --no-merges --format='- %s' -n 20; fi; } > release/NOTES.md
           cat release/NOTES.md
           exit 0
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.tag.outputs.tag }}
           body_path: release/NOTES.md    # the app shows the release body in its update sheet
           files: |
             release/Layover-Setup*.exe

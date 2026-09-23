@@ -112,7 +112,7 @@ npm start              # dev app (data in %LOCALAPPDATA%\Layover unless LAYOVER_
 npm run dist           # release/Layover-Setup-<version>.exe
 ```
 
-Use `LAYOVER_DATA` and `LAYOVER_PORT` together to run an isolated instance. The dev CLI is `bin\layover.cmd` (uses `node`); `layover setup` from a checkout points hooks at that path. Releases are built by the GitHub workflow on a tag push (`git tag v0.5.0 && git push --tags`); macOS artifacts come from a macOS runner.
+Use `LAYOVER_DATA` and `LAYOVER_PORT` together to run an isolated instance. The dev CLI is `bin\layover.cmd` (uses `node`); `layover setup` from a checkout points hooks at that path. Releases are built by the GitHub workflow: merging to `main` with a new `version` in `package.json` tags that commit and releases it, and pushing a tag by hand (`git tag v0.5.0 && git push --tags`) still works. macOS artifacts come from a macOS runner.
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the pieces and the event contract
 - [docs/CAPABILITIES.md](docs/CAPABILITIES.md) — what has been verified live and what has not
