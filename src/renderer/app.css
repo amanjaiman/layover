@@ -883,6 +883,7 @@ body:not(.compact) .tr-card.folded .tr-card-h{ padding-bottom:var(--s3); } /* a 
   display:inline-block; padding:0 5px; border-radius:3px; font-family:var(--f-mono); font-weight:500; color:var(--board-text);
   background:linear-gradient(var(--board-top) 50%, var(--board) 50%); }
 :root[data-style="flight"] .tab .count.hot{ color:#FFD27A; }
+:root[data-style="flight"] .tr-n{ vertical-align:middle; line-height:1.6; position:relative; top:-1px; } /* on the baseline, the tile rode high beside the 16px group name */
 :root[data-style="flight"] .tk-key{ text-align:center; line-height:1.7; }
 :root[data-style="flight"] .tk-row.closed .tk-key{ color:var(--board-faint); }
 
