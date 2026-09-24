@@ -137,6 +137,7 @@ kbd{font-family:var(--f-mono);font-size:11px;padding:1px 6px;border:1px solid va
 .hero h1{font-family:var(--f-display);font-weight:500;font-size:clamp(44px,6vw,84px);line-height:1.02;letter-spacing:-.024em;text-wrap:balance}
 .lede{max-width:40ch;font-size:19px;line-height:1.55;color:var(--text-2)}
 .get{margin-top:var(--s4);max-width:540px}
+.hero .get{margin-top:0}
 .get .seg{margin-bottom:10px}
 .cmd{display:flex;align-items:flex-start;gap:var(--s2);background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--r-md);padding:10px 10px 10px 16px;box-shadow:var(--e1)}
 .cmd code{flex:1;min-width:0;font-size:13px;line-height:1.6;color:var(--text);overflow-wrap:normal;padding-top:3px}
@@ -346,7 +347,6 @@ footer .mark img{width:18px;height:18px}
     <div class="hero-top">
       <h1>Somewhere to be while your agent works.</h1>
       <div class="hero-side">
-        <p class="lede">Every prompt is a short flight. Layover is where you wait: what the agent decided, what it needs from you, and what you'll do when it lands.</p>
         <div class="get">
           <div class="seg" role="radiogroup" aria-label="Operating system"><button role="radio" aria-checked="true" data-os="win">Windows</button><button role="radio" aria-checked="false" data-os="mac">macOS</button></div>
           <div class="cmd"><code><span class="p" data-prompt>&gt; </span><span data-cmd></span></code><button class="btn primary small" data-copy>Copy</button></div>
