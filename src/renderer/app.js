@@ -278,7 +278,7 @@
     api.on('state', st => { S.state = st; onState(); });
     api.on('open-request', onOpenRequest);
     api.on('theme', applyTheme);
-    api.on('settings', s => { S.settings = { ...S.settings, ...s }; if (s.layout && s.layout !== S.layout) setLayout(s.layout, { save: false }); if (s.style && s.style !== S.style) applyStyle(s.style); });
+    api.on('settings', s => { S.settings = { ...S.settings, ...s }; if (s.accent) applyAccent(s.accent); if (s.layout && s.layout !== S.layout) setLayout(s.layout, { save: false }); if (s.style && s.style !== S.style) applyStyle(s.style); });
     api.on('window-mode', m => { S.mode = m; document.body.classList.toggle('compact', m === 'compact'); render(true); });
     api.on('run-ended', onRunEnded);
     api.on('platform', ({ platform }) => applyPlatform(platform));
@@ -1429,7 +1429,7 @@
             for (const [id, label] of [['light', 'Light'], ['system', 'Match system'], ['dark', 'Dark']]) g.append(el('button', { role: 'radio', 'aria-checked': s.theme === id ? 'true' : 'false', title: label, 'aria-label': label, onclick: () => { g.querySelectorAll('button').forEach(b => b.setAttribute('aria-checked', 'false')); g.querySelector('[title="' + label + '"]').setAttribute('aria-checked', 'true'); s.theme = id; api.setSettings({ theme: id }); } }, svg(icons[id], 16)));
             return g;
           })(),
-          (() => { const g = el('div', { class: 'seg accent-seg', role: 'radiogroup', 'aria-label': 'Accent' }); for (const [id, label, sw] of ACCENTS) g.append(el('button', { role: 'radio', 'aria-checked': (s.accent || 'teal') === id ? 'true' : 'false', title: label, 'aria-label': label + ' accent', onclick: () => { g.querySelectorAll('button').forEach(b => b.setAttribute('aria-checked', 'false')); g.querySelector('[title="' + label + '"]').setAttribute('aria-checked', 'true'); s.accent = id; applyAccent(id); api.setSettings({ accent: id }); } }, el('span', { class: 'acc-dot', style: 'background:' + sw }))); return g; })(),
+          (() => { const g = el('div', { class: 'seg accent-seg', role: 'radiogroup', 'aria-label': 'Accent' }); for (const [id, label, sw] of ACCENTS) g.append(el('button', { role: 'radio', 'aria-checked': (s.accent || 'teal') === id ? 'true' : 'false', title: label, 'aria-label': label + ' accent', onclick: () => { g.querySelectorAll('button').forEach(b => b.setAttribute('aria-checked', 'false')); g.querySelector('[title="' + label + '"]').setAttribute('aria-checked', 'true'); s.accent = S.settings.accent = id; applyAccent(id); api.setSettings({ accent: id }); } }, el('span', { class: 'acc-dot', style: 'background:' + sw }))); return g; })(),
           (() => {
             // Style: the everyday room, or the same app dressed as an airport. Words and looks only.
             const icons = { default: 'M3 6.5h8v3.2a3.3 3.3 0 0 1-3.3 3.3H6.3A3.3 3.3 0 0 1 3 9.7V6.5ZM11 7.5h.9a1.6 1.6 0 0 1 0 3.2H11M5.6 2.2v2.1M8.4 2.2v2.1', flight: PLANE };
