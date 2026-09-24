@@ -1,0 +1,6 @@
+# The landing page (layover-ai.netlify.app) is static and lives in site/.
+# Building from site/ keeps Netlify away from the Electron app's package.json.
+[build]
+  base = "site"
+  publish = "."
+  command = ""
