@@ -278,7 +278,7 @@
     api.on('state', st => { S.state = st; onState(); });
     api.on('open-request', onOpenRequest);
     api.on('theme', applyTheme);
-    api.on('settings', s => { S.settings = { ...S.settings, ...s }; if (s.layout && s.layout !== S.layout) setLayout(s.layout, { save: false }); if (s.style && s.style !== S.style) applyStyle(s.style); });
+    api.on('settings', s => { S.settings = { ...S.settings, ...s }; if (s.accent) applyAccent(s.accent); if (s.layout && s.layout !== S.layout) setLayout(s.layout, { save: false }); if (s.style && s.style !== S.style) applyStyle(s.style); });
     api.on('window-mode', m => { S.mode = m; document.body.classList.toggle('compact', m === 'compact'); render(true); });
     api.on('run-ended', onRunEnded);
     api.on('platform', ({ platform }) => applyPlatform(platform));
