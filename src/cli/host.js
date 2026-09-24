@@ -10,11 +10,12 @@ export function findHostWindow(pid = process.pid, { guess = true } = {}) {
   // Windows Terminal runs every window in one process, so that process's MainWindowHandle is just
   // whichever window it picked, often not the agent's. The agent's console knows better: a
   // pseudoconsole window is owned by the terminal window hosting that tab, so attaching to each
-  // ancestor's console and taking its root owner finds the right window. Processes without a
-  // visible console owner (VS Code, the Claude desktop app) fall back to the first ancestor that
-  // owns a top-level window.
+  // ancestor's console and following its owners finds the right window. The pseudoconsole window
+  // itself is never recorded: Windows Terminal mirrors show/hide on it onto the whole terminal
+  // window, so Return poking it made the terminal vanish. Processes without a visible console owner
+  // (VS Code, the Claude desktop app) fall back to the first ancestor that owns a top-level window.
   const script = `
-Add-Type -Namespace L -Name C -MemberDefinition '[DllImport("kernel32.dll")] public static extern bool FreeConsole(); [DllImport("kernel32.dll")] public static extern bool AttachConsole(uint p); [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow(); [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr h, uint f); [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h); [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p); [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);'
+Add-Type -Namespace L -Name C -MemberDefinition '[DllImport("kernel32.dll")] public static extern bool FreeConsole(); [DllImport("kernel32.dll")] public static extern bool AttachConsole(uint p); [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow(); [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h, uint c); [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n); [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h); [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p); [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);'
 $procs = @{}; Get-CimInstance Win32_Process | ForEach-Object { $procs[[int]$_.ProcessId] = [int]$_.ParentProcessId }
 function Say($h) {
   $wp = [uint32]0; [void][L.C]::GetWindowThreadProcessId($h, [ref]$wp); $gp = Get-Process -Id $wp -ErrorAction SilentlyContinue
@@ -26,7 +27,11 @@ while ($id -gt 4 -and $hops -lt 14) {
   [void][L.C]::FreeConsole()
   if ([L.C]::AttachConsole([uint32]$id)) {
     $cw = [L.C]::GetConsoleWindow(); [void][L.C]::FreeConsole()
-    if ($cw -ne [IntPtr]::Zero) { $root = [L.C]::GetAncestor($cw, 3); if ($root -ne [IntPtr]::Zero -and [L.C]::IsWindowVisible($root)) { Say $root; exit 0 } }
+    if ($cw -ne [IntPtr]::Zero) {
+      $root = $cw; $n = 0; while ($n -lt 8) { $o = [L.C]::GetWindow($root, 4); if ($o -eq [IntPtr]::Zero) { break }; $root = $o; $n++ }
+      $cls = New-Object System.Text.StringBuilder 64; [void][L.C]::GetClassName($root, $cls, 64)
+      if ($cls.ToString() -ne 'PseudoConsoleWindow' -and [L.C]::IsWindowVisible($root)) { Say $root; exit 0 }
+    }
   }
   $gp = Get-Process -Id $id -ErrorAction SilentlyContinue
   if ($gp -and $gp.MainWindowHandle -ne 0 -and $gp.ProcessName -notin @('cmd','conhost','OpenConsole','node','Layover','electron')) { Say $gp.MainWindowHandle; exit 0 }
