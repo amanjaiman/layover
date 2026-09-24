@@ -157,7 +157,7 @@ kbd{font-family:var(--f-mono);font-size:11px;padding:1px 6px;border:1px solid va
 .tix-route{display:grid;grid-template-columns:auto minmax(40px,1fr) auto;align-items:start;gap:var(--s4);margin:var(--s5) 0 var(--s5)}
 .tix-route .to{text-align:right}
 .tix-route b{display:block;font-family:var(--f-display);font-weight:500;font-size:var(--route);letter-spacing:-.025em;line-height:1;margin-top:4px}
-.path{position:relative;height:28px;margin-top:calc(8px + var(--route) / 2)}
+.path{position:relative;height:28px;margin-top:calc(8px + var(--route) * .657)}
 .path .plane{width:28px;height:28px}
 .path::before{content:"";position:absolute;left:0;right:0;top:50%;border-top:1.5px dashed var(--border-strong)}
 .path .plane{position:absolute;top:0;left:0;color:var(--text)}
@@ -182,6 +182,7 @@ kbd{font-family:var(--f-mono);font-size:11px;padding:1px 6px;border:1px solid va
   .tix-stub dd{white-space:normal;overflow-wrap:anywhere;font-size:16px}
   .seq{display:none}
   .tix{--route:31px}
+  .path{margin-top:calc(13.5px + var(--route) * .657)}
   .tix-route{gap:var(--s2)}
   .tix-main{padding:var(--s4)}
   .tix-stub .flap i{width:12px;height:21px;font-size:11px}
