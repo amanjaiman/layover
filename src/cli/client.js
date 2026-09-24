@@ -60,6 +60,7 @@ export async function launch({ background = true, open = null, waitMs = 12000 } 
   fs.mkdirSync(dataRoot, { recursive: true });
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE; // the shim sets it for the CLI; the app itself must not inherit it
+  env.ELECTRON_NO_ATTACH_CONSOLE = '1'; // Windows: started from an agent's hook, the app would otherwise join that terminal's console
   const child = spawn(l.exe, args, { detached: true, stdio: 'ignore', windowsHide: false, env });
   child.unref();
   const deadline = Date.now() + waitMs;
