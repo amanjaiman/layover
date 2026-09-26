@@ -921,8 +921,9 @@
       if (e.kind === 'turn') tl.append(el('div', { class: 'tl-turn' }, el('i'), el('span', { text: cleanTitle(e.run.title) || `${T('Turn')} ${t.runs.indexOf(e.run) + 1}` }), el('span', { class: 'tl-time', text: clock(e.at) })));
       else if (e.kind === 'item') tl.append(itemEntry(e.item, u, openLatest && e.item.key === openLatest.key && t.status !== 'completed', t));
       else if (e.kind === 'msg') tl.append(msgEntry(e.m, t));
-      // Only the latest turn's ending deserves the prominent row; older completions read as quiet history.
-      else tl.append(endEntry(e.run, who, quiet || e.run.id !== latest?.id, e.run.id === latest?.id ? t.ticket : null));
+      // Only the latest turn's ending deserves the prominent row; older completions read as quiet history,
+      // and so does the latest one while its subagents are still working.
+      else tl.append(endEntry(e.run, who, quiet || e.run.id !== latest?.id || t.activeChildren.length > 0, e.run.id === latest?.id ? t.ticket : null));
     }
     if (t.status === 'working' && !shown.some(e => e.kind === 'item' && e.item.runStatus === 'active')) tl.append(el('div', { class: 'tl-quiet', text: T('Working quietly.') }));
     if (!quiet && t.latest?.status === 'active') tl.append(composer(t, who));
