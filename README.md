@@ -35,7 +35,6 @@ Everything the app's buttons do is also a command: `layover setup --agent all`, 
 
 Layover checks GitHub for a newer release every few hours — the only request it makes off your machine, and switchable off in Settings → Preferences → Updates. When one exists, **Layover x.y.z available** appears in the sidebar and the tray menu; **Install and restart** swaps in the new version, reconnects the hooks, and reopens.
 
-
 ### Manual install (Windows)
 
 1. Run `release/Layover-Setup-<version>.exe` (per-user, no admin). It installs to `%LOCALAPPDATA%\Programs\layover`, adds a Start Menu entry, and on first launch puts `layover` on your user PATH.
@@ -91,7 +90,7 @@ A conversation stays Working while any of its subagents are active. Expand its T
 
 ## How agents reach it
 
-**Hooks (deterministic).** `UserPromptSubmit` starts a run; `Stop` ends it as completed, `StopFailure` as failed, `Interrupt`/`SessionEnd` as cancelled. Claude's `Notification` hook turns permission prompts into "Input requested" items. Each prompt hook prints one short line so the agent knows its run id. No model reasoning is involved in lifecycle.
+**Hooks (deterministic).** `UserPromptSubmit` starts a run; `Stop` ends it as completed, `StopFailure` as failed, `Interrupt`/`SessionEnd` as cancelled. `SubagentStart`/`SubagentStop` track child agents under their conversation. Claude's `Notification` hook turns permission prompts into "Input requested" items. Each prompt hook prints one short line so the agent knows its run id. No model reasoning is involved in lifecycle.
 
 **Skill (voluntary).** The `layover` skill tells the agent when a decision, question, or opportunity is worth a `layover item` call — and when to stay silent. Publishing is one shell call per item, at the moment it becomes true.
 

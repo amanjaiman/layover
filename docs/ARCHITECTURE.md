@@ -50,7 +50,8 @@ Human-readable names travel with events (`projectName`, `title`) and are shown; 
 | `heartbeat` | | refreshes `lastSeen` (voluntary runs only need it) |
 | `item` | `item`, `kind` (`suggestion|decision|question|opportunity`), `status` (`open|resolved|dismissed`), `revision` ≥ 1, `text` ≤ 12k, `title`, `waiting`, `origin` (`agent|notification`) | higher revision wins; same revision with different content is rejected |
 | `end` | `status` (`completed|failed|cancelled|unknown`), `note`, `by` | higher `seq` wins; a delayed `start` never reopens. `by: user` marks a turn you moved to Idle from the Tracker (ended as `cancelled`, no banner or notification); the agent's own later end still wins |
-Subagent lifecycle uses `session` events with `subagentId`, `subagentType`, `subagentStatus` (`active|completed`), and `seq`. The stable 0.6.7 store ignores these extra fields when a tester rolls back. A parent turn can end while a child is active. A later child event wins; after six hours without an end, the child shows No signal.
+
+Subagent lifecycle uses `session` events with `subagentId`, `subagentType`, `subagentStatus` (`active|completed`), and `seq`. The 0.6.7 store ignores these extra fields, so reinstalling 0.6.7 over 0.6.8 data is safe. A parent turn can end while a child is active. A later child event wins; after six hours without an end, the child shows No signal. A cancelled parent turn (interrupt, the next turn's `start`, or `SessionEnd`) marks its active children as stopped.
 
 Rules the store enforces: an `id` used twice must carry identical JSON (retries are free, reuse is an error); project/task/agent of a run never change; a task's project/agent never change. Statuses are computed at read time: a voluntary run with no event for 2 minutes shows `disconnected` ("no recent signal", not failure); a hook-driven run does so after 6 hours. A notification item resolves itself when its run ends.
 
@@ -65,7 +66,7 @@ User content (notes, tickets, responses to items, dismissals, place) lives in `u
 | `Stop` | ✓ | ✓ | `end completed` |
 | `StopFailure` | ✓ | | `end failed` |
 | `Interrupt` | | ✓ | `end cancelled` |
-| `SessionEnd` | ✓ | ✓ | `end cancelled` for any still-active run (only if one exists) |
+| `SessionEnd` | ✓ | ✓ | `end cancelled` for any still-active run (only if one exists), plus `session` with `sessionEnded: true` |
 | `SubagentStart` / `SubagentStop` | ✓ | ✓ | child lifecycle under the parent conversation |
 | `Notification` (`permission_prompt`, `idle_prompt`, `agent_needs_input`, `elicitation_dialog`) | ✓ | | `item` with `waiting: true`, origin `notification` |
 
@@ -78,11 +79,11 @@ Hooks call `layover.cmd hook <agent>`, which reads JSON from stdin, maps it, che
 - `layover open` and an explicit `--open` launch route to the workspace and bring the window forward (an explicit request is allowed to take focus).
 - A hook-driven `start` follows the setting *When an agent starts a turn*: **Bring Layover forward** (default; the window is briefly pinned on top while shown and focused, because Windows refuses foreground changes from background processes), **Open behind my work** (show inactive), **Only if already open**, **Stay quiet**. Items and `end` events never move the window.
 - The renderer switches workspaces on its own only when the user is not engaged (no keystroke or click in the last few seconds, no cursor in an editor). Otherwise it offers a switch in a toast that stays until answered.
-- Completion shows a banner in that workspace and, if Layover is not the foreground window, a silent Windows toast. Neither changes the selected workspace.
+- Completion shows a banner in that workspace and, if Layover is not the foreground window, a silent Windows toast. Neither changes the selected workspace. While the conversation still has active subagents, both wait until the last child stops (or goes six hours without a signal); a new turn starting in the meantime drops them.
 
 ## Updates
 
-Layover does not update itself. Every few hours (and on demand from Preferences) the main process asks `api.github.com` for the latest release of the repo; that is the only request the app makes off the machine, and the switch in Preferences turns it off. A newer release shows as a rail button, a one-time toast, a tray menu entry and the Updates block in Preferences. **Install and restart** runs the same script a fresh install uses, pinned to the new release's tag (`scripts/install.ps1` or `install.sh` with `LAYOVER_VERSION`); that script stops Layover, replaces it, reconnects the agent hooks and reopens it. On Windows the script is started through WMI (`Win32_Process.Create`) because every child of Layover dies with it (Chromium keeps its tree in a job object) and the script has to stop Layover; on macOS a detached `sh` is enough. Output goes to `update.log` in the data root. Proper in-app auto-update (electron-updater) is off the table while the macOS build is unsigned: Squirrel refuses unsigned updates.
+Layover does not update itself. Every few hours (and on demand from Preferences) the main process asks `api.github.com` for the latest release of the repo (drafts, prereleases and hyphenated tags such as `0.7.0-beta.1` are never offered); that is the only request the app makes off the machine, and the switch in Preferences turns it off. A newer release shows as a rail button, a one-time toast, a tray menu entry and the Updates block in Preferences. **Install and restart** runs the same script a fresh install uses, pinned to the new release's tag (`scripts/install.ps1` or `install.sh` with `LAYOVER_VERSION`); that script stops Layover, replaces it, reconnects the agent hooks and reopens it. On Windows the script is started through WMI (`Win32_Process.Create`) because every child of Layover dies with it (Chromium keeps its tree in a job object) and the script has to stop Layover; on macOS a detached `sh` is enough. Output goes to `update.log` in the data root. Proper in-app auto-update (electron-updater) is off the table while the macOS build is unsigned: Squirrel refuses unsigned updates.
 
 ## Security boundaries
 
