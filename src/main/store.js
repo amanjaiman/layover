@@ -215,6 +215,12 @@ export class Store {
     return { accepted: true, ...change };
   }
 
+  cancelSubagents(task, received) {
+    for (const child of this.subagents.values()) if (child.task === task && child.status === 'active') {
+      child.status = 'cancelled'; child.endedAt = received; child.lastSeen = received;
+    }
+  }
+
   ensureProject(e, received) {
     let p = this.projects.get(e.project);
     if (!p) {
@@ -251,9 +257,7 @@ export class Store {
     this.ensureTask(e, received);
     const change = { project: e.project };
     if (e.type === 'session') {
-      if (e.sessionEnded) for (const child of this.subagents.values()) if (child.task === e.task && child.status === 'active') {
-        child.status = 'cancelled'; child.endedAt = received; child.lastSeen = received;
-      }
+      if (e.sessionEnded) this.cancelSubagents(e.task, received);
       if (e.subagentId === undefined) return change;
       const key = `${e.task}:${e.subagentId}`;
       let child = this.subagents.get(key);
@@ -292,6 +296,7 @@ export class Store {
       const wasActive = r.status === 'active';
       r.status = e.status; r.seq = e.seq; r.endedAt = received; r.endNote = e.note || '';
       if (wasActive) change.ended = { run: r.id, status: e.status };
+      if (e.status === 'cancelled') this.cancelSubagents(r.task, received);
     }
     if (e.type === 'item') {
       const key = e.run + ':' + e.item;

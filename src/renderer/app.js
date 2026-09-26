@@ -211,7 +211,7 @@
       const tr = runs.filter(r => r.task === t.id).sort((a, b) => a.startedAt - b.startedAt);
       const ti = items.filter(i => i.task === t.id);
       const children = subagents.filter(c => c.task === t.id).sort((a, b) => b.startedAt - a.startedAt);
-      const activeChildren = children.filter(c => c.status === 'active');
+      const activeChildren = children.filter(c => c.status === 'active').sort((a, b) => a.startedAt - b.startedAt);
       const latest = tr[tr.length - 1] || null;
       const waiting = ti.some(i => i.waiting && i.status === 'open' && !i.userDismissed && i.runStatus === 'active');
       const lastActivity = Math.max(t.lastSeen || 0, ...tr.map(r => Math.max(r.lastSeen, r.endedAt)), ...ti.map(i => i.updatedAt), ...children.map(c => Math.max(c.lastSeen, c.endedAt)));

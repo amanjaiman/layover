@@ -96,6 +96,15 @@ test('subagents stay active after the parent turn ends, survive restart, and clo
   s.close();
 });
 
+test('interrupting the parent turn cancels its active subagents', () => {
+  const s = new Store(tmp());
+  s.event(start('r1'), 1000);
+  s.event({ ...base, id: 'child:active', type: 'session', seq: 2000, subagentId: 'worker-1', subagentType: 'Explore', subagentStatus: 'active' }, 2000);
+  s.event(end('r1', 'cancelled', 3000), 3000);
+  assert.equal(s.state(4000).subagents[0].status, 'cancelled');
+  s.close();
+});
+
 test('an unmatched subagent stop does not appear as a child', () => {
   const s = new Store(tmp());
   s.event({ ...base, id: 'internal:stop', type: 'session', seq: 1, subagentId: 'internal', subagentType: 'Subagent', subagentStatus: 'completed' });
