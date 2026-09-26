@@ -65,8 +65,10 @@ async function boot() {
   process.on('layover:stop', () => { quitting = true; app.quit(); });
   store.onChange(change => {
     broadcast('state', store.state());
+    if (change.started) deferredCompletions.delete(change.event.task);
     if (change.ended && change.event?.by !== 'user') onRunEnded(change.ended); // you ended it yourself: no banner, no notification
     else if (change.ended) updateTray();
+    if (change.event?.subagentId || change.event?.sessionEnded) flushDeferredCompletion(change.event.task);
   });
   await app.whenReady();
   if (app.isPackaged && process.platform === 'win32') { try { log('path', setup.ensureUserPath(path.dirname(cliCommand()))); } catch (e) { log('path setup failed', e.message); } }
@@ -350,9 +352,19 @@ async function onEvent(e, result) {
   return null;
 }
 
+const deferredCompletions = new Map();
+function activeChildren(task) { return [...store.subagents.values()].some(c => c.task === task && c.status === 'active' && Date.now() - c.lastSeen <= 6 * 3_600_000); }
+function flushDeferredCompletion(task) {
+  const pending = deferredCompletions.get(task);
+  if (!pending || activeChildren(task)) return;
+  deferredCompletions.delete(task);
+  if ([...store.runs.values()].some(r => r.task === task && r.status === 'active')) return;
+  onRunEnded(pending);
+}
 function onRunEnded({ run, status }) {
   updateTray();
   const r = store.runs.get(run); if (!r) return;
+  if (activeChildren(r.task)) { deferredCompletions.set(r.task, { run, status }); return; }
   const p = store.projects.get(r.project);
   broadcast('run-ended', { run, status, project: r.project });
   if (!settings.notifyOnComplete || !Notification.isSupported()) return;

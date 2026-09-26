@@ -35,6 +35,7 @@ Everything the app's buttons do is also a command: `layover setup --agent all`, 
 
 Layover checks GitHub for a newer release every few hours — the only request it makes off your machine, and switchable off in Settings → Preferences → Updates. When one exists, **Layover x.y.z available** appears in the sidebar and the tray menu; **Install and restart** swaps in the new version, reconnects the hooks, and reopens.
 
+
 ### Manual install (Windows)
 
 1. Run `release/Layover-Setup-<version>.exe` (per-user, no admin). It installs to `%LOCALAPPDATA%\Programs\layover`, adds a Start Menu entry, and on first launch puts `layover` on your user PATH.
@@ -70,6 +71,8 @@ Four views, one per thing you do while an agent works. `Ctrl+1…4` switches bet
 **Break** — stretch prompts, a timer, and optional reminders; it can suggest a break or start one once you stop typing.
 
 **Tracker** — for when your tickets live in Jira and your notes in Confluence, and what you need is to know which agent is done. Switch to it at the top of the sidebar (`Ctrl+Shift+T`, or the tray menu) and Layover becomes one list of every Claude Code and Codex conversation, the ones that need you on top: *Waiting on you*, then *Ready*, then *Working*, then *Idle*. Sort by project instead to see each repo's agents together, in that same order.
+
+A conversation stays Working while any of its subagents are active. Expand its Tracker row to see the children and their status.
 
 - Each agent is one row: when, which agent, what kind of thing it last did, what it is about, and its status. Click a row for its recent questions, decisions and turns.
 - *Return* brings the agent's window forward; *Seen* (`s`) moves a finished agent to Idle. Interrupted or closed sessions go straight to Idle; finishes you never look at settle there after a day.

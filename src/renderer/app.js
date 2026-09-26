@@ -189,9 +189,11 @@
   function isAcked(runId, pid = S.project) { return !!(S.acked[runId] || user(pid)?.place?.acked?.[runId]); }
   function projectStatus(id) {
     const active = activeRuns(id);
+    const activeChildren = (S.state?.subagents || []).filter(c => c.project === id && c.status === 'active');
     const waiting = openItems(id).find(i => i.waiting && i.runStatus === 'active');
     if (waiting) return { cls: 'attention', label: T('Waiting on you'), run: active[0] };
     if (active.length) return { cls: 'working', label: `${T('Working')}${active.length > 1 ? ` · ${active.length} ${flight() ? 'flights' : 'runs'}` : ''}`, run: active[0], agent: active[0].agent };
+    if (activeChildren.length) return { cls: 'working', label: `${T('Working')} · ${activeChildren.length} subagent${activeChildren.length === 1 ? '' : 's'}`, run: latestRun(id), agent: activeChildren[0].agent };
     const last = latestRun(id);
     if (last && !isAcked(last.id) && Date.now() - (last.endedAt || last.lastSeen) < 12 * 3600000) {
       if (last.status === 'completed') return { cls: 'done', label: T('Ready when you are'), run: last };
@@ -204,19 +206,22 @@
   /** One thread per agent conversation: its runs (turns), its items, and a derived status. */
   function threadsOf(id) {
     const items = itemsOf(id), runs = runsOf(id);
+    const subagents = (S.state?.subagents || []).filter(c => c.project === id);
     return tasksOf(id).map(t => {
       const tr = runs.filter(r => r.task === t.id).sort((a, b) => a.startedAt - b.startedAt);
       const ti = items.filter(i => i.task === t.id);
+      const children = subagents.filter(c => c.task === t.id).sort((a, b) => b.startedAt - a.startedAt);
+      const activeChildren = children.filter(c => c.status === 'active');
       const latest = tr[tr.length - 1] || null;
       const waiting = ti.some(i => i.waiting && i.status === 'open' && !i.userDismissed && i.runStatus === 'active');
-      const lastActivity = Math.max(t.lastSeen || 0, ...tr.map(r => Math.max(r.lastSeen, r.endedAt)), ...ti.map(i => i.updatedAt));
-      const status = !latest ? 'idle' : latest.status === 'active' ? (waiting ? 'attention' : 'working') : latest.status;
+      const lastActivity = Math.max(t.lastSeen || 0, ...tr.map(r => Math.max(r.lastSeen, r.endedAt)), ...ti.map(i => i.updatedAt), ...children.map(c => Math.max(c.lastSeen, c.endedAt)));
+      const status = waiting ? 'attention' : activeChildren.length || latest?.status === 'active' ? 'working' : latest?.status || 'idle';
       const archivedAt = user(id)?.place?.archived?.[t.id] || 0;
       const archived = archivedAt > 0 && archivedAt >= lastActivity; // new activity un-archives on its own
       const live = status === 'working' || status === 'attention';
       const recent = live || (!archived && Date.now() - lastActivity < RECENT_MS);
       const ticket = latest ? ticketForRun(latest, id) : null;
-      return { task: t, runs: tr, items: ti, latest, waiting, lastActivity, status, archived, recent, ticket, open: ti.filter(i => i.status === 'open' && !i.userDismissed).length };
+      return { task: t, runs: tr, items: ti, children, activeChildren, latest, waiting, lastActivity, status, archived, recent, ticket, open: ti.filter(i => i.status === 'open' && !i.userDismissed).length };
     }).sort((a, b) => (b.status === 'working' || b.status === 'attention') - (a.status === 'working' || a.status === 'attention') || b.lastActivity - a.lastActivity);
   }
   /** A turn whose prompt carries a key like LAY-12 is linked to that ticket. Copy prompt puts the key there. */
@@ -399,9 +404,11 @@
   function refreshElapsed() {
     if (S.view !== 'now' || !S.project) return;
     for (const card of document.querySelectorAll('.thread.working')) {
-      const t = threadsOf(S.project).find(x => x.task.id === card.dataset.task); if (!t?.latest) continue;
+      const t = threadsOf(S.project).find(x => x.task.id === card.dataset.task); if (!t) continue;
+      const startedAt = t.latest?.status === 'active' ? t.latest.startedAt : t.activeChildren[0]?.startedAt;
+      if (!startedAt) continue;
       const l = card.querySelector('.status .l'), s = card.querySelector('.status .s');
-      if (l) l.textContent = `${T('Working')} · ${dur(Date.now() - t.latest.startedAt)}`; if (s) s.textContent = dur(Date.now() - t.latest.startedAt);
+      if (l) l.textContent = `${T('Working')} · ${dur(Date.now() - startedAt)}`; if (s) s.textContent = dur(Date.now() - startedAt);
     }
   }
   /**
@@ -604,7 +611,7 @@
       const waitingItem = t.waiting ? [...t.items].reverse().find(i => i.waiting && i.status === 'open' && !i.userDismissed && i.runStatus === 'active') : null;
       let bucket = 'idle', since = t.lastActivity;
       if (waitingItem) { bucket = 'waiting'; since = waitingItem.updatedAt; }
-      else if (t.status === 'working' || t.status === 'attention') { bucket = 'working'; since = r.startedAt; }
+      else if (t.status === 'working' || t.status === 'attention') { bucket = 'working'; since = r?.status === 'active' ? r.startedAt : t.activeChildren[0]?.startedAt || t.lastActivity; }
       // Interrupted or closed sessions were your own doing; only outcomes you have not seen are "ready".
       else if (r && ['completed', 'failed', 'disconnected'].includes(t.status) && !isAcked(r.id, pid) && now - (r.endedAt || r.lastSeen) < READY_MS) { bucket = 'ready'; since = r.endedAt || r.lastSeen; }
       const older = bucket === 'idle' && (t.archived || now - t.lastActivity > IDLE_MS);
@@ -706,7 +713,7 @@
 
   function trackerStatus(r) {
     if (r.bucket === 'waiting') return el('span', { class: 'chip warn', text: T('Waiting on you') });
-    if (r.bucket === 'working') { const d = dur(Date.now() - r.latest.startedAt); return el('span', { class: 'chip gold', title: 'Working for ' + d }, el('span', { class: 'dot working' }), el('span', { class: 'l', text: T('Working') }), el('span', { class: 'chip-dur', text: d })); }
+    if (r.bucket === 'working') { const start = r.latest?.status === 'active' ? r.latest.startedAt : r.activeChildren[0]?.startedAt || r.lastActivity; const d = dur(Date.now() - start); return el('span', { class: 'chip gold', title: 'Working for ' + d }, el('span', { class: 'dot working' }), el('span', { class: 'l', text: T('Working') }), el('span', { class: 'chip-dur', text: d })); }
     if (r.bucket === 'ready') return r.status === 'failed' ? el('span', { class: 'chip danger', text: T('Error') }) : r.status === 'disconnected' ? el('span', { class: 'chip warn', text: T('No signal') }) : el('span', { class: 'chip ok', text: T('Ready') });
     return el('span', { class: 'chip', text: T(r.archived ? 'Cleared' : 'Idle') });
   }
@@ -734,7 +741,7 @@
       el('span', { class: 'tr-time', text: clock(r.since), title: ago(r.since) }),
       el('span', { class: 'tr-agent ' + agent, text: AGENT_SHORT[agent] || agent, title: who }),
       byStatus ? el('span', { class: 'tr-proj' }, projTok(r.p, true), el('span', { text: projectName(r.p) })) : el('span', { class: 'tr-kind k-' + kind }, el('i'), T(TR_KIND[kind])),
-      el('span', { class: 'tr-item' }, el('b', { text: title }), item ? el('span', { text: (item.title || item.text).split('\n')[0] }) : turn && turn !== title ? el('span', { text: turn }) : null),
+      el('span', { class: 'tr-item' }, el('b', { text: title }), r.activeChildren.length ? el('span', { text: `${r.activeChildren.length} subagent${r.activeChildren.length === 1 ? '' : 's'} working · ${r.children.length} total` }) : r.children.length ? el('span', { text: `${r.children.length} subagent${r.children.length === 1 ? '' : 's'} · expand to view` }) : item ? el('span', { text: (item.title || item.text).split('\n')[0] }) : turn && turn !== title ? el('span', { text: turn }) : null),
       trackerStatus(r),
       el('span', { class: 'tr-act' },
         el('button', { class: 'btn small tr-return' + (r.bucket === 'waiting' || r.bucket === 'ready' ? ' primary' : ' ghost'), title: r.task.host ? `Bring ${r.task.host.name} forward (r)` : `How to return to ${who} (r)`, 'aria-label': 'Return to ' + who, onclick: () => returnTo(back) }, el('span', { class: 'l', text: T('Return') }), svg(ICON.arrow, 12)),
@@ -773,6 +780,17 @@
     }
     entries.sort((a, b) => b.at - a.at);
     const feed = el('div', { class: 'tr-feed' });
+    if (r.children.length) {
+      const list = el('div', { class: 'tr-children' }, el('div', { class: 'tr-children-h', text: `Subagents · ${r.children.length}` }));
+      for (const child of r.children) {
+        const state = child.status === 'active' ? [T('Working'), 'gold'] : child.status === 'completed' ? [T('Done'), 'ok'] : child.status === 'disconnected' ? [T('No signal'), 'warn'] : [T('Stopped'), ''];
+        list.append(el('div', { class: 'tr-child' }, el('span', { class: 'tr-child-line', 'aria-hidden': 'true' }),
+          el('span', { class: 'tr-child-name', text: `${child.subagentType} · ${child.subagentId.slice(-6)}` }),
+          el('span', { class: 'tr-child-time', text: child.status === 'active' ? dur(Date.now() - child.startedAt) : ago(child.endedAt) }),
+          el('span', { class: 'chip ' + state[1], text: state[0] })));
+      }
+      feed.append(list);
+    }
     for (const e of entries.slice(0, 8)) feed.append(el('div', { class: 'tr-feed-row' },
       el('span', { class: 'tr-time', text: clock(e.at) }), el('span', { class: 'tr-kind k-' + e.kind }, el('i'), T(TR_KIND[e.kind])),
       el('span', { class: 'tr-feed-text', text: e.text.split('\n')[0] }), (([label, time]) => el('span', { class: 'chip ' + e.status[1] }, label, time ? el('span', { class: 'chip-dur', text: time }) : null))(e.status[0].split(' · '))));
@@ -869,7 +887,8 @@
     };
     // header
     const title = threadName(t.task, latest);
-    const statusChip = t.status === 'working' ? el('span', { class: 'status working' }, el('span', { class: 'dot working' }), ...lbl(`${T('Working')} · ${dur(Date.now() - latest.startedAt)}`, dur(Date.now() - latest.startedAt)))
+    const workingSince = latest?.status === 'active' ? latest.startedAt : t.activeChildren[0]?.startedAt || t.lastActivity;
+    const statusChip = t.status === 'working' ? el('span', { class: 'status working' }, el('span', { class: 'dot working' }), ...lbl(`${T('Working')} · ${dur(Date.now() - workingSince)}`, dur(Date.now() - workingSince)))
       : t.status === 'attention' ? el('span', { class: 'status attention' }, el('span', { class: 'dot attention' }), ...lbl(T('Waiting on you'), T('Waiting')))
       : t.status === 'completed' ? el('span', { class: 'status done' }, el('span', { class: 'dot done' }), ...lbl(`${T('Finished')} ${ago(latest.endedAt)}`, T('Done')))
       : t.status === 'failed' ? el('span', { class: 'status attention' }, el('span', { class: 'dot failed' }), T('Error'))

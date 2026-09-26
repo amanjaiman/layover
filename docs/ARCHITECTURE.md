@@ -45,11 +45,12 @@ Human-readable names travel with events (`projectName`, `title`) and are shown; 
 
 | type | fields | semantics |
 |---|---|---|
-| `session` | `name`, `source`, `sessionId`, `projectName`, `projectPath`, `host`, `threadTitle` | registers the conversation; idempotent upsert. `threadTitle` is the agent's own name for the conversation (Claude Code's `ai-title` or `/rename` title from the transcript; Codex's `thread_name` from `session_index.jsonl`), read by the hook on `SessionStart`, `UserPromptSubmit` and `Stop` and sent as an identity-only event whose id derives from the title, so resends are duplicates. The UI prefers it over the latest turn's prompt. A `host` found by guessing (`via: frontmost`) never replaces one found from the process tree (`via: process`) |
+| `session` | `name`, `source`, `sessionId`, `projectName`, `projectPath`, `host`, `threadTitle`, `sessionEnded` | registers the conversation; idempotent upsert. `threadTitle` is the agent's own name for the conversation (Claude Code's `ai-title` or `/rename` title from the transcript; Codex's `thread_name` from `session_index.jsonl`), read by the hook on `SessionStart`, `UserPromptSubmit` and `Stop` and sent as an identity-only event whose id derives from the title, so resends are duplicates. The UI prefers it over the latest turn's prompt. A `host` found by guessing (`via: frontmost`) never replaces one found from the process tree (`via: process`). `sessionEnded` closes children that never reported a stop. |
 | `start` | `title`, `source`, `lifecycle` (`hooks|voluntary|wrapper`) | creates the run; a hook-driven start closes any still-active hook-driven run of the same task as `cancelled` |
 | `heartbeat` | | refreshes `lastSeen` (voluntary runs only need it) |
 | `item` | `item`, `kind` (`suggestion|decision|question|opportunity`), `status` (`open|resolved|dismissed`), `revision` ≥ 1, `text` ≤ 12k, `title`, `waiting`, `origin` (`agent|notification`) | higher revision wins; same revision with different content is rejected |
 | `end` | `status` (`completed|failed|cancelled|unknown`), `note`, `by` | higher `seq` wins; a delayed `start` never reopens. `by: user` marks a turn you moved to Idle from the Tracker (ended as `cancelled`, no banner or notification); the agent's own later end still wins |
+Subagent lifecycle uses `session` events with `subagentId`, `subagentType`, `subagentStatus` (`active|completed`), and `seq`. The stable 0.6.7 store ignores these extra fields when a tester rolls back. A parent turn can end while a child is active. A later child event wins; after six hours without an end, the child shows No signal.
 
 Rules the store enforces: an `id` used twice must carry identical JSON (retries are free, reuse is an error); project/task/agent of a run never change; a task's project/agent never change. Statuses are computed at read time: a voluntary run with no event for 2 minutes shows `disconnected` ("no recent signal", not failure); a hook-driven run does so after 6 hours. A notification item resolves itself when its run ends.
 
@@ -65,6 +66,7 @@ User content (notes, tickets, responses to items, dismissals, place) lives in `u
 | `StopFailure` | ✓ | | `end failed` |
 | `Interrupt` | | ✓ | `end cancelled` |
 | `SessionEnd` | ✓ | ✓ | `end cancelled` for any still-active run (only if one exists) |
+| `SubagentStart` / `SubagentStop` | ✓ | ✓ | child lifecycle under the parent conversation |
 | `Notification` (`permission_prompt`, `idle_prompt`, `agent_needs_input`, `elicitation_dialog`) | ✓ | | `item` with `waiting: true`, origin `notification` |
 
 Claude's `Stop` does not fire on a user interrupt (documented); the next prompt's `start` closes the orphaned run as `cancelled`, and a session that ends without a `Stop` does the same through `SessionEnd`.

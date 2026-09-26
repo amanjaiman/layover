@@ -70,6 +70,12 @@ export function mapHook(agent, input, { hookContext = true, host = null, threadT
       break;
     case 'SessionEnd':
       events.push({ ...base, id: `end:${task}:${now}:session`, type: 'end', run: '__latest__', seq: now, status: 'cancelled', note: `Session ended (${input.reason || 'closed'}) before this turn reported completion.` });
+      events.push({ ...base, id: `session-ended:${task}:${now}`, type: 'session', sessionEnded: true });
+      break;
+    case 'SubagentStart':
+    case 'SubagentStop':
+      if (input.agent_id) events.push({ ...base, id: `subagent:${task}:${input.agent_id}:${name}:${now}`, type: 'session', seq: now,
+        subagentId: String(input.agent_id), subagentType: String(input.agent_type || 'Subagent'), subagentStatus: name === 'SubagentStart' ? 'active' : 'completed' });
       break;
     case 'Notification': {
       const kind = String(input.notification_type || '');

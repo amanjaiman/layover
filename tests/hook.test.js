@@ -54,7 +54,7 @@ test('SessionEnd, StopFailure, Interrupt map to cancelled/failed; missing run re
   const state = { runs: [{ id: 'codex:abc:t1', task: 'codex:abc', status: 'completed', startedAt: 1 }, { id: 'codex:abc:t2', task: 'codex:abc', status: 'active', startedAt: 2 }] };
   const resolved = resolveLatest(se.events, state);
   assert.equal(resolved[0].run, 'codex:abc:t2');
-  assert.deepEqual(resolveLatest(se.events, { runs: [] }), []);
+  assert.deepEqual(resolveLatest(se.events, { runs: [] }), [se.events.find(e => e.sessionEnded)]);
 });
 
 test('Notification permission prompts become waiting questions; other notifications are ignored', () => {
@@ -72,6 +72,20 @@ test('SessionStart registers the conversation; unknown events and missing sessio
   assert.equal(mapHook('claude', { ...common, hook_event_name: 'PreToolUse' }).events.length, 0);
   assert.equal(mapHook('claude', { hook_event_name: 'Stop', cwd: 'C:\\x' }).events.length, 0);
   assert.throws(() => mapHook('gemini', common), /agent/);
+});
+
+test('subagent hooks keep the parent conversation identity and SessionEnd closes its children', () => {
+  for (const agent of ['claude', 'codex']) {
+    const started = mapHook(agent, { ...common, hook_event_name: 'SubagentStart', agent_id: 'child-1', agent_type: 'Explore' });
+    assert.equal(started.events.length, 1);
+    assert.equal(started.events[0].task, `${agent}:abc`);
+    assert.equal(started.events[0].subagentStatus, 'active');
+    assert.equal(started.events[0].subagentId, 'child-1');
+    const stopped = mapHook(agent, { ...common, hook_event_name: 'SubagentStop', agent_id: 'child-1', agent_type: 'Explore' });
+    assert.equal(stopped.events[0].subagentStatus, 'completed');
+    const ended = mapHook(agent, { ...common, hook_event_name: 'SessionEnd' });
+    assert.ok(ended.events.some(e => e.type === 'session' && e.sessionEnded));
+  }
 });
 
 test('a second Stop for the same prompt (another Stop hook sent the agent back) is accepted and moves the end forward', async () => {
