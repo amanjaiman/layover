@@ -75,6 +75,57 @@ test('concurrent runs are independent; finishing one does not finish the other',
   s.close();
 });
 
+test('subagents stay active after the parent turn ends, survive restart, and close on SessionEnd', () => {
+  const dir = tmp();
+  let s = new Store(dir);
+  const child = (status, seq) => ({ ...base, id: `child:${status}:${seq}`, type: 'session', seq, subagentId: 'worker-1', subagentType: 'Explore', subagentStatus: status });
+  s.event(start('r1'), 1000);
+  s.event(child('active', 2000), 2000);
+  s.event(end('r1', 'completed', 3000), 3000);
+  assert.equal(s.state(4000).runs[0].status, 'completed');
+  assert.equal(s.state(4000).subagents[0].status, 'active');
+  s.close();
+  s = new Store(dir);
+  assert.equal(s.state(4000).subagents[0].status, 'active');
+  s.event(child('completed', 5000), 5000);
+  assert.equal(s.state(6000).subagents[0].status, 'completed');
+  s.event(child('active', 7000), 7000); // resumed child
+  assert.equal(s.state(8000).subagents[0].status, 'active');
+  s.event({ ...base, id: 'session:end', type: 'session', sessionEnded: true }, 9000);
+  assert.equal(s.state(10000).subagents[0].status, 'cancelled');
+  s.close();
+});
+
+test('interrupting the parent turn cancels its active subagents', () => {
+  const s = new Store(tmp());
+  s.event(start('r1'), 1000);
+  s.event({ ...base, id: 'child:active', type: 'session', seq: 2000, subagentId: 'worker-1', subagentType: 'Explore', subagentStatus: 'active' }, 2000);
+  s.event(end('r1', 'cancelled', 3000), 3000);
+  assert.equal(s.state(4000).subagents[0].status, 'cancelled');
+  s.close();
+});
+
+test('a new hook turn after an unsignalled turn cancels only subagents started in that turn', () => {
+  const s = new Store(tmp());
+  const child = (id, seq) => ({ ...base, id: `child:${id}`, type: 'session', seq, subagentId: id, subagentType: 'Explore', subagentStatus: 'active' });
+  s.event({ ...start('t1'), lifecycle: 'hooks' }, 1000);
+  s.event(child('background', 1500), 1500);
+  s.event(end('t1', 'completed', 2000), 2000);
+  s.event({ ...start('t2'), lifecycle: 'hooks' }, 3000);
+  s.event(child('interrupted', 3500), 3500);
+  s.event({ ...start('t3'), lifecycle: 'hooks' }, 4000);
+  const status = Object.fromEntries(s.state(5000).subagents.map(c => [c.subagentId, c.status]));
+  assert.deepEqual(status, { background: 'active', interrupted: 'cancelled' });
+  s.close();
+});
+
+test('an unmatched subagent stop does not appear as a child', () => {
+  const s = new Store(tmp());
+  s.event({ ...base, id: 'internal:stop', type: 'session', seq: 1, subagentId: 'internal', subagentType: 'Subagent', subagentStatus: 'completed' });
+  assert.deepEqual(s.state().subagents, []);
+  s.close();
+});
+
 test('a new hook-driven turn on the same conversation closes the previous turn as cancelled', () => {
   const s = new Store(tmp());
   s.event(start('t1'));

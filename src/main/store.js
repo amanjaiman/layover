@@ -70,6 +70,7 @@ export class Store {
     this.tasks = new Map();
     this.runs = new Map();
     this.items = new Map();    // run:item -> item
+    this.subagents = new Map(); // task:agent id -> child lifecycle
     this.listeners = new Set();
     this.userDoc = { version: 1, projects: {}, manualProjects: {} };
     this.outboxFile = path.join(dir, 'outbox.json');
@@ -168,6 +169,13 @@ export class Store {
       if (h.via !== undefined && !['process', 'frontmost'].includes(h.via)) throw Error('Invalid host.via');
     }
     if (e.type === 'end' && !TERMINAL.has(e.status)) throw Error('Invalid terminal status');
+    if (e.type === 'session' && e.subagentId !== undefined) {
+      text(e.subagentId, 200, 'subagentId', false);
+      text(e.subagentType, 200, 'subagentType');
+      if (!['active', 'completed'].includes(e.subagentStatus)) throw Error('Invalid subagent status');
+      if (!Number.isSafeInteger(e.seq) || e.seq < 0) throw Error('seq must be a nonnegative integer');
+    }
+    if (e.type === 'session' && e.sessionEnded !== undefined && typeof e.sessionEnded !== 'boolean') throw Error('Invalid sessionEnded');
     if (e.type === 'item') {
       if (!isId(e.item)) throw Error('Invalid item id');
       if (!Number.isSafeInteger(e.revision) || e.revision < 1) throw Error('revision must be a positive integer');
@@ -207,6 +215,12 @@ export class Store {
     return { accepted: true, ...change };
   }
 
+  cancelSubagents(task, received, since = 0) {
+    for (const child of this.subagents.values()) if (child.task === task && child.status === 'active' && child.startedAt >= since) {
+      child.status = 'cancelled'; child.endedAt = received; child.lastSeen = received;
+    }
+  }
+
   ensureProject(e, received) {
     let p = this.projects.get(e.project);
     if (!p) {
@@ -242,7 +256,23 @@ export class Store {
     this.ensureProject(e, received);
     this.ensureTask(e, received);
     const change = { project: e.project };
-    if (e.type === 'session') return change;
+    if (e.type === 'session') {
+      if (e.sessionEnded) this.cancelSubagents(e.task, received);
+      if (e.subagentId === undefined) return change;
+      const key = `${e.task}:${e.subagentId}`;
+      let child = this.subagents.get(key);
+      if (!child) {
+        child = { id: key, task: e.task, project: e.project, agent: e.agent, subagentId: e.subagentId, subagentType: e.subagentType || 'Subagent', status: e.subagentStatus, seq: e.seq, observedStart: e.subagentStatus === 'active', startedAt: received, endedAt: e.subagentStatus === 'active' ? 0 : received, lastSeen: received };
+        this.subagents.set(key, child);
+      } else if (e.seq > child.seq) {
+        child.seq = e.seq; child.status = e.subagentStatus; child.lastSeen = received;
+        if (e.subagentType) child.subagentType = e.subagentType;
+        if (e.subagentStatus === 'active') { child.startedAt = received; child.endedAt = 0; }
+        else child.endedAt = received;
+      }
+      if (e.subagentStatus === 'active') child.observedStart = true;
+      return change;
+    }
     let r = this.runs.get(e.run);
     if (!r) {
       r = { id: e.run, project: e.project, task: e.task, agent: e.agent, status: 'active', seq: -1, title: e.title || '', lifecycle: e.lifecycle || 'voluntary', source: e.source || '', startedAt: received, endedAt: 0, lastSeen: received, endNote: '' };
@@ -259,6 +289,7 @@ export class Store {
       if (r.lifecycle === 'hooks') for (const other of this.runs.values()) {
         if (other.id !== r.id && other.task === r.task && other.status === 'active' && other.lifecycle === 'hooks') {
           other.status = 'cancelled'; other.endedAt = received; other.endNote = 'No completion signal before the next turn began.';
+          this.cancelSubagents(r.task, received, other.startedAt);
         }
       }
     }
@@ -266,6 +297,7 @@ export class Store {
       const wasActive = r.status === 'active';
       r.status = e.status; r.seq = e.seq; r.endedAt = received; r.endNote = e.note || '';
       if (wasActive) change.ended = { run: r.id, status: e.status };
+      if (e.status === 'cancelled') this.cancelSubagents(r.task, received);
     }
     if (e.type === 'item') {
       const key = e.run + ':' + e.item;
@@ -301,6 +333,7 @@ export class Store {
       tasks: [...this.tasks.values()],
       runs,
       items,
+      subagents: [...this.subagents.values()].filter(c => c.observedStart).map(c => ({ ...c, status: c.status === 'active' && now - c.lastSeen > HOOKS_STALE_MS ? 'disconnected' : c.status })),
       outbox: this.outbox.slice(-100),
     };
   }

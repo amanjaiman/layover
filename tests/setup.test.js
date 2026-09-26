@@ -32,7 +32,7 @@ test('install writes skill + hooks for both agents, preserves other settings, an
     assert.equal(setup.hookCommand(cli, 'codex'), "'/Users/Some One/Applications/Layover.app/Contents/bin/layover' hook codex");
     assert.equal(setup.hookCommand("/Users/o'neil/Layover.app/Contents/bin/layover", 'claude'), "'/Users/o'\\''neil/Layover.app/Contents/bin/layover' hook claude");
   }
-  assert.ok(doc.hooks.UserPromptSubmit && doc.hooks.SessionEnd && doc.hooks.Notification);
+  assert.ok(doc.hooks.UserPromptSubmit && doc.hooks.SessionEnd && doc.hooks.Notification && doc.hooks.SubagentStart && doc.hooks.SubagentStop);
   assert.equal(doc.hooks.PostToolUse[0].hooks[0].command, `${quoted(cli.replace(/layover(\.cmd)?$/, 'layover-fast$1'))} hook claude`);
   const skill = fs.readFileSync(path.join(home, '.claude', 'skills', 'layover', 'SKILL.md'), 'utf8');
   assert.match(skill, /^---\r?\nname: layover/); assert.ok(!skill.includes('__CLI__')); assert.ok(skill.includes(win ? 'Layover/bin/layover.cmd' : 'Contents/bin/layover'));
@@ -46,7 +46,7 @@ test('install writes skill + hooks for both agents, preserves other settings, an
   const c = setup.install('codex', cli);
   assert.ok(c.notes.some(n => /\/hooks/.test(n)));
   const hooks = JSON.parse(fs.readFileSync(path.join(home, '.codex', 'hooks.json'), 'utf8'));
-  assert.ok(hooks.hooks.Interrupt && hooks.hooks.Stop);
+  assert.ok(hooks.hooks.Interrupt && hooks.hooks.Stop && hooks.hooks.SubagentStart && hooks.hooks.SubagentStop);
   assert.ok(fs.existsSync(path.join(home, '.agents', 'skills', 'layover', 'SKILL.md')));
 });
 

@@ -19,6 +19,7 @@ test('a release is offered only when newer, released, and not a draft or pre-rel
   assert.equal(parseRelease(rel({}), '0.7.0'), null);
   assert.equal(parseRelease(rel({ draft: true }), '0.5.1'), null);
   assert.equal(parseRelease(rel({ prerelease: true }), '0.5.1'), null);
+  assert.equal(parseRelease(rel({ tag_name: 'v0.6.8-beta.1' }), '0.6.7'), null);
   assert.equal(parseRelease(rel({ tag_name: 'nightly' }), '0.5.1'), null);
   assert.equal(parseRelease(null, '0.5.1'), null);
 });
@@ -45,7 +46,7 @@ test('install command pins the script and the release to the same tag', () => {
   assert.equal(inner.includes('"'), false, 'the inner script must not contain double quotes');
   const mac = installCommand('0.6.0', { platform: 'darwin' });
   assert.equal(mac.kind, 'sh'); assert.equal(mac.cmd, '/bin/sh');
-  assert.match(mac.args[1], /LAYOVER_VERSION='0\.6\.0' .*v0\.6\.0\/scripts\/install\.sh \| \/bin\/sh$/);
+  assert.match(mac.args[1], /v0\.6\.0\/scripts\/install\.sh \| LAYOVER_VERSION='0\.6\.0' LAYOVER_REPO='amanjaiman\/layover' \/bin\/sh$/);
   assert.throws(() => installCommand('0.6.0; rm -rf /', { platform: 'darwin' }));
   assert.throws(() => installCommand('0.6.0', { platform: 'darwin', repo: 'bad repo' }));
 });

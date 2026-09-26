@@ -30,6 +30,7 @@ export function parseRelease(rel, current, repo = REPO) {
   if (!rel || typeof rel !== 'object' || rel.draft || rel.prerelease) return null;
   const version = String(rel.tag_name || rel.name || '').trim().replace(/^v/i, '');
   if (!/^\d+\.\d+\.\d+/.test(version)) return null;
+  if (version.includes('-')) return null; // experimental tags never appear in the stable updater
   if (compareVersions(version, current) <= 0) return null;
   return { version, url: rel.html_url || `https://github.com/${repo}/releases/tag/v${version}`, notes: String(rel.body || '').slice(0, 4000).trim(), publishedAt: rel.published_at || null };
 }
@@ -71,7 +72,7 @@ export function installCommand(version, { platform = process.platform, repo = RE
     const ps = `& { try { $env:LAYOVER_VERSION='${version}'; $env:LAYOVER_REPO='${repo}'; irm ${raw}/install.ps1 | iex } catch { 'update failed: ' + $_ } }${log}`;
     return { kind: 'wmi', commandLine: `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -Command "${ps}"` };
   }
-  return { kind: 'sh', cmd: '/bin/sh', args: ['-c', `LAYOVER_VERSION='${version}' LAYOVER_REPO='${repo}' curl -fsSL ${raw}/install.sh | /bin/sh`] };
+  return { kind: 'sh', cmd: '/bin/sh', args: ['-c', `curl -fsSL ${raw}/install.sh | LAYOVER_VERSION='${version}' LAYOVER_REPO='${repo}' /bin/sh`] };
 }
 
 /**

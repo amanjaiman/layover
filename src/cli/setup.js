@@ -81,6 +81,8 @@ function hookSpec(agent, cmd, fastCmd) {
     UserPromptSubmit: [c()],
     PostToolUse: [fast],
     Stop: [c()],
+    SubagentStart: [c()],
+    SubagentStop: [c()],
     StopFailure: [c()],
     SessionEnd: [c()],
     Notification: [{ matcher: 'permission_prompt|idle_prompt|agent_needs_input|elicitation_dialog', hooks: [{ type: 'command', command: cmd, timeout: 20, async: true }] }],
@@ -90,6 +92,8 @@ function hookSpec(agent, cmd, fastCmd) {
     UserPromptSubmit: [c()],
     PostToolUse: [fast],
     Stop: [c()],
+    SubagentStart: [c()],
+    SubagentStop: [c()],
     Interrupt: [c({ timeout: 3 })],
     SessionEnd: [c({ timeout: 3 })],
   };
@@ -178,7 +182,7 @@ export function status(agent, cliPath) {
     const doc = readJson(loc.hooks);
     const all = Object.values(doc[loc.hooksKey] || {}).flat().flatMap(g => g?.hooks || []);
     hooksInstalled = all.some(isOurs);
-    hooksCurrent = cliPath ? all.filter(isOurs).every(h => h.command === hookCommand(cliPath, agent) || h.command === fastHookCommand(cliPath, agent)) && all.some(h => h.command === fastHookCommand(cliPath, agent)) && hooksInstalled : hooksInstalled;
+    hooksCurrent = cliPath ? all.filter(isOurs).every(h => h.command === hookCommand(cliPath, agent) || h.command === fastHookCommand(cliPath, agent)) && all.some(h => h.command === fastHookCommand(cliPath, agent)) && ['SubagentStart', 'SubagentStop'].every(name => (doc[loc.hooksKey]?.[name] || []).some(g => (g.hooks || []).some(isOurs))) && hooksInstalled : hooksInstalled;
   } catch (e) { hooksError = e.message; }
   let feature = null;
   if (agent === 'codex') { feature = codexHooksFeature(); if (!feature.enabled) hooksCurrent = false; }
