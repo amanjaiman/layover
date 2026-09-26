@@ -215,8 +215,8 @@ export class Store {
     return { accepted: true, ...change };
   }
 
-  cancelSubagents(task, received) {
-    for (const child of this.subagents.values()) if (child.task === task && child.status === 'active') {
+  cancelSubagents(task, received, since = 0) {
+    for (const child of this.subagents.values()) if (child.task === task && child.status === 'active' && child.startedAt >= since) {
       child.status = 'cancelled'; child.endedAt = received; child.lastSeen = received;
     }
   }
@@ -289,6 +289,7 @@ export class Store {
       if (r.lifecycle === 'hooks') for (const other of this.runs.values()) {
         if (other.id !== r.id && other.task === r.task && other.status === 'active' && other.lifecycle === 'hooks') {
           other.status = 'cancelled'; other.endedAt = received; other.endNote = 'No completion signal before the next turn began.';
+          this.cancelSubagents(r.task, received, other.startedAt);
         }
       }
     }
