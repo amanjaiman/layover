@@ -10,6 +10,7 @@ import { Bridge } from './bridge.js';
 import { createService } from './service.js';
 import { loadSettings, saveSettings, applySettings } from './settings.js';
 import { dataDir, dataRoot, logFile, APP_NAME, projectIdFromPath, projectNameFromPath, port } from './paths.js';
+import { reconcileClaudeSubagents } from './claude-subagents.js';
 import * as setup from '../cli/setup.js';
 import { liveMacHost, macHostRecord, macProcesses } from '../cli/host.js';
 import { resolveLatest } from '../cli/hook.js';
@@ -70,6 +71,9 @@ async function boot() {
     else if (change.ended) updateTray();
     if (change.event?.subagentId || change.event?.sessionEnded || change.type === 'end') flushDeferredCompletion(change.event.task);
   });
+  const syncClaudeChildren = () => { try { reconcileClaudeSubagents(store); } catch (e) { log('Claude subagent reconciliation failed', e.message); } };
+  syncClaudeChildren();
+  setInterval(syncClaudeChildren, 15_000);
   await app.whenReady();
   if (app.isPackaged && process.platform === 'win32') { try { log('path', setup.ensureUserPath(path.dirname(cliCommand()))); } catch (e) { log('path setup failed', e.message); } }
   if (process.platform === 'darwin') {

@@ -90,7 +90,7 @@ A conversation stays Working while any of its subagents are active. Expand its T
 
 ## How agents reach it
 
-**Hooks (deterministic).** `UserPromptSubmit` starts a run; `Stop` ends it as completed, `StopFailure` as failed, `Interrupt`/`SessionEnd` as cancelled. `SubagentStart`/`SubagentStop` track child agents under their conversation. Claude's `Notification` hook turns permission prompts into "Input requested" items. Each prompt hook prints one short line so the agent knows its run id. No model reasoning is involved in lifecycle.
+**Hooks (deterministic).** `UserPromptSubmit` starts a run; `Stop` ends it as completed, `StopFailure` as failed, `Interrupt`/`SessionEnd` as cancelled. `SubagentStart`/`SubagentStop` track child agents under their conversation; Layover also checks Claude's local subagent transcripts while a conversation is active to catch missed worktree hooks. The Tower opens to subagents first, with turns behind a separate control. Claude's `Notification` hook turns permission prompts into "Input requested" items. Each prompt hook prints one short line so the agent knows its run id. No model reasoning is involved in lifecycle.
 
 **Skill (voluntary).** The `layover` skill tells the agent when a decision, question, or opportunity is worth a `layover item` call — and when to stay silent. Publishing is one shell call per item, at the moment it becomes true.
 
