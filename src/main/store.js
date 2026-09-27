@@ -276,6 +276,7 @@ export class Store {
         else child.endedAt = received;
       }
       if (e.subagentStatus === 'active' || e.subagentStartedAt !== undefined) child.observedStart = true;
+      if (!e.id.startsWith('subagent:transcript:')) child.hooked = true;
       return change;
     }
     let r = this.runs.get(e.run);

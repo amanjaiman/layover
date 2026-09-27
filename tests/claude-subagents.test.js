@@ -63,14 +63,16 @@ test('Claude transcript reconciliation finishes stalled children and respects en
   const now = Date.now();
   child('stopseq', { type: 'assistant', message: { stop_reason: 'stop_sequence' } });
   child('interrupted', { type: 'user', message: { role: 'user', content: [{ type: 'tool_result' }] } });
+  child('hookwait', { type: 'user', message: { role: 'user', content: [{ type: 'tool_result' }] } });
   child('tool', { type: 'assistant', message: { stop_reason: 'tool_use' } });
   const store = new Store(path.join(dir, 'data'));
   store.event({ id: 'start:r1', type: 'start', project: 'p1', task: 'claude:s2', agent: 'claude', sessionId: 's2', run: 'r1', seq: 0, title: 'Working', lifecycle: 'hooks' }, now - 1000);
+  store.event({ id: 'hook:hookwait', type: 'session', project: 'p1', task: 'claude:s2', agent: 'claude', seq: now - 500, subagentId: 'hookwait', subagentType: 'general-purpose', subagentStatus: 'active' }, now - 500);
   reconcileClaudeSubagents(store, now, root);
   const status = t => Object.fromEntries(store.state(t).subagents.map(c => [c.subagentId, c.status]));
-  assert.deepEqual(status(now), { stopseq: 'completed', interrupted: 'active', tool: 'active' });
+  assert.deepEqual(status(now), { stopseq: 'completed', interrupted: 'active', tool: 'active', hookwait: 'active' });
   reconcileClaudeSubagents(store, now + 6 * 60_000, root);
-  assert.deepEqual(status(now + 6 * 60_000), { stopseq: 'completed', interrupted: 'completed', tool: 'active' });
+  assert.deepEqual(status(now + 6 * 60_000), { stopseq: 'completed', interrupted: 'completed', tool: 'active', hookwait: 'active' });
 
   const ended = new Store(path.join(dir, 'ended'));
   ended.event({ id: 'start:r2', type: 'start', project: 'p1', task: 'claude:s2', agent: 'claude', sessionId: 's2', run: 'r2', seq: 0, title: 'Working', lifecycle: 'hooks' }, now - 1000);

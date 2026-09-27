@@ -8,7 +8,7 @@ import { homeDir } from './paths.js';
 const TAIL_BYTES = 128 * 1024;
 const RECENT_MS = 5 * 60_000;
 const STALE_MS = 6 * 3_600_000;
-const MISS_MS = 5 * 60_000;
+const MISS_MS = 30_000;
 const transcripts = new Map(); // root + session -> { file, at }
 
 function transcriptFor(session, root, now) {
@@ -29,10 +29,10 @@ function transcriptFor(session, root, now) {
   return found;
 }
 
-// 'done' when the last turn finished, 'tool' while a tool call is outstanding, 'waiting' otherwise.
+// 'done' when the last turn finished, 'tool' while a tool call is outstanding, 'waiting' after a user line, '' if unknown.
 function transcriptState(file) {
   let fd;
-  try { fd = fs.openSync(file, 'r'); } catch { return 'waiting'; }
+  try { fd = fs.openSync(file, 'r'); } catch { return ''; }
   try {
     const size = fs.fstatSync(fd).size;
     const start = Math.max(0, size - TAIL_BYTES);
@@ -40,7 +40,7 @@ function transcriptState(file) {
     fs.readSync(fd, buf, 0, buf.length, start);
     const lines = buf.toString('utf8').split('\n');
     if (start) lines.shift();
-    let last = 'waiting';
+    let last = '';
     for (const line of lines) {
       if (!line.includes('"type":"assistant"') && !line.includes('"type":"user"')) continue;
       try {
@@ -90,7 +90,7 @@ export function reconcileClaudeSubagents(store, now = Date.now(), root = path.jo
     if (now - task.lastSeen > 3_600_000 && !hasActiveChild) continue;
     const transcript = transcriptFor(task.sessionId, root, now);
     if (!transcript) continue;
-    const track = id => hasActiveChild && store.subagents.get(`${task.id}:${id}`)?.status === 'active';
+    const track = id => { const c = hasActiveChild && store.subagents.get(`${task.id}:${id}`); return c?.status === 'active' && !c.hooked; };
     for (const child of scanClaudeSubagents(transcript, now, track)) {
       const old = store.subagents.get(`${task.id}:${child.id}`);
       if (old && (old.status !== 'active' || old.status === child.status && now - old.lastSeen < 3_600_000)) continue;
