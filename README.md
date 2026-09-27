@@ -47,19 +47,19 @@ Uninstall from Windows Settings, or run `Uninstall Layover.exe`. Your data in `%
 
 ## What it does
 
-Four views, one per thing you do while an agent works. `Ctrl+1…4` switches between them.
+The workspace has four views. `Ctrl+1…4` switches between them. The screenshots below use sample conversations and projects.
 
-![The Now view: agent threads with decisions and questions](docs/screenshots/now-threads.png)
+![Now: Codex and Claude Code conversations with a decision and a question waiting for you](docs/screenshots/now.png)
 
-**Now** — one thread per agent conversation, Slack-style. The header shows the agent, what it's working on, and its status. The timeline carries each turn plus the *Decisions*, *Input requested*, *Opportunities* and *Think ahead* items the agent left along the way.
+**Now** — one thread per agent conversation. The header shows the agent, the conversation title, and its status. The timeline carries turns plus *Decisions*, *Input requested*, *Opportunities* and *Think ahead* items the agent left along the way.
 
 - A **Waiting on you** chip appears only when the agent is genuinely stopped — a permission prompt, or an item it marked as blocking.
 - **Reply inline.** Your message reaches the agent at its next pause (after a tool call, as the turn ends, or with your next prompt), and the thread shows when that happened.
 - Proposals can be pushed to Next; anything can be dismissed. Threads quiet for 30 minutes archive themselves, and can be restored any time.
 
-![The Next view: a queue of work with keys and prompt drafts](docs/screenshots/tickets.png)
+![Next: work grouped by status, with a selected entry's details](docs/screenshots/next.png)
 
-**Next** — what you'll do after this. Linear-style underneath, calm on the surface: In progress, Up next, Someday, Done, Dropped. Each entry has a key like `LAY-12`, a priority, a description, and a **prompt draft**.
+**Next** — what you'll do after this, grouped into In progress, Up next, Someday, Done, and Dropped. Each entry can have a key like `LAY-12`, a priority, a description, and a **prompt draft**.
 
 - *Copy prompt* packages the title, description and draft for the agent, key included.
 - Start a turn with that key in the prompt and the entry moves itself to In progress; the thread shows the key and offers *Mark done* when the turn finishes.
@@ -69,7 +69,9 @@ Four views, one per thing you do while an agent works. `Ctrl+1…4` switches bet
 
 **Break** — stretch prompts, a timer, and optional reminders; it can suggest a break or start one once you stop typing.
 
-**Tracker** — for when your tickets live in Jira and your notes in Confluence, and what you need is to know which agent is done. Switch to it at the top of the sidebar (`Ctrl+Shift+T`, or the tray menu) and Layover becomes one list of every Claude Code and Codex conversation, the ones that need you on top: *Waiting on you*, then *Ready*, then *Working*, then *Idle*. Sort by project instead to see each repo's agents together, in that same order.
+![Tracker: conversations across projects grouped by what needs attention](docs/screenshots/tracker.png)
+
+**Tracker** — a cross-project view of every Claude Code and Codex conversation. Switch to it at the top of the sidebar (`Ctrl+Shift+T`, or the tray menu) to see *Waiting on you*, then *Ready*, *Working*, and *Idle*. Sort by project to see each repo's agents together.
 
 A conversation stays Working while any of its subagents are active; its header in Now shows a small `↳ N` count of working subagents. Expanding its Tracker row shows working, *No signal* and stopped children first, with finished children summarized as a count. Subagents and turns have separate collapse controls.
 
@@ -83,10 +85,14 @@ A conversation stays Working while any of its subagents are active; its header i
 - **Return to the agent** — brings forward the window the session started in (terminal, VS Code, the Claude desktop app), recorded by the hook at session start. If it's gone, you get the session details and a copyable resume command.
 - **Compact companion** (`Ctrl+Shift+C`) — the same app at 400×580, floating. On macOS it also lives in the menu bar as a popover that closes when you click away.
 - **Keyboard** — `Ctrl+Shift+T` tracker, `n` new in Next, `r` reply to the latest item, `j`/`k` through Next, `e` edit, `Esc` close, `[` collapse the sidebar, `?` for the full list.
-- **Flight style** — Settings → Appearance has a style switch next to theme and accent: the cup is the everyday look, the plane dresses the whole app as an airport. Now becomes *Arrivals*, Next *Departures*, Notes the *Logbook*, Break the *Lounge*; workspaces are *Gates*, the Tracker is the *Tower* with a departures-board header, working agents are *In flight* and finished ones *At the gate*. Words and looks only: every button, shortcut and behaviour stays the same.
+- **Flight style** — Settings → Appearance has a style switch next to theme and accent: the cup is the everyday look, the plane dresses the whole app as an airport. Now becomes *Arrivals*, Next *Departures*, Notes the *Logbook*, Break the *Lounge*; workspaces are *Gates*, the Tracker is the *Tower* with a departures-board header, working agents are *In flight* and finished ones *At the gate*. Every button and shortcut works the same way.
 - **Focus** — the start of a turn is the one moment Layover comes forward, because you just pressed Enter and are waiting. Items and completions never move the window. Settings → *When an agent starts a turn* offers: come forward (default), open behind my work, only if already open, stay quiet.
 
 <p align="center"><img src="docs/screenshots/compact.png" alt="The compact companion window" width="320"></p>
+
+Flight style's Tower:
+
+![Flight style: the Tracker becomes an airport Tower](docs/screenshots/flight.png)
 
 ## How agents reach it
 
@@ -113,6 +119,7 @@ npm install            # Node 22+; then approve electron's postinstall if npm as
 npm test               # store, hooks, titles, setup, HTTP service; CI runs it on Windows and macOS for every PR
 npm start              # dev app (data in %LOCALAPPDATA%\Layover unless LAYOVER_DATA is set)
 npm run dist           # release/Layover-Setup-<version>.exe
+node scripts/capture-readme.mjs  # refresh sample UI screenshots (Chrome required)
 ```
 
 Use `LAYOVER_DATA` and `LAYOVER_PORT` together to run an isolated instance. The dev CLI is `bin\layover.cmd` (uses `node`); `layover setup` from a checkout points hooks at that path. Releases are built by the GitHub workflow: merging to `main` with a new `version` in `package.json` tags that commit and releases it, and pushing a tag by hand (`git tag v0.5.0 && git push --tags`) still works. macOS artifacts come from a macOS runner.
