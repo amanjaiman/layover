@@ -93,7 +93,7 @@
     state: null, settings: null, project: null, view: 'now', mode: 'expanded', users: {},
     viewKey: '', pendingRefresh: false, acked: {}, offers: new Map(), theme: 'system', style: 'default',
     brk: { timer: null, left: 300, total: 300, stretch: 0, lastStretchAt: 0 }, lastBreak: Date.now(), reminderShown: 0, reminderToast: null,
-    layout: 'full', tracker: { sort: 'status', open: new Set(), turns: new Set(), older: new Set(), folded: new Set(), bucket: new Map(), sel: null },
+    layout: 'full', tracker: { sort: 'status', open: new Set(), turns: new Set(), subagentsClosed: new Set(), older: new Set(), folded: new Set(), bucket: new Map(), sel: null },
     lastInteraction: 0, popover: null, notesConflict: null, ticket: null, ticketFilter: 'active', expandedThreads: new Set(), flushers: {}, promptOpen: new Set(), editingTitle: null,
   };
 
@@ -732,7 +732,7 @@
       if (!S.tracker.open.has(r.task.id)) { S.tracker.open.add(r.task.id); S.tracker.opening = r.task.id; render(true); return; }
       // fold the history away first, then drop it
       const wrap = row.parentElement?.querySelector(':scope > .tr-feed-wrap');
-      const done = () => { S.tracker.open.delete(r.task.id); S.tracker.turns.delete(r.task.id); render(true); };
+      const done = () => { S.tracker.open.delete(r.task.id); S.tracker.turns.delete(r.task.id); S.tracker.subagentsClosed.delete(r.task.id); render(true); };
       if (wrap && !matchMedia('(prefers-reduced-motion: reduce)').matches) { wrap.classList.add('closing'); setTimeout(done, 150); } else done();
     };
     const back = { ...(run || { agent, task: r.task.id, id: '', source: r.task.source }), project: r.pid };
@@ -766,6 +766,11 @@
     if (r.task.sessionId) pop.append(item('Copy session id', () => { api.copy(r.task.sessionId); toast({ text: 'Session id copied.', ttl: 3000 }); }, ICON.copy));
     place(pop, anchor);
   }
+  function toggleTrackerSection(set, task, buttonClass) {
+    if (set.has(task)) set.delete(task); else set.add(task);
+    render(true);
+    document.querySelector(`.tr-row[data-task="${CSS.escape(task)}"]`)?.parentElement?.querySelector(buttonClass)?.focus({ preventScroll: true });
+  }
   /** The agent's recent history, newest first: what it asked, what it decided, each turn and how it ended. */
   function trackerFeed(r) {
     const entries = [];
@@ -781,19 +786,28 @@
     entries.sort((a, b) => b.at - a.at);
     const feed = el('div', { class: 'tr-feed' });
     if (r.children.length) {
-      const list = el('div', { class: 'tr-children' }, el('div', { class: 'tr-children-h', text: `Subagents · ${r.children.length}` }));
-      for (const child of r.children) {
-        const state = child.status === 'active' ? [T('Working'), 'gold'] : child.status === 'completed' ? [T('Done'), 'ok'] : child.status === 'disconnected' ? [T('No signal'), 'warn'] : [T('Stopped'), ''];
-        list.append(el('div', { class: 'tr-child' }, el('span', { class: 'tr-child-line', 'aria-hidden': 'true' }),
-          el('span', { class: 'tr-child-name', text: `${child.subagentType} · ${child.subagentId.slice(-6)}` }),
-          el('span', { class: 'tr-child-time', text: child.status === 'active' ? dur(Date.now() - child.startedAt) : ago(child.endedAt) }),
-          el('span', { class: 'chip ' + state[1], text: state[0] })));
+      const visible = r.children.filter(c => c.status !== 'completed');
+      const landed = r.children.length - visible.length;
+      const closed = S.tracker.subagentsClosed.has(r.task.id);
+      const label = `Subagents · ${r.children.length} total${landed ? ` · ${landed} ${flight() ? 'landed' : 'done'}` : ''}`;
+      if (visible.length) feed.append(el('button', { class: 'tr-section-toggle tr-subagent-toggle', 'aria-expanded': closed ? 'false' : 'true', onclick: () => toggleTrackerSection(S.tracker.subagentsClosed, r.task.id, '.tr-subagent-toggle') },
+        svg('M6 4l4 4-4 4', 13), label));
+      else feed.append(el('div', { class: 'tr-section-summary', text: `Subagents · ${landed} ${flight() ? 'landed' : 'done'}` }));
+      if (!closed && visible.length) {
+        const list = el('div', { class: 'tr-children' });
+        for (const child of visible) {
+          const state = child.status === 'active' ? [T('Working'), 'gold'] : child.status === 'disconnected' ? [T('No signal'), 'warn'] : [T('Stopped'), ''];
+          list.append(el('div', { class: 'tr-child' }, el('span', { class: 'tr-child-line', 'aria-hidden': 'true' }),
+            el('span', { class: 'tr-child-name', text: `${child.subagentType} · ${child.subagentId.slice(-6)}` }),
+            el('span', { class: 'tr-child-time', text: child.status === 'active' ? dur(Date.now() - child.startedAt) : ago(child.endedAt) }),
+            el('span', { class: 'chip ' + state[1], text: state[0] })));
+        }
+        feed.append(list);
       }
-      feed.append(list);
     }
     const turnsOpen = S.tracker.turns.has(r.task.id);
     if (entries.length) {
-      feed.append(el('button', { class: 'tr-turn-toggle', 'aria-expanded': turnsOpen ? 'true' : 'false', onclick: () => { if (turnsOpen) S.tracker.turns.delete(r.task.id); else S.tracker.turns.add(r.task.id); render(true); document.querySelector(`.tr-row[data-task="${CSS.escape(r.task.id)}"]`)?.parentElement?.querySelector('.tr-turn-toggle')?.focus({ preventScroll: true }); } },
+      feed.append(el('button', { class: 'tr-section-toggle tr-turn-toggle', 'aria-expanded': turnsOpen ? 'true' : 'false', onclick: () => toggleTrackerSection(S.tracker.turns, r.task.id, '.tr-turn-toggle') },
         svg('M6 4l4 4-4 4', 13), `${flight() ? 'Flights' : 'Turns'} · ${entries.length}`));
       if (turnsOpen) {
         for (const e of entries.slice(0, 8)) feed.append(el('div', { class: 'tr-feed-row' },
