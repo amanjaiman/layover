@@ -71,7 +71,7 @@ Four views, one per thing you do while an agent works. `Ctrl+1…4` switches bet
 
 **Tracker** — for when your tickets live in Jira and your notes in Confluence, and what you need is to know which agent is done. Switch to it at the top of the sidebar (`Ctrl+Shift+T`, or the tray menu) and Layover becomes one list of every Claude Code and Codex conversation, the ones that need you on top: *Waiting on you*, then *Ready*, then *Working*, then *Idle*. Sort by project instead to see each repo's agents together, in that same order.
 
-A conversation stays Working while any of its subagents are active. Expand its Tracker row to see the children and their status.
+A conversation stays Working while any of its subagents are active; its header in Now shows a small `↳ N` count of working subagents. Expanding its Tracker row shows the children and their status first, with its turns behind a separate control.
 
 - Each agent is one row: when, which agent, what kind of thing it last did, what it is about, and its status. Click a row for its recent questions, decisions and turns.
 - *Return* brings the agent's window forward; *Seen* (`s`) moves a finished agent to Idle. Interrupted or closed sessions go straight to Idle; finishes you never look at settle there after a day.
@@ -90,7 +90,7 @@ A conversation stays Working while any of its subagents are active. Expand its T
 
 ## How agents reach it
 
-**Hooks (deterministic).** `UserPromptSubmit` starts a run; `Stop` ends it as completed, `StopFailure` as failed, `Interrupt`/`SessionEnd` as cancelled. `SubagentStart`/`SubagentStop` track child agents under their conversation. Claude's `Notification` hook turns permission prompts into "Input requested" items. Each prompt hook prints one short line so the agent knows its run id. No model reasoning is involved in lifecycle.
+**Hooks (deterministic).** `UserPromptSubmit` starts a run; `Stop` ends it as completed, `StopFailure` as failed, `Interrupt`/`SessionEnd` as cancelled. `SubagentStart`/`SubagentStop` track child agents under their conversation; Layover also checks Claude's local subagent transcripts while a conversation is active to catch missed worktree hooks. Claude's `Notification` hook turns permission prompts into "Input requested" items. Each prompt hook prints one short line so the agent knows its run id. No model reasoning is involved in lifecycle.
 
 **Skill (voluntary).** The `layover` skill tells the agent when a decision, question, or opportunity is worth a `layover item` call — and when to stay silent. Publishing is one shell call per item, at the moment it becomes true.
 

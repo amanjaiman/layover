@@ -174,6 +174,7 @@ export class Store {
       text(e.subagentType, 200, 'subagentType');
       if (!['active', 'completed'].includes(e.subagentStatus)) throw Error('Invalid subagent status');
       if (!Number.isSafeInteger(e.seq) || e.seq < 0) throw Error('seq must be a nonnegative integer');
+      if (e.subagentStartedAt !== undefined && (!Number.isSafeInteger(e.subagentStartedAt) || e.subagentStartedAt <= 0)) throw Error('Invalid subagent start time');
     }
     if (e.type === 'session' && e.sessionEnded !== undefined && typeof e.sessionEnded !== 'boolean') throw Error('Invalid sessionEnded');
     if (e.type === 'item') {
@@ -216,6 +217,8 @@ export class Store {
   }
 
   cancelSubagents(task, received, since = 0) {
+    const t = this.tasks.get(task);
+    if (t && !since) t.childrenCancelledAt = Math.max(t.childrenCancelledAt || 0, received);
     for (const child of this.subagents.values()) if (child.task === task && child.status === 'active' && child.startedAt >= since) {
       child.status = 'cancelled'; child.endedAt = received; child.lastSeen = received;
     }
@@ -261,16 +264,19 @@ export class Store {
       if (e.subagentId === undefined) return change;
       const key = `${e.task}:${e.subagentId}`;
       let child = this.subagents.get(key);
+      const startedAt = Number.isSafeInteger(e.subagentStartedAt) && e.subagentStartedAt > 0 && e.subagentStartedAt <= received ? e.subagentStartedAt : received;
       if (!child) {
-        child = { id: key, task: e.task, project: e.project, agent: e.agent, subagentId: e.subagentId, subagentType: e.subagentType || 'Subagent', status: e.subagentStatus, seq: e.seq, observedStart: e.subagentStatus === 'active', startedAt: received, endedAt: e.subagentStatus === 'active' ? 0 : received, lastSeen: received };
+        child = { id: key, task: e.task, project: e.project, agent: e.agent, subagentId: e.subagentId, subagentType: e.subagentType || 'Subagent', status: e.subagentStatus, seq: e.seq, observedStart: e.subagentStatus === 'active' || e.subagentStartedAt !== undefined, startedAt, endedAt: e.subagentStatus === 'active' ? 0 : received, lastSeen: received };
         this.subagents.set(key, child);
       } else if (e.seq > child.seq) {
+        const wasActive = child.status === 'active';
         child.seq = e.seq; child.status = e.subagentStatus; child.lastSeen = received;
         if (e.subagentType) child.subagentType = e.subagentType;
-        if (e.subagentStatus === 'active') { child.startedAt = received; child.endedAt = 0; }
+        if (e.subagentStatus === 'active') { if (!wasActive) child.startedAt = startedAt; child.endedAt = 0; }
         else child.endedAt = received;
       }
-      if (e.subagentStatus === 'active') child.observedStart = true;
+      if (e.subagentStatus === 'active' || e.subagentStartedAt !== undefined) child.observedStart = true;
+      if (!e.id.startsWith('subagent:transcript:')) child.hooked = true;
       return change;
     }
     let r = this.runs.get(e.run);

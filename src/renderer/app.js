@@ -93,7 +93,7 @@
     state: null, settings: null, project: null, view: 'now', mode: 'expanded', users: {},
     viewKey: '', pendingRefresh: false, acked: {}, offers: new Map(), theme: 'system', style: 'default',
     brk: { timer: null, left: 300, total: 300, stretch: 0, lastStretchAt: 0 }, lastBreak: Date.now(), reminderShown: 0, reminderToast: null,
-    layout: 'full', tracker: { sort: 'status', open: new Set(), older: new Set(), folded: new Set(), bucket: new Map(), sel: null },
+    layout: 'full', tracker: { sort: 'status', open: new Set(), turns: new Set(), older: new Set(), folded: new Set(), bucket: new Map(), sel: null },
     lastInteraction: 0, popover: null, notesConflict: null, ticket: null, ticketFilter: 'active', expandedThreads: new Set(), flushers: {}, promptOpen: new Set(), editingTitle: null,
   };
 
@@ -732,7 +732,7 @@
       if (!S.tracker.open.has(r.task.id)) { S.tracker.open.add(r.task.id); S.tracker.opening = r.task.id; render(true); return; }
       // fold the history away first, then drop it
       const wrap = row.parentElement?.querySelector(':scope > .tr-feed-wrap');
-      const done = () => { S.tracker.open.delete(r.task.id); render(true); };
+      const done = () => { S.tracker.open.delete(r.task.id); S.tracker.turns.delete(r.task.id); render(true); };
       if (wrap && !matchMedia('(prefers-reduced-motion: reduce)').matches) { wrap.classList.add('closing'); setTimeout(done, 150); } else done();
     };
     const back = { ...(run || { agent, task: r.task.id, id: '', source: r.task.source }), project: r.pid };
@@ -791,10 +791,17 @@
       }
       feed.append(list);
     }
-    for (const e of entries.slice(0, 8)) feed.append(el('div', { class: 'tr-feed-row' },
-      el('span', { class: 'tr-time', text: clock(e.at) }), el('span', { class: 'tr-kind k-' + e.kind }, el('i'), T(TR_KIND[e.kind])),
-      el('span', { class: 'tr-feed-text', text: e.text.split('\n')[0] }), (([label, time]) => el('span', { class: 'chip ' + e.status[1] }, label, time ? el('span', { class: 'chip-dur', text: time }) : null))(e.status[0].split(' · '))));
-    feed.append(el('div', { class: 'tr-feed-f' }, el('span', { class: 't-small', text: entries.length > 8 ? `${entries.length - 8} earlier` : `${flight() ? 'Departed' : 'Started'} ${ago(r.runs[0]?.startedAt || r.task.createdAt)}` }), el('span', { class: 'spacer' }),
+    const turnsOpen = S.tracker.turns.has(r.task.id);
+    if (entries.length) {
+      feed.append(el('button', { class: 'tr-turn-toggle', 'aria-expanded': turnsOpen ? 'true' : 'false', onclick: () => { if (turnsOpen) S.tracker.turns.delete(r.task.id); else S.tracker.turns.add(r.task.id); render(true); document.querySelector(`.tr-row[data-task="${CSS.escape(r.task.id)}"]`)?.parentElement?.querySelector('.tr-turn-toggle')?.focus({ preventScroll: true }); } },
+        svg('M6 4l4 4-4 4', 13), `${flight() ? 'Flights' : 'Turns'} · ${entries.length}`));
+      if (turnsOpen) {
+        for (const e of entries.slice(0, 8)) feed.append(el('div', { class: 'tr-feed-row' },
+          el('span', { class: 'tr-time', text: clock(e.at) }), el('span', { class: 'tr-kind k-' + e.kind }, el('i'), T(TR_KIND[e.kind])),
+          el('span', { class: 'tr-feed-text', text: e.text.split('\n')[0] }), (([label, time]) => el('span', { class: 'chip ' + e.status[1] }, label, time ? el('span', { class: 'chip-dur', text: time }) : null))(e.status[0].split(' · '))));
+      }
+    }
+    feed.append(el('div', { class: 'tr-feed-f' }, el('span', { class: 't-small', text: turnsOpen && entries.length > 8 ? `${entries.length - 8} earlier` : `${flight() ? 'Departed' : 'Started'} ${ago(r.runs[0]?.startedAt || r.task.createdAt)}` }), el('span', { class: 'spacer' }),
       el('button', { class: 'btn small ghost', onclick: () => openInWorkspace(r.pid) }, T('Reply in the workspace'), svg(ICON.arrow, 12))));
     return feed;
   }
@@ -898,7 +905,7 @@
     card.append(el('div', { class: 'thread-h', onclick: e => { if (!e.target.closest('button')) toggle(); } },
       el('button', { class: 'icon-btn chev', 'aria-label': collapsed ? 'Expand' : 'Collapse', 'aria-expanded': collapsed ? 'false' : 'true', onclick: toggle }, svg('M6 4l4 4-4 4', 14)),
       agentIcon(agent, 26),
-      el('div', { class: 'thread-t' }, el('div', { class: 'thread-title' }, el('b', { text: title }), t.ticket ? el('button', { class: 'chip accent link', title: t.ticket.title, onclick: () => { S.ticket = t.ticket.id; S.ticketFilter = 'all'; setView('tickets'); } }, ticketKey(t.ticket)) : null, t.open ? el('span', { class: 'chip open-badge' + (t.waiting ? ' warn' : ''), text: `${t.open} open`, hidden: !collapsed }) : null), el('span', { text: `${t.runs.length} ${flight() ? 'leg' : 'turn'}${t.runs.length === 1 ? '' : 's'} · ${flight() ? 'departed' : 'started'} ${clock(t.runs[0]?.startedAt || t.task.createdAt)}` })),
+      el('div', { class: 'thread-t' }, el('div', { class: 'thread-title' }, el('b', { text: title }), t.activeChildren.length ? el('span', { class: 'thread-child-count', title: `${t.activeChildren.length} subagent${t.activeChildren.length === 1 ? '' : 's'} working`, 'aria-label': `${t.activeChildren.length} subagent${t.activeChildren.length === 1 ? '' : 's'} working`, text: `↳ ${t.activeChildren.length}` }) : null, t.ticket ? el('button', { class: 'chip accent link', title: t.ticket.title, onclick: () => { S.ticket = t.ticket.id; S.ticketFilter = 'all'; setView('tickets'); } }, ticketKey(t.ticket)) : null, t.open ? el('span', { class: 'chip open-badge' + (t.waiting ? ' warn' : ''), text: `${t.open} open`, hidden: !collapsed }) : null), el('span', { text: `${t.runs.length} ${flight() ? 'leg' : 'turn'}${t.runs.length === 1 ? '' : 's'} · ${flight() ? 'departed' : 'started'} ${clock(t.runs[0]?.startedAt || t.task.createdAt)}` })),
       statusChip,
       el('button', { class: 'btn small ghost l', title: t.task.host ? `Bring ${t.task.host.name} forward` : `How to return to ${who}`, onclick: () => returnTo(latest || { agent, task: t.task.id, id: '', source: t.task.source }) }, T('Return'), svg(ICON.arrow, 13)),
       el('button', { class: 'icon-btn', title: 'More', 'aria-label': 'Conversation menu', onclick: e => threadMenu(e.currentTarget, t, who) }, svg('M3 8h.01M8 8h.01M13 8h.01', 16, 'stroke-width="2.4"'))));
