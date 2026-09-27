@@ -909,6 +909,9 @@ body:not(.compact) .tr-card.folded .tr-card-h{ padding-bottom:var(--s3); } /* a 
 :root[data-style="flight"] .tr-feed{ background:var(--board); border-top-color:var(--board); }
 :root[data-style="flight"] .tr-feed .tr-time{ color:var(--board-text); }
 :root[data-style="flight"] .tr-feed-text{ color:var(--board-2); }
+:root[data-style="flight"] .tr-children-h, :root[data-style="flight"] .tr-child-time, :root[data-style="flight"] .tr-turn-toggle{ color:var(--board-faint); }
+:root[data-style="flight"] .tr-child-name{ color:var(--board-2); }
+:root[data-style="flight"] .tr-turn-toggle:hover{ background:rgba(255,255,255,.08); color:#fff; }
 :root[data-style="flight"] .tr-feed .tr-kind, :root[data-style="flight"] .tr-feed-f .t-small{ color:var(--board-faint); }
 :root[data-style="flight"] .tr-feed .btn.ghost{ color:var(--board-2); }
 :root[data-style="flight"] .tr-feed .btn.ghost:hover{ background:rgba(255,255,255,.08); color:#fff; }
