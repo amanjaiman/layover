@@ -217,6 +217,8 @@ export class Store {
   }
 
   cancelSubagents(task, received, since = 0) {
+    const t = this.tasks.get(task);
+    if (t && !since) t.childrenCancelledAt = Math.max(t.childrenCancelledAt || 0, received);
     for (const child of this.subagents.values()) if (child.task === task && child.status === 'active' && child.startedAt >= since) {
       child.status = 'cancelled'; child.endedAt = received; child.lastSeen = received;
     }
