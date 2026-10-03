@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { claudeThreadTitle, codexThreadTitle, threadTitle } from '../src/cli/titles.js';
 import { mapHook } from '../src/cli/hook.js';
-import { macHostFromProcesses, liveMacHost } from '../src/cli/host.js';
+import { macHostFromProcesses, liveMacHost, codexThreadLink } from '../src/cli/host.js';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'layover-titles-'));
 const jsonl = (rows) => rows.map(r => typeof r === 'string' ? r : JSON.stringify(r)).join('\n') + '\n';
@@ -98,4 +98,24 @@ test('macOS host: the first app bundle up the tree, iTerm2 through its detached 
   // …but only while that pid still runs the recorded app
   assert.equal(liveMacHost({ ...stale, pid: 302 }, ps), null);
   assert.equal(liveMacHost({ ...stale, pid: 999 }, ps), null);
+});
+
+test('Return opens the Codex thread only when the Codex desktop app hosts it', () => {
+  const id = '019a1b2c-3d4e-7f80-9a1b-2c3d4e5f6a7b';
+  const codex = { agent: 'codex', sessionId: id };
+  const mac = { pid: 900, hwnd: '900', name: 'ChatGPT', title: 'com.openai.codex', via: 'process' };
+  assert.equal(codexThreadLink(codex, mac, 'darwin'), `codex://threads/${id}`); // ChatGPT.app kept the Codex bundle id
+  assert.equal(codexThreadLink(codex, { ...mac, name: 'Codex' }, 'darwin'), `codex://threads/${id}`);
+  assert.equal(codexThreadLink(codex, { pid: 1, hwnd: '42', name: 'Codex', title: 'Codex' }, 'win32'), `codex://threads/${id}`);
+  assert.equal(codexThreadLink(codex, { pid: 1, hwnd: '42', name: 'ChatGPT', title: 'ChatGPT' }, 'win32'), `codex://threads/${id}`);
+  // the CLI in a terminal or editor stays a plain focus
+  assert.equal(codexThreadLink(codex, { ...mac, name: 'Terminal', title: 'com.apple.Terminal' }, 'darwin'), '');
+  assert.equal(codexThreadLink(codex, { pid: 1, hwnd: '42', name: 'WindowsTerminal', title: 'codex' }, 'win32'), '');
+  assert.equal(codexThreadLink(codex, { pid: 1, hwnd: '42', name: 'Code', title: 'Codex' }, 'win32'), '');
+  assert.equal(codexThreadLink(codex, mac, 'linux'), '');
+  // never for Claude, a missing host, or an id that could change the link
+  assert.equal(codexThreadLink({ agent: 'claude', sessionId: id }, mac, 'darwin'), '');
+  assert.equal(codexThreadLink(codex, null, 'darwin'), '');
+  assert.equal(codexThreadLink({ agent: 'codex', sessionId: '' }, mac, 'darwin'), '');
+  assert.equal(codexThreadLink({ agent: 'codex', sessionId: '../settings?x=1' }, mac, 'darwin'), '');
 });

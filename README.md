@@ -76,7 +76,7 @@ The workspace has four views. `Ctrl+1…4` switches between them. The screenshot
 A conversation stays Working while any of its subagents are active; its header in Now shows a small `↳ N` count of working subagents. Expanding its Tracker row shows working, *No signal* and stopped children first, with finished children summarized as a count. Subagents and turns have separate collapse controls.
 
 - Each agent is one row: when, which agent, what kind of thing it last did, what it is about, and its status. Click a row for its recent questions, decisions and turns.
-- *Return* brings the agent's window forward; *Seen* (`s`) moves a finished agent to Idle. Interrupted or closed sessions go straight to Idle; finishes you never look at settle there after a day.
+- *Return* brings the agent's window forward, and in the Codex app opens that conversation; *Seen* (`s`) moves a finished agent to Idle. Interrupted or closed sessions go straight to Idle; finishes you never look at settle there after a day.
 - `j`/`k` move through rows, `r` returns to the agent. Idle agents older than three days fold under *older*.
 
 ### Around the views

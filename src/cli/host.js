@@ -104,6 +104,19 @@ export function macHostRecord(found) {
   return bundle ? { pid: found.pid, hwnd: String(found.pid), name: found.name.slice(0, 80), title: bundle.slice(0, 200), via: 'process', ...(found.tty ? { tty: found.tty } : {}) } : null;
 }
 
+/**
+ * The link that opens a Codex thread inside the Codex desktop app, or '' when the task does not run
+ * there. The hook's session_id is the thread id `codex://threads/<id>` takes. Only the app itself
+ * qualifies, never a terminal or editor running the CLI: on macOS its bundle id, which ChatGPT.app
+ * kept when Codex moved into it; on Windows its process, Codex or, since the move, ChatGPT. The
+ * route is undocumented, so Return still focuses the window and the link only picks the thread.
+ */
+export function codexThreadLink(task, host, platform = process.platform) {
+  if (task?.agent !== 'codex' || !/^[\w-]{1,100}$/.test(task.sessionId || '')) return '';
+  const desktop = platform === 'darwin' ? host?.title === 'com.openai.codex' : platform === 'win32' && /^(codex|chatgpt)$/i.test(host?.name || '');
+  return desktop ? `codex://threads/${task.sessionId}` : '';
+}
+
 /** Inside tmux the agent's ancestors end at the tmux server (a launchd child); the client sits in the terminal. */
 function tmuxClientPid() {
   if (!process.env.TMUX) return 0;

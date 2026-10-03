@@ -12,7 +12,7 @@ import { loadSettings, saveSettings, applySettings } from './settings.js';
 import { dataDir, dataRoot, logFile, APP_NAME, projectIdFromPath, projectNameFromPath, port } from './paths.js';
 import { reconcileClaudeSubagents } from './claude-subagents.js';
 import * as setup from '../cli/setup.js';
-import { liveMacHost, macHostRecord, macProcesses } from '../cli/host.js';
+import { codexThreadLink, liveMacHost, macHostRecord, macProcesses } from '../cli/host.js';
 import { resolveLatest } from '../cli/hook.js';
 import { checkForUpdate, installUpdate as startInstall } from './updates.js';
 
@@ -251,12 +251,19 @@ function stopRun(runId) {
   return { stopped: true };
 }
 
-/** "Return to the agent": focus the window the session started in, if we know it and it still exists. */
+/**
+ * "Return to the agent": focus the window the session started in, if we know it and it still exists.
+ * In the Codex desktop app the thread's link then opens that thread. The link goes only to an app
+ * the focus found running (a refused focus still found it), so Return never launches anything, and
+ * only when something handles codex:// (the Windows app once shipped without registering it).
+ */
 async function returnToHost(taskId) {
   const t = store.tasks.get(taskId);
   if (!t?.host?.hwnd) return { ok: false, reason: 'unknown' };
   const host = process.platform === 'darwin' ? macHostNow(t.host) : t.host;
   const r = process.platform === 'darwin' ? await activateMac(host) : await focusHwnd(host.hwnd, host.name);
+  const link = r.ok || r.reason === 'refused' ? codexThreadLink(t, host) : '';
+  if (link && app.getApplicationNameForProtocol(link)) await shell.openExternal(link).then(() => log('opened thread', link), e => log('thread link failed', e.message));
   log('return to host', host.name, r);
   return { ...r, host };
 }
