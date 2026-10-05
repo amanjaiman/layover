@@ -33,7 +33,7 @@ Everything the app's buttons do is also a command: `layover setup --agent all`, 
 
 ### Updating
 
-Layover checks GitHub for a newer release every few hours — the only request it makes off your machine, and switchable off in Settings → Preferences → Updates. When one exists, **Layover x.y.z available** appears in the sidebar and the tray menu; **Install and restart** swaps in the new version, reconnects the hooks, and reopens.
+Layover checks GitHub for a newer release every hour — the only request it makes off your machine, and switchable off in Settings → Preferences → Updates. When one exists, **Layover x.y.z available** appears in the sidebar and the tray menu; **Install and restart** swaps in the new version, reconnects the hooks, and reopens.
 
 ### Manual install (Windows)
 

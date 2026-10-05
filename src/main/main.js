@@ -517,8 +517,8 @@ function updateTray() {
 }
 
 // ---------- updates ----------
-// One request to api.github.com every few hours (switchable off); nothing is downloaded by the app itself.
-const UPDATE_INTERVAL = 6 * 60 * 60 * 1000;
+// One request to api.github.com an hour (switchable off); nothing is downloaded by the app itself.
+const UPDATE_INTERVAL = 60 * 60 * 1000;
 let update = { latest: null, latestVersion: null, checkedAt: 0, error: null, installing: false };
 // Dev only: pretend to be an older build so the update path can be exercised against the real releases.
 const appVersion = () => (!app.isPackaged && flagValue('--pretend-version')) || app.getVersion();
@@ -538,8 +538,11 @@ async function runUpdateCheck({ manual = false } = {}) {
 }
 
 function scheduleUpdateChecks() {
-  setTimeout(() => runUpdateCheck().catch(e => log('update check error', e.message)), 20_000);
-  setInterval(() => runUpdateCheck().catch(e => log('update check error', e.message)), UPDATE_INTERVAL);
+  const check = () => runUpdateCheck().catch(e => log('update check error', e.message));
+  setTimeout(check, 20_000);
+  setInterval(check, UPDATE_INTERVAL);
+  // Timers stall while the machine sleeps, so a laptop asleep through the hour checks once it wakes and its network is back.
+  powerMonitor.on('resume', () => { if (Date.now() - update.checkedAt >= UPDATE_INTERVAL) setTimeout(check, 30_000); });
 }
 
 /** Hand over to the install script for the newest release; it quits Layover, replaces it, reconnects the hooks and reopens it. */

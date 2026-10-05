@@ -1558,7 +1558,7 @@
     } }, u.latest && !u.skipped ? 'Install' : 'Check now');
     return el('div', { class: 'sheet-sec' }, el('h3', { text: 'Updates' }),
       el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'Layover ' + (u.current || s.version) }), status), btn),
-      switchRow('Check for new releases', 'One request to GitHub every few hours. It is the only thing Layover sends off this machine, and it carries nothing about you or your projects.', s.updates?.check !== false, v => { s.updates = { ...(s.updates || {}), check: v }; api.setSettings({ updates: { check: v } }); }));
+      switchRow('Check for new releases', 'One request to GitHub an hour. It is the only thing Layover sends off this machine, and it carries nothing about you or your projects.', s.updates?.check !== false, v => { s.updates = { ...(s.updates || {}), check: v }; api.setSettings({ updates: { check: v } }); }));
   }
 
   // ---------- toasts ----------

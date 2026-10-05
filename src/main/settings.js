@@ -16,7 +16,7 @@ export const DEFAULTS = {
   trayPopover: process.platform === 'darwin', // tray / menu-bar click opens the compact companion as a popover
   hookContext: true,               // hooks print one short line so the agent knows the run id
   breakReminder: { enabled: false, minutes: 30, mode: 'suggest' }, // suggest | auto
-  updates: { check: true, skip: '' }, // check: ask GitHub for the latest release every few hours (the only outbound request); skip: a version the user chose to ignore
+  updates: { check: true, skip: '' }, // check: ask GitHub for the latest release every hour (the only outbound request); skip: a version the user chose to ignore
   window: { mode: 'expanded' },
 };
 
