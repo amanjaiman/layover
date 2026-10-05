@@ -301,7 +301,8 @@
     $('#btn-update').addEventListener('click', updateSheet);
     $('#btn-compact').addEventListener('click', () => api.setWindowMode('compact'));
     $('#btn-expand').addEventListener('click', () => api.setWindowMode('expanded'));
-    $('#compact-ws').addEventListener('click', e => (S.layout === 'tracker' ? trackerMenu : workspaceMenu)(e.currentTarget));
+    $('#btn-settings-top').addEventListener('click', () => openSettings({}));
+    $('#btn-update-top').addEventListener('click', updateSheet);
     $('#btn-rail').addEventListener('click', () => toggleRail());
     for (const b of document.querySelectorAll('#rail-mode [data-layout]')) b.addEventListener('click', () => setLayout(b.dataset.layout));
     if (S.settings.window?.railCollapsed) toggleRail(true);
@@ -507,11 +508,24 @@
   }
 
   // ---------- render ----------
-  function render(force = false) { renderRail(); renderHead(); renderCompactNav(); renderView(force); }
+  function render(force = false) { renderTopBar(); renderRail(); renderHead(); renderCompactNav(); renderView(force); }
+
+  /**
+   * The compact companion has no sidebar, so its top bar carries what the sidebar would: the layout
+   * switch (the sidebar's own control, moved beside the logo and shown as icons), Settings, and an
+   * update waiting to be installed. Expanded, the switch goes back under the sidebar header.
+   */
+  function renderTopBar() {
+    const compact = S.mode === 'compact', sw = $('#rail-mode');
+    const after = compact ? $('#compact-mark') : $('.rail-top');
+    if (sw.previousElementSibling !== after) after.after(sw);
+    for (const id of ['#compact-mark', '#btn-expand', '#btn-settings-top']) $(id).hidden = !compact;
+    renderUpdateButton();
+  }
 
   function renderRail() {
     for (const b of document.querySelectorAll('#rail-mode [data-layout]')) b.setAttribute('aria-checked', b.dataset.layout === S.layout ? 'true' : 'false');
-    if (S.layout === 'tracker') { renderTrackerRail(); return; }
+    if (S.layout === 'tracker') { $('#ws-list').textContent = ''; return; } // the rail holds only the layout switch
     const list = $('#ws-list'); list.textContent = '';
     const ps = visibleProjects();
     if (!ps.length) list.append(el('p', { class: 't-small', style: 'padding:8px 10px' }, T('No workspaces yet')));
@@ -522,10 +536,6 @@
         el('span', { style: 'display:grid;min-width:0' }, el('span', { class: 'ws-name', text: projectName(p) }), el('span', { class: 'ws-sub' }, st.agent ? agentIcon(st.agent, 14) : null, st.label)),
         el('span', { class: 'dot ' + st.cls })));
     }
-    const sel = $('#compact-ws'); sel.textContent = '';
-    const cur = project();
-    if (cur) sel.append(el('span', { class: 'ws-tok', style: `background:var(--ws-${cur.color})` }, initials(projectName(cur))), el('span', { class: 'wsbtn-name', text: projectName(cur) }), svg('M4 6l4 4 4-4', 12));
-    $('#compact-ws').hidden = S.mode !== 'compact'; $('#compact-mark').hidden = S.mode !== 'compact'; $('#btn-expand').hidden = S.mode !== 'compact';
   }
 
   function renderHead() {
@@ -534,7 +544,10 @@
     const p = project();
     if (!p) { h.append(el('h1', { text: 'Layover' })); return; }
     const st = projectStatus(p.id);
-    const row = el('div', { class: 'head-row' }, S.mode === 'compact' ? null : el('h1', { text: projectName(p) }), el('button', { class: 'status ' + st.cls, onclick: (e) => runsPopover(e.currentTarget) }, st.agent ? agentIcon(st.agent, 16) : el('span', { class: 'dot ' + st.cls }), st.label),
+    // Compact: the workspace picker stands where the title would, beside the status.
+    const title = S.mode !== 'compact' ? el('h1', { text: projectName(p) })
+      : el('button', { class: 'wsbtn', 'aria-haspopup': 'menu', title: T('Switch workspace'), onclick: e => workspaceMenu(e.currentTarget) }, el('span', { class: 'ws-tok', style: `background:var(--ws-${p.color})` }, initials(projectName(p))), el('span', { class: 'wsbtn-name', text: projectName(p) }), svg('M4 6l4 4 4-4', 12));
+    const row = el('div', { class: 'head-row' }, title, el('button', { class: 'status ' + st.cls, onclick: (e) => runsPopover(e.currentTarget) }, st.agent ? agentIcon(st.agent, 16) : el('span', { class: 'dot ' + st.cls }), st.label),
       S.brk.timer && S.view !== 'break' ? el('button', { class: 'status brk', title: 'Back to the break', onclick: () => setView('break') }, svg('M8 4.5V8l2.5 1.5M8 2.5a5.5 5.5 0 1 1 0 11a5.5 5.5 0 0 1 0-11Z', 13), el('span', { class: 'brk-chip', text: fmt(S.brk.left) })) : null);
     const open = openItems(p.id).length, active = (user(p.id)?.tickets || []).filter(t => FILTERS.active.includes(t.status)).length;
     const tabs = el('div', { class: 'tabs', role: 'tablist' });
@@ -627,21 +640,6 @@
     return parts.length ? parts.join(' · ') : c.idle ? `${c.idle} ${idle}` : T('Quiet');
   }
   const projTok = (p, small) => el('span', { class: 'ws-tok' + (small ? ' sm' : ''), style: `background:var(--ws-${p.color})`, title: projectName(p) }, initials(projectName(p)));
-
-  /** In the tracker the rail holds only the layout switch; the compact pill just says where you are. */
-  function renderTrackerRail() {
-    $('#ws-list').textContent = '';
-    const sel = $('#compact-ws'); sel.textContent = '';
-    sel.append(el('span', { class: 'wsbtn-name', text: T('Tracker') }), svg('M4 6l4 4 4-4', 12));
-    $('#compact-ws').hidden = S.mode !== 'compact'; $('#compact-mark').hidden = S.mode !== 'compact'; $('#btn-expand').hidden = S.mode !== 'compact';
-  }
-  function trackerMenu(anchor) {
-    closePopover();
-    const pop = el('div', { class: 'pop menu', role: 'menu' });
-    for (const [id, label] of [['status', 'Sort by status'], ['project', 'Sort by project']]) pop.append(el('button', { class: 'menu-item' + (S.tracker.sort === id ? ' on' : ''), role: 'menuitem', onclick: () => { closePopover(); setTrackerSort(id); } }, T(label)));
-    pop.append(el('button', { class: 'menu-item', role: 'menuitem', onclick: () => { closePopover(); setLayout('full'); } }, svg(ICON.back, 13), T('Back to workspaces')));
-    place(pop, anchor);
-  }
 
   function renderTrackerHead(h) {
     const rows = trackerAll(), c = trackerCounts(rows);
@@ -1507,15 +1505,20 @@
     renderUpdateButton();
     if (updateReady() && !u.installing && S.updateToasted !== u.latest.version) {
       S.updateToasted = u.latest.version;
-      toast({ text: ['Layover ' + u.latest.version + ' is available.'], ttl: 15000, actions: [{ label: 'Install and restart', primary: true, fn: installUpdate }, { label: 'What changed', fn: updateSheet }, { label: 'Later', fn: () => {} }] });
+      // The compact companion has no update button in a sidebar, and as a menu-bar popover it is often
+      // hidden when this arrives, so there the toast stays until it is answered.
+      toast({ text: ['Layover ' + u.latest.version + ' is available.'], ttl: S.mode === 'compact' ? 0 : 15000, actions: [{ label: 'Install and restart', primary: true, fn: installUpdate }, { label: 'What changed', fn: updateSheet }, { label: 'Later', fn: () => {} }] });
     }
   }
 
   function renderUpdateButton() {
-    const b = $('#btn-update'); if (!b) return;
+    const b = $('#btn-update'), top = $('#btn-update-top'); if (!b) return;
     const u = S.update;
-    b.hidden = !updateReady();
-    if (!b.hidden) { $('#btn-update-lbl').textContent = u.installing ? 'Installing ' + u.latest.version + '…' : 'Layover ' + u.latest.version + ' available'; b.title = u.installing ? 'Layover restarts on its own in a moment' : 'Layover ' + u.latest.version + ' is available. Click to see what changed and install it.'; b.disabled = !!u.installing; }
+    b.hidden = !updateReady(); top.hidden = b.hidden || S.mode !== 'compact';
+    if (b.hidden) return;
+    $('#btn-update-lbl').textContent = u.installing ? 'Installing ' + u.latest.version + '…' : 'Layover ' + u.latest.version + ' available';
+    for (const x of [b, top]) { x.title = u.installing ? 'Layover restarts on its own in a moment' : 'Layover ' + u.latest.version + ' is available. Click to see what changed and install it.'; x.disabled = !!u.installing; }
+    top.setAttribute('aria-label', top.title);
   }
 
   async function installUpdate() {
