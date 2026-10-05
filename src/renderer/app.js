@@ -1534,7 +1534,7 @@
 
   function updateSheet() {
     const u = S.update; if (!u?.latest) return;
-    const notes = u.latest.notes || 'No release notes.';
+    const notes = u.latest.notes || 'The notes for this release are on GitHub.';
     sheet([el('div', { class: 'sheet-h' }, el('h2', { text: 'Layover ' + u.latest.version }), el('button', { class: 'icon-btn', 'aria-label': 'Close', onclick: closeOverlay }, svg(ICON.x, 14))),
       el('p', { class: 't-small', text: 'You have ' + u.current + '. Installing runs the same install script as a fresh install: Layover quits, the new version replaces it, the agent hooks are reconnected, and it reopens.' }),
       el('div', { class: 'notes-pre', text: notes }),

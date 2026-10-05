@@ -40,19 +40,55 @@ export async function fetchLatest({ repo = REPO, fetchImpl = globalThis.fetch, u
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
   try {
     const r = await fetchImpl(`https://api.github.com/repos/${repo}/releases/latest`, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': userAgent }, signal: ctl.signal });
+    if (r.status === 403 || r.status === 429) throw Error(`GitHub is limiting requests from this network for now (${r.status}); Layover tries again later`);
     if (!r.ok) throw Error(`GitHub answered ${r.status}`);
     return await r.json();
   } finally { clearTimeout(timer); }
 }
 
-/** One check. Never throws: a failed check is {error} and the app stays quiet about it. */
-export async function checkForUpdate({ current, repo = REPO, fetchImpl, userAgent } = {}) {
-  const checkedAt = Date.now();
+/**
+ * The tag of the newest stable release, read from where github.com's /releases/latest redirects. That
+ * page already skips drafts and pre-releases, and unlike api.github.com it is not under the limit of
+ * 60 requests an hour that every unauthenticated client on one network address shares (GitHub answers
+ * 403 once a busy office or VPN has spent it). '' when the repo has no release yet.
+ */
+export async function fetchLatestTag({ repo = REPO, fetchImpl = globalThis.fetch, userAgent = 'Layover', timeoutMs = 10_000 } = {}) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
   try {
-    const rel = await fetchLatest({ repo, fetchImpl, userAgent });
-    return { checkedAt, current, latest: parseRelease(rel, current, repo), latestVersion: String(rel?.tag_name || '').replace(/^v/i, ''), error: null };
+    const r = await fetchImpl(`https://github.com/${repo}/releases/latest`, { method: 'HEAD', redirect: 'follow', headers: { 'User-Agent': userAgent }, signal: ctl.signal });
+    if (!r.ok) throw Error(`GitHub answered ${r.status}`);
+    const m = String(r.url || '').match(/\/releases\/tag\/([^/?#]+)$/);
+    return m ? decodeURIComponent(m[1]) : '';
+  } finally { clearTimeout(timer); }
+}
+
+/**
+ * One check. Never throws: a failed check is {error} and the app stays quiet about it. The version
+ * comes from github.com (fetchLatestTag); only a newer release costs an API request, for its notes,
+ * and `known` (the release this check offered last time) saves even that. A refused notes request
+ * still offers the update, with its notes left on GitHub. When github.com cannot be read at all, the
+ * API answers alone, as it did before.
+ */
+export async function checkForUpdate({ current, repo = REPO, fetchImpl, userAgent, known = null } = {}) {
+  const checkedAt = Date.now();
+  const done = (latest, latestVersion, error = null) => ({ checkedAt, current, latest, latestVersion, error });
+  try {
+    let tag;
+    try { tag = await fetchLatestTag({ repo, fetchImpl, userAgent }); }
+    catch {
+      const rel = await fetchLatest({ repo, fetchImpl, userAgent });
+      return done(parseRelease(rel, current, repo), String(rel?.tag_name || '').replace(/^v/i, ''));
+    }
+    if (!tag) return done(null, null);
+    const version = tag.replace(/^v/i, '');
+    const bare = parseRelease({ tag_name: tag, html_url: `https://github.com/${repo}/releases/tag/${encodeURIComponent(tag)}` }, current, repo);
+    if (!bare) return done(null, version);
+    if (known?.version === bare.version && known.notes) return done(known, version);
+    const rel = await fetchLatest({ repo, fetchImpl, userAgent }).catch(() => null);
+    return done(rel && String(rel.tag_name) === tag ? parseRelease(rel, current, repo) : bare, version);
   } catch (e) {
-    return { checkedAt, current, latest: null, latestVersion: null, error: e?.name === 'AbortError' ? 'timed out' : (e?.message || String(e)) };
+    return done(null, null, e?.name === 'AbortError' ? 'timed out' : (e?.message || String(e)));
   }
 }
 
