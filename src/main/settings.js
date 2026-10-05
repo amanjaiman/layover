@@ -16,7 +16,7 @@ export const DEFAULTS = {
   trayPopover: process.platform === 'darwin', // tray / menu-bar click opens the compact companion as a popover
   hookContext: true,               // hooks print one short line so the agent knows the run id
   breakReminder: { enabled: false, minutes: 30, mode: 'suggest' }, // suggest | auto
-  updates: { check: true, skip: '' }, // check: ask GitHub for the latest release every few hours (the only outbound request); skip: a version the user chose to ignore
+  updates: { check: true, skip: '' }, // check: ask GitHub for the latest release every hour (the only outbound request); skip: a version the user chose to ignore
   window: { mode: 'expanded' },
 };
 
@@ -70,3 +70,16 @@ export function validateSettings(patch) {
 }
 
 export function applySettings(current, patch) { return merge(current, validateSettings(patch)); }
+
+/**
+ * Window bounds made to fit a display's work area: no larger than it (nor smaller than the window's
+ * minimum where the area allows) and moved wholly onto it. A display that is gone, or a frame the OS
+ * stretched while displays reconnected after a wake, never comes back as it was saved.
+ */
+export function fitBounds(b, area, min = {}) {
+  const width = Math.round(Math.min(Math.max(b.width || 0, min.width || 0), area.width));
+  const height = Math.round(Math.min(Math.max(b.height || 0, min.height || 0), area.height));
+  const x = Math.round(Math.min(Math.max(b.x ?? area.x + (area.width - width) / 2, area.x), area.x + area.width - width));
+  const y = Math.round(Math.min(Math.max(b.y ?? area.y + (area.height - height) / 2, area.y), area.y + area.height - height));
+  return { x, y, width, height };
+}
