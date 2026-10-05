@@ -46,6 +46,32 @@ export async function fetchLatest({ repo = REPO, fetchImpl = globalThis.fetch, u
   } finally { clearTimeout(timer); }
 }
 
+const RELEASES_PAGE = 30;
+
+/** One page of the repo's releases, newest first (the API's own order). */
+export async function fetchReleases({ repo = REPO, fetchImpl = globalThis.fetch, userAgent = 'Layover', timeoutMs = 10_000 } = {}) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    const r = await fetchImpl(`https://api.github.com/repos/${repo}/releases?per_page=${RELEASES_PAGE}`, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': userAgent }, signal: ctl.signal });
+    if (!r.ok) throw Error(`GitHub answered ${r.status}`);
+    const list = await r.json();
+    return Array.isArray(list) ? list : [];
+  } finally { clearTimeout(timer); }
+}
+
+/**
+ * The stable releases after `current` up to and including `version`, newest first, so an update
+ * shows every change since the version being replaced, not only the newest release's. `more` when
+ * the page ends before reaching `current` (someone many releases behind): the rest are on GitHub.
+ */
+export function releasesBetween(list, current, version, repo = REPO) {
+  list = Array.isArray(list) ? list : [];
+  const releases = list.map(r => parseRelease(r, current, repo)).filter(r => r && compareVersions(r.version, version) <= 0).sort((a, b) => compareVersions(b.version, a.version));
+  const reaches = list.some(r => /^v?\d/.test(String(r?.tag_name || '')) && compareVersions(r.tag_name, current) <= 0);
+  return { releases, more: !reaches && list.length >= RELEASES_PAGE };
+}
+
 /**
  * The tag of the newest stable release, read from where github.com's /releases/latest redirects. That
  * page already skips drafts and pre-releases, and unlike api.github.com it is not under the limit of
@@ -65,10 +91,10 @@ export async function fetchLatestTag({ repo = REPO, fetchImpl = globalThis.fetch
 
 /**
  * One check. Never throws: a failed check is {error} and the app stays quiet about it. The version
- * comes from github.com (fetchLatestTag); only a newer release costs an API request, for its notes,
- * and `known` (the release this check offered last time) saves even that. A refused notes request
- * still offers the update, with its notes left on GitHub. When github.com cannot be read at all, the
- * API answers alone, as it did before.
+ * comes from github.com (fetchLatestTag); only a newer release costs an API request, for the notes
+ * of every release since `current` (in `latest.releases`), and `known` (the release this check
+ * offered last time) saves even that. A refused notes request still offers the update, with its notes
+ * left on GitHub. When github.com cannot be read at all, the API answers alone, as it did before.
  */
 export async function checkForUpdate({ current, repo = REPO, fetchImpl, userAgent, known = null } = {}) {
   const checkedAt = Date.now();
@@ -84,9 +110,11 @@ export async function checkForUpdate({ current, repo = REPO, fetchImpl, userAgen
     const version = tag.replace(/^v/i, '');
     const bare = parseRelease({ tag_name: tag, html_url: `https://github.com/${repo}/releases/tag/${encodeURIComponent(tag)}` }, current, repo);
     if (!bare) return done(null, version);
-    if (known?.version === bare.version && known.notes) return done(known, version);
-    const rel = await fetchLatest({ repo, fetchImpl, userAgent }).catch(() => null);
-    return done(rel && String(rel.tag_name) === tag ? parseRelease(rel, current, repo) : bare, version);
+    if (known?.version === bare.version && known.releases?.length) return done(known, version);
+    const list = await fetchReleases({ repo, fetchImpl, userAgent }).catch(() => null);
+    const { releases, more } = releasesBetween(list, current, bare.version, repo);
+    const top = releases.find(r => r.version === bare.version);
+    return done(top ? { ...top, releases, ...(more ? { more } : {}) } : bare, version);
   } catch (e) {
     return done(null, null, e?.name === 'AbortError' ? 'timed out' : (e?.message || String(e)));
   }

@@ -706,6 +706,8 @@ body.mac .top{ padding-right:var(--s3); }
 .rail-btn.update:hover{ color:var(--accent-text); background:var(--accent-wash); }
 .rail-btn.update:disabled{ opacity:.6; cursor:default; }
 .notes-pre{ white-space:pre-wrap; font-size:13px; line-height:1.5; color:var(--text-muted); max-height:260px; overflow:auto; padding:var(--s2) var(--s3); background:var(--surface-2); border-radius:var(--r-sm); }
+.notes-pre .rn + .rn{ margin-top:var(--s2); padding-top:var(--s2); border-top:1px solid var(--border-soft); }
+.notes-pre .rn-v{ font-weight:600; color:var(--text); }
 
 /* ==========================================================
    v0.6 — tracker: every agent across projects, as a to-do list

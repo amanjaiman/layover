@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compareVersions, parseRelease, checkForUpdate, installCommand } from '../src/main/updates.js';
+import { compareVersions, parseRelease, checkForUpdate, installCommand, releasesBetween } from '../src/main/updates.js';
 
 test('versions compare numerically, pre-releases below their release', () => {
   assert.equal(compareVersions('0.5.1', '0.5.0'), 1);
@@ -24,8 +24,8 @@ test('a release is offered only when newer, released, and not a draft or pre-rel
   assert.equal(parseRelease(null, '0.5.1'), null);
 });
 
-/** A fetch that answers github.com's /releases/latest redirect with `tag` and the API with `api`, and records what was asked. */
-function github({ tag = 'v0.6.0', page = null, api = { status: 200, body: { tag_name: 'v0.6.0', body: 'Notes' } } } = {}) {
+/** A fetch that answers github.com's /releases/latest redirect with `tag` and the API with `api` (the release list; /releases/latest is its first entry), and records what was asked. */
+function github({ tag = 'v0.6.0', page = null, api = { status: 200, body: [{ tag_name: 'v0.6.0', body: 'Notes' }, { tag_name: 'v0.5.2', body: 'Older' }, { tag_name: 'v0.5.1', body: 'Mine' }] } } = {}) {
   const calls = [];
   const impl = async (url, opts = {}) => {
     calls.push(url);
@@ -35,7 +35,8 @@ function github({ tag = 'v0.6.0', page = null, api = { status: 200, body: { tag_
       return { ok: true, status: 200, url: tag ? `https://github.com/amanjaiman/layover/releases/tag/${tag}` : 'https://github.com/amanjaiman/layover/releases' };
     }
     if (api instanceof Error) throw api;
-    return { ok: api.status < 400, status: api.status, json: async () => api.body };
+    const body = url.endsWith('/releases/latest') && Array.isArray(api.body) ? api.body[0] : api.body;
+    return { ok: api.status < 400, status: api.status, json: async () => body };
   };
   return { impl, calls, api: () => calls.filter(u => u.startsWith('https://api.github.com/')).length };
 }
@@ -50,6 +51,7 @@ test('checkForUpdate reads the version from github.com and asks the API only for
   const newer = github();
   const r2 = await checkForUpdate({ current: '0.5.1', fetchImpl: newer.impl });
   assert.equal(r2.latest.version, '0.6.0'); assert.equal(r2.latest.notes, 'Notes'); assert.equal(newer.api(), 1);
+  assert.deepEqual(r2.latest.releases.map(r => [r.version, r.notes]), [['0.6.0', 'Notes'], ['0.5.2', 'Older']], 'every release since the installed one, newest first');
 
   const again = github();
   const r3 = await checkForUpdate({ current: '0.5.1', fetchImpl: again.impl, known: r2.latest });
@@ -57,6 +59,16 @@ test('checkForUpdate reads the version from github.com and asks the API only for
 
   const none = await checkForUpdate({ current: '0.5.1', fetchImpl: github({ tag: '' }).impl });
   assert.equal(none.latest, null); assert.equal(none.latestVersion, null); assert.equal(none.error, null);
+});
+
+test('releasesBetween keeps stable releases after the installed one, up to the offered one', () => {
+  const list = [{ tag_name: 'v0.7.0' }, { tag_name: 'v0.6.2-beta.1' }, { tag_name: 'v0.6.1', prerelease: true }, { tag_name: 'v0.6.0', body: 'b' }, { tag_name: 'v0.5.9', draft: true }, { tag_name: 'v0.5.8', body: 'a' }, { tag_name: 'v0.5.7' }];
+  const { releases, more } = releasesBetween(list, '0.5.7', '0.6.0');
+  assert.deepEqual(releases.map(r => r.version), ['0.6.0', '0.5.8']); assert.equal(more, false);
+  const page = Array.from({ length: 30 }, (_, i) => ({ tag_name: `v1.0.${40 - i}` }));
+  assert.equal(releasesBetween(page, '0.9.0', '1.0.40').more, true, 'a full page that never reaches the installed version');
+  assert.equal(releasesBetween(page, '1.0.20', '1.0.40').more, false);
+  assert.deepEqual(releasesBetween(null, '0.5.7', '0.6.0'), { releases: [], more: false });
 });
 
 test('a rate-limited API still offers the update, and github.com failing falls back to the API', async () => {
