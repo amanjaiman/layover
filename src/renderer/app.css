@@ -721,11 +721,11 @@ body.mac .top{ padding-right:var(--s3); }
 body.rail-collapsed .rail-mode svg{ display:block; }
 .rail-mode .lbl{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 /* compact: the same switch in the top bar, as icons (the sidebar is hidden there) */
-.top .rail-mode{ grid-template-columns:auto auto; margin:0; -webkit-app-region:no-drag; }
-.top .rail-mode .lbl{ display:none; }
-.top .rail-mode svg{ display:block; }
-.top .rail-mode{ flex:none; }
-.top .rail-mode button{ padding:5px 8px; }
+/* body.compact so these outrank the collapsed sidebar's one-column switch, which applies here too when the sidebar was left collapsed */
+body.compact .top .rail-mode{ grid-template-columns:auto auto; margin:0; width:auto; flex:none; -webkit-app-region:no-drag; }
+body.compact .top .rail-mode .lbl{ display:none; }
+body.compact .top .rail-mode svg{ display:block; }
+body.compact .top .rail-mode button{ padding:5px 8px; }
 .top .top-update{ color:var(--accent-text); }
 body.compact .top{ gap:var(--s1); }
 body.compact .top .icon-btn{ width:28px; height:28px; }
