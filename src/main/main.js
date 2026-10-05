@@ -517,7 +517,7 @@ function updateTray() {
 }
 
 // ---------- updates ----------
-// One request to api.github.com an hour (switchable off); nothing is downloaded by the app itself.
+// One request to github.com an hour (switchable off; see checkForUpdate); nothing is downloaded by the app itself.
 const UPDATE_INTERVAL = 60 * 60 * 1000;
 let update = { latest: null, latestVersion: null, checkedAt: 0, error: null, installing: false };
 // Dev only: pretend to be an older build so the update path can be exercised against the real releases.
@@ -529,7 +529,7 @@ function updateView() {
 
 async function runUpdateCheck({ manual = false } = {}) {
   if (!manual && settings.updates?.check === false) return updateView();
-  const r = await checkForUpdate({ current: appVersion(), userAgent: `Layover/${appVersion()} (${process.platform})` });
+  const r = await checkForUpdate({ current: appVersion(), userAgent: `Layover/${appVersion()} (${process.platform})`, known: update.latest });
   update = { ...update, ...r };
   log('update check', r.error ? 'failed: ' + r.error : r.latest ? `${r.latest.version} available` : `up to date (${r.latestVersion || '?'})`);
   broadcast('update', updateView());

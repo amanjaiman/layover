@@ -1534,10 +1534,16 @@
 
   function updateSheet() {
     const u = S.update; if (!u?.latest) return;
-    const notes = u.latest.notes || 'No release notes.';
+    // Every release since the one installed, newest first, so a skipped release's changes are not lost.
+    const rels = u.latest.releases?.length ? u.latest.releases : [u.latest];
+    const onGithub = 'The notes for this release are on GitHub.';
+    const notes = rels.length === 1 && !u.latest.more ? el('div', { class: 'notes-pre', text: rels[0].notes || onGithub })
+      : el('div', { class: 'notes-pre' }, ...rels.map(r => el('div', { class: 'rn' }, el('div', { class: 'rn-v', text: 'Layover ' + r.version }), el('div', { text: r.notes || onGithub }))),
+        u.latest.more ? el('div', { class: 'rn' }, el('div', { text: 'Earlier changes are on GitHub.' })) : null);
+    const since = rels.length > 1 ? ` These are the changes in the ${rels.length}${u.latest.more ? '+' : ''} releases since then.` : '';
     sheet([el('div', { class: 'sheet-h' }, el('h2', { text: 'Layover ' + u.latest.version }), el('button', { class: 'icon-btn', 'aria-label': 'Close', onclick: closeOverlay }, svg(ICON.x, 14))),
-      el('p', { class: 't-small', text: 'You have ' + u.current + '. Installing runs the same install script as a fresh install: Layover quits, the new version replaces it, the agent hooks are reconnected, and it reopens.' }),
-      el('div', { class: 'notes-pre', text: notes }),
+      el('p', { class: 't-small', text: 'You have ' + u.current + '.' + since + ' Installing runs the same install script as a fresh install: Layover quits, the new version replaces it, the agent hooks are reconnected, and it reopens.' }),
+      notes,
       el('div', { class: 'card-actions', style: 'justify-content:flex-end;flex-wrap:wrap' },
         el('button', { class: 'btn small ghost', onclick: () => api.openExternal(u.latest.url) }, 'Open on GitHub'),
         u.skipped ? null : el('button', { class: 'btn small ghost', onclick: async () => { S.update = await call(api.skipUpdate(u.latest.version)); renderUpdateButton(); closeOverlay(); } }, 'Skip this version'),

@@ -71,7 +71,9 @@ jobs:
         run: |
           set +e
           prev=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null)
-          { if [ -n "$prev" ]; then git log --no-merges --format='- %s' "$prev..${TAG}"; else git log --no-merges --format='- %s' -n 20; fi; } > release/NOTES.md
+          # The version bump is not a change anyone reads for.
+          skip=(--invert-grep --grep='^chore: release ')
+          { if [ -n "$prev" ]; then git log --no-merges "${skip[@]}" --format='- %s' "$prev..${TAG}"; else git log --no-merges "${skip[@]}" --format='- %s' -n 20; fi; } > release/NOTES.md
           cat release/NOTES.md
           exit 0
       - uses: softprops/action-gh-release@v2
