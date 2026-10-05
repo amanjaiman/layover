@@ -698,7 +698,7 @@ body.mac .top #btn-rail{ color:var(--text-faint); margin-left:calc(-1 * var(--s1
 /* the three lights span about 14–68 px, so the collapsed rail is as wide as they need, margins matched */
 body.mac.rail-collapsed .app{ grid-template-columns:82px minmax(0,1fr); }
 body.mac.compact.rail-collapsed .app{ grid-template-columns:minmax(0,1fr); }
-body.mac.compact .top{ padding-left:82px; padding-right:var(--s3); }
+body.mac.compact .top{ padding-left:94px; padding-right:var(--s3); } /* clear of the traffic lights, with room to breathe before the logo */
 body.mac .top{ padding-right:var(--s3); }
 
 /* Update available: the rail button takes the accent so it is noticed without shouting. */
@@ -718,6 +718,22 @@ body.mac .top{ padding-right:var(--s3); }
 .rail-mode svg{ flex:none; display:none; }
 body.rail-collapsed .rail-mode svg{ display:block; }
 .rail-mode .lbl{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* compact: the same switch in the top bar, as icons (the sidebar is hidden there) */
+.top .rail-mode{ grid-template-columns:auto auto; margin:0; -webkit-app-region:no-drag; }
+.top .rail-mode .lbl{ display:none; }
+.top .rail-mode svg{ display:block; }
+.top .rail-mode{ flex:none; }
+.top .rail-mode button{ padding:5px 8px; }
+.top .top-update{ color:var(--accent-text); }
+body.compact .top{ gap:var(--s1); }
+body.compact .top .icon-btn{ width:28px; height:28px; }
+body.compact .head-row{ align-items:center; gap:var(--s2); }
+/* Windows keeps 150px of the bar for its caption buttons, so a narrow companion gives up the logo first */
+@media (max-width:380px){ body.compact:not(.mac) #compact-mark{ display:none; } }
+/* sheets in the companion: less margin, so Settings' three tabs stay on one line */
+body.compact .scrim{ padding:var(--s2); }
+body.compact .sheet{ padding:var(--s4) var(--s3); max-height:calc(100vh - 24px); }
+body.compact .sheet > .seg button{ padding:0 10px; }
 body.rail-collapsed .rail-mode{ grid-template-columns:1fr; margin:var(--s1) auto 0; width:44px; }
 body.rail-collapsed .rail-mode .lbl{ display:none; }
 body.rail-collapsed .rail-mode button{ padding:6px 0; }
