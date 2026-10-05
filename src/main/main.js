@@ -1,6 +1,6 @@
 // Layover desktop app: hosts the store and the loopback service, owns the window and tray.
 // Nothing here calls a model. Incoming events never steal focus or switch an engaged user's workspace.
-import { app, BrowserWindow, Tray, Menu, nativeImage, nativeTheme, ipcMain, shell, clipboard, dialog, Notification, screen } from 'electron';
+import { app, BrowserWindow, Tray, Menu, nativeImage, nativeTheme, ipcMain, shell, clipboard, dialog, Notification, screen, powerMonitor } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Store } from './store.js';
 import { Bridge } from './bridge.js';
 import { createService } from './service.js';
-import { loadSettings, saveSettings, applySettings } from './settings.js';
+import { loadSettings, saveSettings, applySettings, fitBounds } from './settings.js';
 import { dataDir, dataRoot, logFile, APP_NAME, projectIdFromPath, projectNameFromPath, port } from './paths.js';
 import { reconcileClaudeSubagents } from './claude-subagents.js';
 import * as setup from '../cli/setup.js';
@@ -92,6 +92,9 @@ async function boot() {
   app.on('activate', () => { if (!win) createWindow({ show: true }); else reveal({ focus: true }); });
   app.on('before-quit', () => { quitting = true; });
   app.on('window-all-closed', () => { /* keep running in the tray */ });
+  powerMonitor.on('suspend', () => snapshotWindow('suspend')); powerMonitor.on('lock-screen', () => snapshotWindow('lock-screen'));
+  for (const ev of ['resume', 'unlock-screen']) powerMonitor.on(ev, () => { wokeAt = Date.now(); settleWindow(ev); });
+  for (const ev of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(ev, () => settleWindow(ev));
   nativeTheme.on('updated', () => applyTheme());
 }
 
@@ -119,7 +122,7 @@ function themeColors() {
 function createWindow({ show }) {
   const mode = settings.window.mode || 'expanded';
   const size = SIZES[mode];
-  const bounds = settings.window.bounds?.[mode] || {};
+  const bounds = savedBounds(mode) || {};
   const c = themeColors();
   win = new BrowserWindow({
     width: bounds.width || size.width, height: bounds.height || size.height, x: bounds.x, y: bounds.y,
@@ -149,12 +152,67 @@ function createWindow({ show }) {
   return win;
 }
 
+/**
+ * A mode's saved frame, fitted to the display it comes back on (that display may be gone or smaller
+ * now). A companion saved as large as the screen is a frame the OS stretched around a sleep (saved by
+ * builds before this was guarded), not the user's size, so it starts over at its default size.
+ */
+function savedBounds(mode) {
+  const b = settings.window.bounds?.[mode], size = SIZES[mode];
+  if (b?.x === undefined || !b.width || !b.height) return null;
+  const area = screen.getDisplayMatching(b).workArea;
+  const stretched = mode === 'compact' && (b.width > area.width - 16 || b.height > area.height - 16);
+  return fitBounds(stretched ? { x: b.x, y: b.y, width: size.width, height: size.height } : b, area, { width: size.minWidth, height: size.minHeight });
+}
+
+/** Save the window's own size for its mode: never a frame the OS chose around a sleep, nor the maximized or full-screen frame. */
 function rememberBounds() {
-  if (!win || win.isMinimized()) return;
+  if (!win || win.isMinimized() || waking()) return;
   const mode = settings.window.mode || 'expanded';
   settings.window.bounds ??= {};
-  settings.window.bounds[mode] = win.getBounds();
+  settings.window.bounds[mode] = win.isMaximized() || win.isFullScreen() ? win.getNormalBounds() : win.getBounds();
   saveSettings(settings);
+}
+
+// ---------- sleep and display changes ----------
+// On wake, displays come back one at a time (an external monitor can take seconds) and macOS (Windows
+// too) moves and resizes windows to fit whatever is connected at that moment. Nothing puts them back,
+// so the frame from before sleep is kept and re-applied once the display events stop.
+const WAKE_MS = 20_000;
+let preSleep = null, wokeAt = 0, settleTimer = null;
+const waking = () => !!preSleep && (!wokeAt || Date.now() - wokeAt < WAKE_MS);
+
+/** The window's frame as the user left it, taken when the system sleeps or the screen locks. */
+function snapshotWindow(reason) {
+  if (waking() || !win || win.isDestroyed() || win.isMinimized()) return;
+  const max = win.isMaximized(), full = win.isFullScreen();
+  preSleep = { mode: settings.window.mode || 'expanded', bounds: max || full ? win.getNormalBounds() : win.getBounds(), maximized: max, fullScreen: full };
+  wokeAt = 0;
+  log('window before', reason, preSleep);
+}
+
+/**
+ * After a wake (or any display change), wait for the display events to stop, then give the window back
+ * its pre-sleep frame, fitted to the display it is on now. A display change with no sleep around it
+ * (the menu bar or Dock changing the work area, a monitor plugged in) leaves a window that still fits
+ * alone, and otherwise only pulls it back onto a display at no more than that display's size.
+ */
+function settleWindow(reason) {
+  clearTimeout(settleTimer);
+  settleTimer = setTimeout(() => {
+    if (!win || win.isDestroyed() || win.isMinimized()) return;
+    const pre = waking() && preSleep.mode === (settings.window.mode || 'expanded') ? preSleep : null;
+    if (pre && !pre.fullScreen && win.isFullScreen()) win.setFullScreen(false);
+    if (pre && !pre.maximized && win.isMaximized()) win.unmaximize();
+    if (win.isFullScreen() || win.isMaximized()) return;
+    const before = win.getBounds(), area = screen.getDisplayMatching(before).workArea;
+    const fits = before.width <= area.width && before.height <= area.height && before.x < area.x + area.width && before.x + before.width > area.x && before.y < area.y + area.height && before.y + before.height > area.y;
+    if (!pre && fits) return;
+    const want = pre?.bounds || before, size = SIZES[settings.window.mode || 'expanded'];
+    const next = fitBounds(want, screen.getDisplayMatching(want).workArea, { width: size.minWidth, height: size.minHeight });
+    if (['x', 'y', 'width', 'height'].some(k => next[k] !== before[k])) win.setBounds(next, false);
+    log('window settled after', reason, { before, after: win.getBounds(), restored: !!pre });
+  }, 1500);
 }
 
 function setWindowMode(mode) {
@@ -162,7 +220,7 @@ function setWindowMode(mode) {
   rememberBounds();
   settings.window.mode = mode; saveSettings(settings);
   if (!win) return;
-  const size = SIZES[mode], b = settings.window.bounds?.[mode];
+  const size = SIZES[mode], b = savedBounds(mode);
   win.setMinimumSize(size.minWidth, size.minHeight);
   win.setSize(b?.width || size.width, b?.height || size.height, true);
   if (b?.x !== undefined) win.setPosition(b.x, b.y, true);
@@ -422,10 +480,11 @@ function togglePopover() {
   if (popoverShown && win.isVisible()) { popoverShown = false; win.hide(); return; }
   if (settings.window.mode !== 'compact') setWindowMode('compact');
   let b = tray.getBounds();
-  const cb = settings.window.bounds?.compact;
-  const size = [cb?.width || SIZES.compact.width, cb?.height || SIZES.compact.height]; // the resize above is still in flight
   const display = screen.getDisplayNearestPoint({ x: b.x, y: b.y });
   const area = display.workArea;
+  // The resize above is still in flight. A companion saved as large as the screen starts over (see savedBounds).
+  const cb = settings.window.bounds?.compact, fits = cb?.width && cb.width <= area.width - 16 && cb.height <= area.height - 16;
+  const size = fits ? [cb.width, cb.height] : [SIZES.compact.width, SIZES.compact.height];
   // Windows hides new tray icons in the overflow flyout and then reports no usable bounds; anchor to the taskbar corner instead.
   const usable = b.width > 0 && b.height > 0 && b.x >= area.x - 4 && b.x <= area.x + area.width + 4 && (b.y <= area.y + 8 || b.y >= area.y + area.height - 8);
   if (!usable) b = process.platform === 'darwin' ? { x: area.x + area.width - 30, y: area.y - 22, width: 22, height: 22 } : { x: area.x + area.width - 30, y: area.y + area.height, width: 24, height: 24 };
