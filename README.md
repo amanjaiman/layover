@@ -49,6 +49,8 @@ Uninstall from Windows Settings, or run `Uninstall Layover.exe`. Your data in `%
 
 The workspace has four views. `Ctrl+1…4` switches between them. The screenshots below use sample conversations and projects.
 
+Git linked worktrees share their main repository's workspace, including worktrees created by agents. Existing worktree history, notes, and tickets are grouped there when Git metadata is still available; the association is then remembered even after the worktree is removed. Folders whose worktree metadata was already deleted keep their existing workspace.
+
 ![Now: Codex and Claude Code conversations with a decision and a question waiting for you](docs/screenshots/now.png)
 
 **Now** — one thread per agent conversation. The header shows the agent, the conversation title, and its status. The timeline carries turns plus *Decisions*, *Input requested*, *Opportunities* and *Think ahead* items the agent left along the way.

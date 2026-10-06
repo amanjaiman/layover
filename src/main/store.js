@@ -2,7 +2,7 @@
 // Agent events are content, never commands. Every write is durable before it is acknowledged.
 import fs from 'node:fs';
 import path from 'node:path';
-import { isId } from './paths.js';
+import { isId, canonicalPath, projectPathFromPath, projectIdFromPath, projectNameFromPath, managedWorktreeRoot } from './paths.js';
 
 export const AGENTS = new Set(['codex', 'claude', 'test']);
 export const EVENT_TYPES = new Set(['session', 'start', 'heartbeat', 'item', 'end']);
@@ -93,6 +93,7 @@ export class Store {
   /** Queue a message for the agent behind a conversation. It is handed over by that agent's next hook. */
   queueMessage({ project, task, run, itemKey, text }) {
     if (!isId(project) || !isId(task)) throw Error('Invalid message target');
+    project = this.resolveProject(project);
     if (!this.tasks.has(task)) throw Error('Unknown conversation');
     if (typeof text !== 'string' || !text.trim() || text.length > MAX_TEXT) throw Error('Message must be 1-12000 characters');
     const m = { id: 'm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), project, task, run: run || null, itemKey: itemKey || null, text: text.trim(), status: 'queued', createdAt: Date.now(), deliveredAt: 0, moment: '' };
@@ -120,21 +121,70 @@ export class Store {
       if (!this.userDoc || typeof this.userDoc !== 'object' || !this.userDoc.projects) this.userDoc = { version: 1, projects: {}, manualProjects: {} };
       this.userDoc.manualProjects ??= {};
     }
+    this.userDoc.projectAliases ??= {};
+    this.managedWorktrees = new Map();
+    this.checkedProjectPaths = new Set();
+    const records = fs.existsSync(this.eventsFile) ? fs.readFileSync(this.eventsFile, 'utf8').split('\n').flatMap(line => {
+      try { const rec = JSON.parse(line); return rec?.e && rec.t ? [rec] : []; } catch { return []; }
+    }) : [];
+    for (const folder of new Set([...records.map(r => r.e.projectPath), ...Object.values(this.userDoc.manualProjects).map(m => m.path)])) this.registerManagedWorktrees(folder);
+    // Discover aliases before replay so even old events without a path are grouped.
+    for (const rec of records) this.normalizeProject(rec.e);
+    for (const [id, m] of Object.entries(this.userDoc.manualProjects)) this.normalizeProject({ project: id, projectPath: m.path });
     for (const [id, m] of Object.entries(this.userDoc.manualProjects)) {
+      if (this.resolveProject(id) !== id) {
+        const alias = this.userDoc.projectAliases[id];
+        if (!this.projects.has(alias.id)) this.projects.set(alias.id, { id: alias.id, name: alias.name, path: alias.path, createdAt: m.createdAt, lastActive: m.createdAt });
+        continue;
+      }
       if (!this.projects.has(id)) this.projects.set(id, { id, name: m.name, path: m.path || '', createdAt: m.createdAt, lastActive: m.createdAt });
     }
     if (fs.existsSync(this.eventsFile)) {
-      const lines = fs.readFileSync(this.eventsFile, 'utf8').split('\n');
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        let rec; try { rec = JSON.parse(line); } catch { continue; } // a torn final line is ignored, never fatal
-        if (!rec || !rec.e || !rec.t) continue;
+      for (const rec of records) {
         this.ids.set(rec.e.id, JSON.stringify(rec.e));
         this.apply(rec.e, rec.t);
       }
     }
     this.fd = fs.openSync(this.eventsFile, 'a');
     this.loadOutbox();
+    for (const m of this.outbox) m.project = this.resolveProject(m.project);
+  }
+
+  resolveProject(id) { return this.userDoc.projectAliases?.[id]?.id || id; }
+
+  registerManagedWorktrees(folder) {
+    if (!folder || this.checkedProjectPaths.has(folder)) return;
+    this.checkedProjectPaths.add(folder);
+    const root = managedWorktreeRoot(folder);
+    if (root) this.managedWorktrees.set(canonicalPath(root), folder);
+  }
+
+  normalizeProject(e) {
+    if (e.projectPath) {
+      this.registerManagedWorktrees(e.projectPath);
+      const managed = [...this.managedWorktrees].find(([root]) => canonicalPath(e.projectPath).startsWith(root + '/'));
+      const folder = managed ? managed[1] : projectPathFromPath(e.projectPath);
+      if (canonicalPath(folder) !== canonicalPath(e.projectPath)) {
+        const id = projectIdFromPath(folder);
+        if (id !== e.project) {
+          const changed = this.userDoc.projectAliases[e.project]?.id !== id || !!this.userDoc.projects[e.project];
+          this.userDoc.projectAliases[e.project] = { id, path: folder, name: projectNameFromPath(folder) };
+          const old = this.userDoc.projects[e.project];
+          if (old) {
+            const source = migrateUserProject(old);
+            const target = this.userProject(id);
+            if (source.notes.body) target.notes = { body: [target.notes.body, source.notes.body].filter(Boolean).join('\n\n'), revision: Math.max(target.notes.revision, source.notes.revision) + 1 };
+            for (const ticket of source.tickets) if (!target.tickets.some(t => t.id === ticket.id)) target.tickets.push({ ...ticket, number: ++target.ticketSeq });
+            for (const key of ['responses', 'dismissed', 'place']) target[key] = { ...source[key], ...target[key] };
+            delete this.userDoc.projects[e.project];
+          }
+          if (changed) this.saveUser();
+        }
+        return { ...e, project: id, projectPath: folder, projectName: projectNameFromPath(folder) };
+      }
+    }
+    const alias = this.userDoc.projectAliases[e.project];
+    return alias ? { ...e, project: alias.id, projectPath: alias.path, projectName: alias.name } : e;
   }
 
   append(e, received) {
@@ -198,6 +248,8 @@ export class Store {
       if (previous !== body) throw Error('Event ID conflict: this id was already used with different content');
       return { duplicate: true };
     }
+    const original = e;
+    e = this.normalizeProject(e);
     const task = this.tasks.get(e.task);
     if (task && (task.project !== e.project || task.agent !== e.agent)) throw Error('Task identity cannot change');
     if (e.run) {
@@ -211,7 +263,7 @@ export class Store {
     }
     this.ids.set(e.id, body);
     const change = this.apply(e, received);
-    this.append(e, received);
+    this.append(original, received);
     this.emit({ type: e.type, event: e, ...change });
     return { accepted: true, ...change };
   }
@@ -256,6 +308,7 @@ export class Store {
   }
 
   apply(e, received) {
+    e = this.normalizeProject(e);
     this.ensureProject(e, received);
     this.ensureTask(e, received);
     const change = { project: e.project };
@@ -347,9 +400,11 @@ export class Store {
   // ---------- user content (never sent anywhere by itself) ----------
   userProject(id) {
     if (!isId(id)) throw Error('Invalid project');
+    id = this.resolveProject(id);
     return migrateUserProject(this.userDoc.projects[id] ??= emptyUserProject());
   }
   projectMeta(id) {
+    id = this.resolveProject(id);
     const u = this.userDoc.projects[id] || {};
     const p = this.projects.get(id);
     return { color: u.color || 'teal', displayName: u.name || '', hidden: !!u.hidden, prefix: u.prefix || ticketPrefix(u.name || p?.name || id) };
@@ -359,6 +414,8 @@ export class Store {
   /** Create a workspace by hand (no agent yet). */
   createProject({ id, name, path: projectPath }) {
     if (!isId(id)) throw Error('Invalid project id');
+    const normalized = this.normalizeProject({ project: id, projectName: name, projectPath });
+    id = normalized.project; name = normalized.projectName; projectPath = normalized.projectPath;
     if (this.projects.has(id)) return this.projects.get(id);
     const now = Date.now();
     const p = { id, name: text(name, MAX_META, 'name', false), path: projectPath || '', createdAt: now, lastActive: now };

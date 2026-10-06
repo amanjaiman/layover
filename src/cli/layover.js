@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { projectIdFromPath, projectNameFromPath, isId, APP_NAME } from '../main/paths.js';
+import { projectPathFromPath, projectIdFromPath, projectNameFromPath, isId, APP_NAME } from '../main/paths.js';
 import { request, health, ensureApp, launch, deliver, readSettings, appLauncher } from './client.js';
 import { mapHook, resolveLatest } from './hook.js';
 import * as setup from './setup.js';
@@ -163,7 +163,7 @@ async function main() {
     const project = flags.project || projectIdFromPath(dir);
     const task = flags.task || `${flags.agent}:v_${crypto.randomUUID()}`;
     const run = flags.run || `${task}:${Date.now().toString(36)}`;
-    const base = { project, task, agent: flags.agent, projectName: flags['project-name'] || projectNameFromPath(dir), projectPath: dir };
+    const base = { project, task, agent: flags.agent, projectName: flags['project-name'] || projectNameFromPath(dir), projectPath: projectPathFromPath(dir) };
     const source = flags.source || `${{ claude: 'Claude Code', codex: 'Codex' }[flags.agent] || 'Agent'} session in ${dir}`;
     const events = [
       { ...base, id: crypto.randomUUID(), type: 'session', name: flags.title || base.projectName, source },
@@ -235,7 +235,7 @@ async function main() {
 
 function context(flags, { allowEmpty = false } = {}) {
   const ctx = {};
-  if (flags.path) { const dir = path.resolve(flags.path); ctx.project = projectIdFromPath(dir); ctx.projectName = projectNameFromPath(dir); ctx.projectPath = dir; }
+  if (flags.path) { const dir = path.resolve(flags.path); ctx.project = projectIdFromPath(dir); ctx.projectName = projectNameFromPath(dir); ctx.projectPath = projectPathFromPath(dir); }
   if (flags.project) ctx.project = flags.project;
   if (flags.task) ctx.task = flags.task;
   if (flags.run) ctx.run = flags.run;
