@@ -390,8 +390,9 @@ function broadcast(channel, payload) { if (win && !win.isDestroyed()) win.webCon
 async function handleOpen(ctx, { explicit }) {
   const clean = {};
   for (const k of ['project', 'task', 'run', 'reason']) if (typeof ctx?.[k] === 'string' && ctx[k].length <= 180) clean[k] = ctx[k];
+  if (clean.project) clean.project = store.resolveProject(clean.project);
   if (ctx?.projectPath && !store.projects.has(clean.project)) {
-    try { store.createProject({ id: projectIdFromPath(ctx.projectPath), name: projectNameFromPath(ctx.projectPath), path: ctx.projectPath }); clean.project = projectIdFromPath(ctx.projectPath); } catch (e) { log('open: cannot create project', e.message); }
+    try { clean.project = store.createProject({ id: projectIdFromPath(ctx.projectPath), name: projectNameFromPath(ctx.projectPath), path: ctx.projectPath }).id; } catch (e) { log('open: cannot create project', e.message); }
   }
   // An explicit open (the user asked the agent, or clicked a notification) is the one case that takes focus.
   const engaged = uiEngaged || (win?.isFocused() && Date.now() - lastInteraction < 60_000);

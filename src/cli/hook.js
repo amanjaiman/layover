@@ -1,6 +1,6 @@
 // Maps Claude Code / Codex lifecycle hook JSON (stdin) to Layover events. Deterministic; no model involved.
 import crypto from 'node:crypto';
-import { projectIdFromPath, projectNameFromPath } from '../main/paths.js';
+import { projectPathFromPath, projectIdFromPath, projectNameFromPath } from '../main/paths.js';
 
 const AGENT_LABEL = { claude: 'Claude Code', codex: 'Codex' };
 
@@ -36,7 +36,7 @@ export function mapHook(agent, input, { hookContext = true, host = null, threadT
   const source = agent === 'claude'
     ? `Claude Code session ${session}\nResume in that folder with: claude --resume ${session}`
     : `Codex session ${session}\nResume with: codex resume ${session}`;
-  const base = { project, task, agent, projectName, projectPath: cwd };
+  const base = { project, task, agent, projectName, projectPath: projectPathFromPath(cwd) };
   const now = Date.now();
   const turn = input.prompt_id || input.turn_id || '';
   const run = turn ? `${task}:${turn}` : '';

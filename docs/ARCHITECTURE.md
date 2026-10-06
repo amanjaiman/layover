@@ -33,7 +33,7 @@ Packaged layout, Windows: `<install>\Layover.exe`, `<install>\bin\layover.cmd` (
 
 ## Identity
 
-- **project**: `p_` + sha1 of the canonical folder path (lower-cased, forward slashes). Same folder, same workspace, for every agent. Manual workspaces get `m_…`.
+- **project**: `p_` + sha1 of the canonical folder path (lower-cased, forward slashes). Same folder, same workspace, for every agent. A Git linked worktree resolves to its main repository's folder first (`projectPathFromPath` in `src/main/paths.js`). Older ids derived from a worktree folder are kept in `events.jsonl` as sent and mapped on load through `projectAliases` in `user.json`; the README describes the grouping rules. Manual workspaces get `m_…`.
 - **task**: `<agent>:<session id>`, one per conversation.
 - **run**: `<task>:<prompt or turn id>`, one per period of execution.
 
