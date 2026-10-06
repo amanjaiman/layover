@@ -167,6 +167,13 @@ export class Store {
   }
 
   normalizeProject(e) {
+    const { event, alias } = this.resolveEvent(e);
+    if (alias) this.adoptAlias(alias);
+    return event;
+  }
+
+  /** Where an event belongs, without changing anything. `alias` is set when a legacy id should be grouped. */
+  resolveEvent(e) {
     if (e.projectPath) {
       this.registerManagedWorktrees(e.projectPath);
       const key = canonicalPath(e.projectPath);
@@ -175,24 +182,40 @@ export class Store {
       // Only ids an older release derived from this exact folder are grouped; chosen ids keep their workspace.
       if (canonicalPath(folder) !== key && e.project === folderId(e.projectPath)) {
         const id = folderId(folder), name = path.basename(folder) || folder;
-        const changed = this.userDoc.projectAliases[e.project]?.id !== id || !!this.userDoc.projects[e.project];
-        this.userDoc.projectAliases[e.project] = { id, path: folder, name };
-        const old = this.userDoc.projects[e.project];
-        if (old) {
-          const source = migrateUserProject(old);
-          const target = this.userProject(id);
-          if (source.notes.body) target.notes = { body: [target.notes.body, source.notes.body].filter(Boolean).join('\n\n'), revision: Math.max(target.notes.revision, source.notes.revision) + 1 };
-          for (const ticket of source.tickets) if (!target.tickets.some(t => t.id === ticket.id)) target.tickets.push({ ...ticket, number: ++target.ticketSeq });
-          for (const k of ['responses', 'dismissed', 'place']) target[k] = { ...source[k], ...target[k] };
-          for (const k of ['color', 'name', 'prefix']) if (source[k] && !target[k]) target[k] = source[k];
-          delete this.userDoc.projects[e.project];
-        }
-        if (changed) this.saveUser();
-        return { ...e, project: id, projectPath: folder, projectName: name };
+        return { event: { ...e, project: id, projectPath: folder, projectName: name }, alias: { from: e.project, id, path: folder, name } };
       }
     }
     const alias = this.userDoc.projectAliases[e.project];
-    return alias ? { ...e, project: alias.id, projectPath: alias.path, projectName: alias.name } : e;
+    return { event: alias ? { ...e, project: alias.id, projectPath: alias.path, projectName: alias.name } : e, alias: null };
+  }
+
+  /** Record a legacy id as part of its main workspace and move everything filed under it there. */
+  adoptAlias({ from, id, path: folder, name }) {
+    const changed = this.userDoc.projectAliases[from]?.id !== id || !!this.userDoc.projects[from];
+    if (!changed && !this.projects.has(from)) return;
+    this.userDoc.projectAliases[from] = { id, path: folder, name };
+    const old = this.userDoc.projects[from];
+    if (old) {
+      const source = migrateUserProject(old);
+      const target = this.userProject(id);
+      if (source.notes.body) target.notes = { body: [target.notes.body, source.notes.body].filter(Boolean).join('\n\n'), revision: Math.max(target.notes.revision, source.notes.revision) + 1 };
+      for (const ticket of source.tickets) if (!target.tickets.some(t => t.id === ticket.id)) target.tickets.push({ ...ticket, number: ++target.ticketSeq });
+      for (const k of ['responses', 'dismissed', 'place']) target[k] = { ...source[k], ...target[k] };
+      for (const k of ['color', 'name', 'prefix']) if (source[k] && !target[k]) target[k] = source[k];
+      delete this.userDoc.projects[from];
+    }
+    if (changed) this.saveUser();
+    const project = this.projects.get(from);
+    if (project) {
+      this.projects.delete(from);
+      const target = this.projects.get(id);
+      if (target) { target.createdAt = Math.min(target.createdAt, project.createdAt); target.lastActive = Math.max(target.lastActive, project.lastActive); }
+      else this.projects.set(id, { ...project, id, name, path: folder });
+    }
+    for (const map of [this.tasks, this.runs, this.items, this.subagents]) for (const x of map.values()) if (x.project === from) x.project = id;
+    const queued = this.outbox.filter(m => m.project === from);
+    for (const m of queued) m.project = id;
+    if (queued.length) this.saveOutbox();
   }
 
   append(e, received) {
@@ -257,18 +280,21 @@ export class Store {
       return { duplicate: true };
     }
     const original = e;
-    e = this.normalizeProject(e);
+    const resolved = this.resolveEvent(e);
+    e = resolved.event;
+    const projectOf = id => id === resolved.alias?.from ? resolved.alias.id : id;
     const task = this.tasks.get(e.task);
-    if (task && (task.project !== e.project || task.agent !== e.agent)) throw Error('Task identity cannot change');
+    if (task && (projectOf(task.project) !== e.project || task.agent !== e.agent)) throw Error('Task identity cannot change');
     if (e.run) {
       const run = this.runs.get(e.run);
-      if (run && (run.project !== e.project || run.task !== e.task || run.agent !== e.agent)) throw Error('Run identity cannot change');
+      if (run && (projectOf(run.project) !== e.project || run.task !== e.task || run.agent !== e.agent)) throw Error('Run identity cannot change');
       if (e.type === 'end' && run && run.seq === e.seq && run.status !== 'active' && run.status !== e.status) throw Error('Terminal sequence conflict');
       if (e.type === 'item') {
         const old = this.items.get(e.run + ':' + e.item);
         if (old && old.revision === e.revision && (old.text !== e.text || old.status !== e.status || old.kind !== e.kind)) throw Error('Item revision conflict');
       }
     }
+    if (resolved.alias) this.adoptAlias(resolved.alias);
     this.ids.set(e.id, body);
     const change = this.apply(e, received);
     this.append(original, received);

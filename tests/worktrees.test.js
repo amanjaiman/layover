@@ -104,3 +104,45 @@ test('explicitly chosen workspace ids are never merged into the main project', t
     assert.ok(!store.state().projects.some(p => p.id === projectIdFromPath(main)));
   } finally { store.close(); }
 });
+
+test('a running checkout conversation moves to the main project when its root is discovered later', t => {
+  const { dir, main } = fixture(t);
+  const remote = path.join(dir, '.no-mistakes', 'repos', 'abc.git');
+  fs.writeFileSync(path.join(main, '.git', 'config'), `[remote "no-mistakes"]\n url = ${remote.replaceAll('\\', '/')}\n`);
+  const checkout = path.join(dir, '.no-mistakes', 'worktrees', 'abc', '01M47GSPTE9E9');
+  fs.mkdirSync(checkout, { recursive: true });
+  const old = folderId(checkout), parent = projectIdFromPath(main);
+  const data = path.join(dir, 'data'); fs.mkdirSync(data);
+  let store = new Store(data);
+  const base = { agent: 'claude', project: old, projectPath: checkout, task: 'claude:s1', run: 'r1' };
+  store.event({ ...base, id: 'e1', type: 'session' });
+  store.event({ ...base, id: 'e2', type: 'start', seq: 0, lifecycle: 'hooks' });
+  store.event({ ...base, id: 'e3', type: 'item', seq: 1, item: 'i1', revision: 1, kind: 'decision', status: 'open', text: 'before' });
+  store.event({ ...base, id: 'e4', type: 'session', seq: 2, subagentId: 'sub1', subagentStatus: 'active' });
+  store.setNotes(old, 'checkout notes', 0);
+  store.queueMessage({ project: old, task: base.task, text: 'hello' });
+  assert.equal(store.state().projects[0].id, old);
+
+  store.event({ id: 'm1', type: 'session', agent: 'claude', project: parent, projectPath: main, task: 'claude:main' });
+  assert.throws(() => store.event({ ...base, id: 'bad', type: 'heartbeat', seq: 3, agent: 'codex' }), /Task identity/);
+  assert.equal(store.resolveProject(old), old);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'user.json'), 'utf8')).projects[old].notes.body, 'checkout notes');
+
+  assert.equal(store.event({ ...base, id: 'e5', type: 'heartbeat', seq: 3 }).accepted, true);
+  store.event({ ...base, id: 'e6', type: 'item', seq: 4, item: 'i2', revision: 1, kind: 'question', status: 'open', text: 'after' });
+  store.event({ ...base, id: 'e7', type: 'end', seq: 5, status: 'completed' });
+  const check = () => {
+    const s = store.state();
+    assert.deepEqual(s.projects.map(p => p.id), [parent]);
+    assert.ok(s.tasks.every(x => x.project === parent));
+    assert.deepEqual(s.runs.map(r => [r.project, r.status]), [[parent, 'completed']]);
+    assert.deepEqual(s.items.map(i => i.project), [parent, parent]);
+    assert.deepEqual(s.subagents.map(c => c.project), [parent]);
+    assert.deepEqual(s.outbox.map(m => m.project), [parent]);
+    assert.equal(store.user(parent).notes.body, 'checkout notes');
+  };
+  check();
+  store.close();
+  store = new Store(data);
+  try { check(); } finally { store.close(); }
+});
