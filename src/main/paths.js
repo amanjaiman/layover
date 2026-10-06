@@ -38,16 +38,20 @@ export function projectPathFromPath(p) {
   const original = path.resolve(String(p));
   for (let dir = original; ; dir = path.dirname(dir)) {
     const marker = path.join(dir, '.git');
-    try {
-      if (fs.statSync(marker).isDirectory()) return original;
-      const match = /^gitdir:\s*(.+)\s*$/m.exec(fs.readFileSync(marker, 'utf8'));
-      if (!match) return original;
-      const gitDir = path.resolve(dir, match[1].trim());
-      const common = path.resolve(gitDir, fs.readFileSync(path.join(gitDir, 'commondir'), 'utf8').trim());
-      // Submodules have a gitdir file too, but no linked-worktree commondir.
-      if (path.basename(common) === '.git' && fs.statSync(common).isDirectory()) return path.dirname(common);
+    let stat = null;
+    try { stat = fs.statSync(marker); } catch { /* no marker here: keep walking up */ }
+    if (stat?.isDirectory()) return original;
+    if (stat) {
+      try {
+        const match = /^gitdir:\s*(.+)\s*$/m.exec(fs.readFileSync(marker, 'utf8'));
+        if (!match) return original;
+        const gitDir = path.resolve(dir, match[1].trim());
+        const common = path.resolve(gitDir, fs.readFileSync(path.join(gitDir, 'commondir'), 'utf8').trim());
+        // Submodules have a gitdir file too, but no linked-worktree commondir.
+        if (path.basename(common) === '.git' && fs.statSync(common).isDirectory()) return path.dirname(common);
+      } catch { /* missing or unreadable metadata: retain the existing identity */ }
       return original;
-    } catch { /* missing or unreadable metadata: retain the existing identity */ }
+    }
     if (path.dirname(dir) === dir) return original;
   }
 }
@@ -65,7 +69,12 @@ export function managedWorktreeRoot(p) {
 
 /** Stable project id derived from a folder path. Same folder → same workspace, for every agent. */
 export function projectIdFromPath(p) {
-  return 'p_' + crypto.createHash('sha1').update(canonicalPath(projectPathFromPath(p))).digest('hex').slice(0, 16);
+  return folderId(projectPathFromPath(p));
+}
+
+/** Id of exactly this folder, without worktree resolution. Older releases derived every id this way. */
+export function folderId(p) {
+  return 'p_' + crypto.createHash('sha1').update(canonicalPath(p)).digest('hex').slice(0, 16);
 }
 
 export function projectNameFromPath(p) {

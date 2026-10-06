@@ -49,7 +49,7 @@ Uninstall from Windows Settings, or run `Uninstall Layover.exe`. Your data in `%
 
 The workspace has four views. `Ctrl+1…4` switches between them. The screenshots below use sample conversations and projects.
 
-Git linked worktrees share their main repository's workspace, including worktrees created by agents. Existing worktree history, notes, and tickets are grouped there when Git metadata is still available; the association is then remembered even after the worktree is removed. Folders whose worktree metadata was already deleted keep their existing workspace.
+Git linked worktrees share their main repository's workspace, including worktrees created by agents. Existing worktree history, notes, and tickets are grouped there when Git metadata is still available; the association is then remembered even after the worktree is removed. Checkouts made by no-mistakes are grouped even after they are deleted: Layover reads the main repository's `no-mistakes` remote, which points at `~/.no-mistakes/repos/<id>.git`, and treats every folder under `~/.no-mistakes/worktrees/<id>/` as part of that repository. Other folders whose worktree metadata was already deleted keep their existing workspace. Only workspaces Layover named after the worktree folder are merged; a workspace you created or chose with `--project` keeps its own identity. When a worktree workspace is merged, its color, name, and ticket prefix carry over only where the main workspace has none.
 
 ![Now: Codex and Claude Code conversations with a decision and a question waiting for you](docs/screenshots/now.png)
 

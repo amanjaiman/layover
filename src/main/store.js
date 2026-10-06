@@ -2,7 +2,7 @@
 // Agent events are content, never commands. Every write is durable before it is acknowledged.
 import fs from 'node:fs';
 import path from 'node:path';
-import { isId, canonicalPath, projectPathFromPath, projectIdFromPath, projectNameFromPath, managedWorktreeRoot } from './paths.js';
+import { isId, canonicalPath, projectPathFromPath, folderId, managedWorktreeRoot } from './paths.js';
 
 export const AGENTS = new Set(['codex', 'claude', 'test']);
 export const EVENT_TYPES = new Set(['session', 'start', 'heartbeat', 'item', 'end']);
@@ -124,12 +124,13 @@ export class Store {
     this.userDoc.projectAliases ??= {};
     this.managedWorktrees = new Map();
     this.checkedProjectPaths = new Set();
+    this.projectFolders = new Map();
     const records = fs.existsSync(this.eventsFile) ? fs.readFileSync(this.eventsFile, 'utf8').split('\n').flatMap(line => {
       try { const rec = JSON.parse(line); return rec?.e && rec.t ? [rec] : []; } catch { return []; }
     }) : [];
     for (const folder of new Set([...records.map(r => r.e.projectPath), ...Object.values(this.userDoc.manualProjects).map(m => m.path)])) this.registerManagedWorktrees(folder);
     // Discover aliases before replay so even old events without a path are grouped.
-    for (const rec of records) this.normalizeProject(rec.e);
+    const normalized = records.map(rec => rec.e.projectPath ? this.normalizeProject(rec.e) : null);
     for (const [id, m] of Object.entries(this.userDoc.manualProjects)) this.normalizeProject({ project: id, projectPath: m.path });
     for (const [id, m] of Object.entries(this.userDoc.manualProjects)) {
       if (this.resolveProject(id) !== id) {
@@ -140,10 +141,10 @@ export class Store {
       if (!this.projects.has(id)) this.projects.set(id, { id, name: m.name, path: m.path || '', createdAt: m.createdAt, lastActive: m.createdAt });
     }
     if (fs.existsSync(this.eventsFile)) {
-      for (const rec of records) {
+      records.forEach((rec, i) => {
         this.ids.set(rec.e.id, JSON.stringify(rec.e));
-        this.apply(rec.e, rec.t);
-      }
+        this.apply(normalized[i] || this.normalizeProject(rec.e), rec.t);
+      });
     }
     this.fd = fs.openSync(this.eventsFile, 'a');
     this.loadOutbox();
@@ -159,28 +160,35 @@ export class Store {
     if (root) this.managedWorktrees.set(canonicalPath(root), folder);
   }
 
+  projectFolder(p, key) {
+    let folder = this.projectFolders.get(key);
+    if (folder === undefined) this.projectFolders.set(key, folder = projectPathFromPath(p));
+    return folder;
+  }
+
   normalizeProject(e) {
     if (e.projectPath) {
       this.registerManagedWorktrees(e.projectPath);
-      const managed = [...this.managedWorktrees].find(([root]) => canonicalPath(e.projectPath).startsWith(root + '/'));
-      const folder = managed ? managed[1] : projectPathFromPath(e.projectPath);
-      if (canonicalPath(folder) !== canonicalPath(e.projectPath)) {
-        const id = projectIdFromPath(folder);
-        if (id !== e.project) {
-          const changed = this.userDoc.projectAliases[e.project]?.id !== id || !!this.userDoc.projects[e.project];
-          this.userDoc.projectAliases[e.project] = { id, path: folder, name: projectNameFromPath(folder) };
-          const old = this.userDoc.projects[e.project];
-          if (old) {
-            const source = migrateUserProject(old);
-            const target = this.userProject(id);
-            if (source.notes.body) target.notes = { body: [target.notes.body, source.notes.body].filter(Boolean).join('\n\n'), revision: Math.max(target.notes.revision, source.notes.revision) + 1 };
-            for (const ticket of source.tickets) if (!target.tickets.some(t => t.id === ticket.id)) target.tickets.push({ ...ticket, number: ++target.ticketSeq });
-            for (const key of ['responses', 'dismissed', 'place']) target[key] = { ...source[key], ...target[key] };
-            delete this.userDoc.projects[e.project];
-          }
-          if (changed) this.saveUser();
+      const key = canonicalPath(e.projectPath);
+      const managed = [...this.managedWorktrees].find(([root]) => key.startsWith(root + '/'));
+      const folder = managed ? managed[1] : this.projectFolder(e.projectPath, key);
+      // Only ids an older release derived from this exact folder are grouped; chosen ids keep their workspace.
+      if (canonicalPath(folder) !== key && e.project === folderId(e.projectPath)) {
+        const id = folderId(folder), name = path.basename(folder) || folder;
+        const changed = this.userDoc.projectAliases[e.project]?.id !== id || !!this.userDoc.projects[e.project];
+        this.userDoc.projectAliases[e.project] = { id, path: folder, name };
+        const old = this.userDoc.projects[e.project];
+        if (old) {
+          const source = migrateUserProject(old);
+          const target = this.userProject(id);
+          if (source.notes.body) target.notes = { body: [target.notes.body, source.notes.body].filter(Boolean).join('\n\n'), revision: Math.max(target.notes.revision, source.notes.revision) + 1 };
+          for (const ticket of source.tickets) if (!target.tickets.some(t => t.id === ticket.id)) target.tickets.push({ ...ticket, number: ++target.ticketSeq });
+          for (const k of ['responses', 'dismissed', 'place']) target[k] = { ...source[k], ...target[k] };
+          for (const k of ['color', 'name', 'prefix']) if (source[k] && !target[k]) target[k] = source[k];
+          delete this.userDoc.projects[e.project];
         }
-        return { ...e, project: id, projectPath: folder, projectName: projectNameFromPath(folder) };
+        if (changed) this.saveUser();
+        return { ...e, project: id, projectPath: folder, projectName: name };
       }
     }
     const alias = this.userDoc.projectAliases[e.project];
@@ -308,7 +316,6 @@ export class Store {
   }
 
   apply(e, received) {
-    e = this.normalizeProject(e);
     this.ensureProject(e, received);
     this.ensureTask(e, received);
     const change = { project: e.project };
