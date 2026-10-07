@@ -1348,7 +1348,16 @@
   }
 
   // ---------- sheets ----------
-  function sheet(content) { $('#overlay').textContent = ''; const scrim = el('div', { class: 'scrim', onclick: e => { if (e.target === scrim) closeOverlay(); } }, el('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true' }, ...content)); $('#overlay').append(scrim); return scrim; }
+  /**
+   * A modal sheet. The rounded card never scrolls itself: its content does, inside it, so the scrollbar
+   * stays within the card's corners. head stays put above the scrolling part (Settings: title and tabs).
+   */
+  function sheet(content, { head } = {}) {
+    $('#overlay').textContent = '';
+    const card = el('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true' }, head ? el('div', { class: 'sheet-top' }, ...head) : null, el('div', { class: 'sheet-in' + (head ? ' under-top' : '') }, ...content));
+    const scrim = el('div', { class: 'scrim', onclick: e => { if (e.target === scrim) closeOverlay(); } }, card);
+    $('#overlay').append(scrim); return scrim;
+  }
   /** Close whatever sheet is open; it scales back down before it goes. A sheet opened meanwhile is left alone. */
   function closeOverlay() {
     for (const s of [...$('#overlay').children]) { if (s.classList.contains('is-closing')) continue; s.classList.add('is-closing'); s.inert = true; setTimeout(() => s.remove(), 150); }
@@ -1491,9 +1500,9 @@
     const body = el('div', { class: 'sheet-body' });
     const TABS = { workspace: 'Workspace', agents: 'Agents', preferences: 'Preferences' };
     const relabel = () => { for (const b of tabs.querySelectorAll('[data-v]')) b.textContent = T(TABS[b.dataset.v]); }; // a style change renames the tabs in place
-    const tabs = seg(Object.entries(TABS).map(([v, label]) => [v, T(label)]), current, v => { current = v; S.settingsTab = v; body.textContent = ''; body.append(...panes[v]()); });
+    const tabs = seg(Object.entries(TABS).map(([v, label]) => [v, T(label)]), current, v => { current = v; S.settingsTab = v; body.textContent = ''; body.append(...panes[v]()); body.parentElement.scrollTop = 0; });
     body.append(...panes[current]());
-    sheet([el('div', { class: 'sheet-h' }, el('h2', { text: 'Settings' }), el('button', { class: 'icon-btn', 'aria-label': 'Close', onclick: closeOverlay }, svg(ICON.x, 14))), tabs, body]);
+    sheet([body], { head: [el('div', { class: 'sheet-h' }, el('h2', { text: 'Settings' }), el('button', { class: 'icon-btn', 'aria-label': 'Close', onclick: closeOverlay }, svg(ICON.x, 14))), tabs] });
   }
 
   // ---------- updates ----------

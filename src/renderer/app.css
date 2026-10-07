@@ -241,7 +241,12 @@ details.more summary:hover{ color:var(--text); }
 /* sheets, toasts */
 .scrim{ position:fixed; inset:0; background:rgba(20,22,20,.28); z-index:80; display:grid; place-items:center; padding:var(--s4); animation:fade var(--dur-calm) var(--ease-out); }
 @keyframes fade{ from{ opacity:0;} to{ opacity:1;} }
-.sheet{ background:var(--surface); border-radius:var(--r-xl); box-shadow:var(--e3); width:min(600px, 100%); max-height:calc(100vh - 48px); overflow:auto; padding:var(--s5); display:grid; gap:var(--s4); animation:land var(--dur-calm) var(--ease-out); }
+/* The card clips; .sheet-in scrolls inside it, its scrollbar kept clear of the rounded corners. */
+.sheet{ background:var(--surface); border-radius:var(--r-xl); box-shadow:var(--e3); width:min(600px, 100%); max-height:calc(100vh - 48px); overflow:hidden; display:flex; flex-direction:column; animation:land var(--dur-calm) var(--ease-out); }
+.sheet-top{ flex:none; display:grid; gap:var(--s4); padding:var(--s5) var(--s5) var(--s3); border-bottom:1px solid var(--border-soft); }
+.sheet-in{ flex:1 1 auto; min-height:0; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; padding:var(--s5); display:grid; align-content:start; gap:var(--s4); }
+.sheet-in.under-top{ padding-top:var(--s3); }
+.sheet-in::-webkit-scrollbar-track{ margin:var(--r-lg) 0; }
 .sheet h2{ font-family:var(--f-display); font-weight:600; font-size:24px; letter-spacing:-.016em; }
 .sheet-sec{ display:grid; gap:var(--s2); }
 .sheet-sec h3{ font-family:var(--f-display); font-weight:600; font-size:15px; margin-top:var(--s2); }
@@ -431,7 +436,7 @@ body.rail-collapsed .rail-btn{ width:44px; height:36px; margin:0 auto; }
 .tk-detail-c .input.small{ max-width:100%; }
 /* settings */
 .sheet-h{ display:flex; align-items:center; justify-content:space-between; gap:var(--s2); }
-.sheet > .seg{ justify-self:start; }
+.sheet-top > .seg, .sheet-in > .seg{ justify-self:start; }
 .sheet-body{ display:grid; gap:var(--s4); min-height:220px; }
 .sheet-sec > .switch:first-child{ border-top:none; }
 .sheet .switch .input{ max-width:60%; }
@@ -458,7 +463,7 @@ body.rail-collapsed .rail-btn{ width:44px; height:36px; margin:0 auto; }
 .tk-detail-c .input.small{ max-width:100%; }
 /* settings */
 .sheet-h{ display:flex; align-items:center; justify-content:space-between; gap:var(--s2); }
-.sheet > .seg{ justify-self:start; }
+.sheet-top > .seg, .sheet-in > .seg{ justify-self:start; }
 .sheet-body{ display:grid; gap:var(--s4); min-height:220px; }
 .sheet-sec > .switch:first-child{ border-top:none; }
 .sheet .switch .input{ max-width:60%; }
@@ -508,7 +513,6 @@ body.compact .break-timer{ gap:var(--s2); }
 .break > .section-h{ margin-bottom:0; }
 .seg{ flex:none; }
 .seg button{ white-space:nowrap; }
-.sheet{ overflow-x:hidden; }
 .sheet .seg{ flex-wrap:wrap; max-width:100%; }
 .sheet .switch{ flex-wrap:wrap; }
 .sheet .switch .input{ max-width:100%; }
@@ -734,8 +738,11 @@ body.compact .head-row{ align-items:center; gap:var(--s2); }
 @media (max-width:380px){ body.compact:not(.mac) #compact-mark{ display:none; } }
 /* sheets in the companion: less margin, so Settings' three tabs stay on one line */
 body.compact .scrim{ padding:var(--s2); }
-body.compact .sheet{ padding:var(--s4) var(--s3); max-height:calc(100vh - 24px); }
-body.compact .sheet > .seg button{ padding:0 10px; }
+body.compact .sheet{ max-height:calc(100vh - 24px); }
+body.compact .sheet-in{ padding:var(--s4) var(--s3); }
+body.compact .sheet-in.under-top{ padding-top:var(--s3); }
+body.compact .sheet-top{ padding:var(--s4) var(--s3) var(--s3); }
+body.compact .sheet-top > .seg button{ padding:0 10px; }
 body.rail-collapsed .rail-mode{ grid-template-columns:1fr; margin:var(--s1) auto 0; width:44px; }
 body.rail-collapsed .rail-mode .lbl{ display:none; }
 body.rail-collapsed .rail-mode button{ padding:6px 0; }
