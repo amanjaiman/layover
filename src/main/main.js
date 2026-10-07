@@ -134,7 +134,7 @@ function createWindow({ show }) {
     // Windows: hidden title bar with the native caption buttons overlaid. macOS: inset traffic lights.
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
     ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 14, y: 13 } } : { titleBarOverlay: { color: c.overlay, symbolColor: c.symbol, height: 42 } }),
-    webPreferences: { preload: path.join(here, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: true },
+    webPreferences: { preload: path.join(here, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: true, autoplayPolicy: 'no-user-gesture-required' }, // the finish sound plays while the window is hidden
   });
   win.removeMenu();
   win.loadFile(path.join(repoRoot, 'src', 'renderer', 'index.html'));
