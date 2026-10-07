@@ -11,7 +11,8 @@ export const DEFAULTS = {
   accent: 'teal',                  // teal | ink | mulberry | ember | oxblood | umber (foundations v0.7)
   style: 'default',                // default | flight: airport words and a departures-board look; copy and styling only, never behaviour
   openOnRunStart: 'focus',         // focus: bring Layover forward | open: show it behind your work | reveal: only if already open | never
-  notifyOnComplete: true,          // Windows toast when a run finishes
+  notifyOnComplete: true,          // a silent system notification when a run finishes and Layover is not in front
+  sound: { enabled: false, tone: 'chime' }, // a short sound when a run finishes, made in the renderer; chime | cabin | pop
   closeToTray: true,               // closing the window keeps Layover in the tray
   trayPopover: process.platform === 'darwin', // tray / menu-bar click opens the compact companion as a popover
   hookContext: true,               // hooks print one short line so the agent knows the run id
@@ -19,6 +20,8 @@ export const DEFAULTS = {
   updates: { check: true, skip: '' }, // check: ask GitHub for the latest release every hour (the only outbound request); skip: a version the user chose to ignore
   window: { mode: 'expanded' },
 };
+
+export const TONES = ['chime', 'cabin', 'pop'];
 
 export function loadSettings(file = settingsFile) {
   let s = {};
@@ -58,6 +61,12 @@ export function validateSettings(patch) {
     if (b.enabled !== undefined) out.breakReminder.enabled = !!b.enabled;
     if (b.minutes !== undefined) { if (![15, 30, 45, 60, 90].includes(Number(b.minutes))) throw Error('Invalid interval'); out.breakReminder.minutes = Number(b.minutes); }
     if (b.mode !== undefined) { if (!['suggest', 'auto'].includes(b.mode)) throw Error('Invalid reminder mode'); out.breakReminder.mode = b.mode; }
+  }
+  if (patch.sound !== undefined) {
+    const v = patch.sound || {};
+    out.sound = {};
+    if (v.enabled !== undefined) out.sound.enabled = !!v.enabled;
+    if (v.tone !== undefined) { if (!TONES.includes(v.tone)) throw Error('Invalid sound'); out.sound.tone = v.tone; }
   }
   if (patch.updates !== undefined) {
     const u = patch.updates || {};

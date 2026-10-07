@@ -73,7 +73,7 @@ Git linked worktrees share their main repository's workspace, including worktree
 
 ![Tracker: conversations across projects grouped by what needs attention](docs/screenshots/tracker.png)
 
-**Tracker** — a cross-project view of every Claude Code and Codex conversation. Switch to it at the top of the sidebar (`Ctrl+Shift+T`, or the tray menu) to see *Waiting on you*, then *Ready*, *Working*, and *Idle*. Sort by project to see each repo's agents together.
+**Tracker** — a cross-project view of every Claude Code and Codex conversation. Switch to it at the top of the sidebar (`Ctrl+Shift+T`, or the tray menu) to see *Waiting on you*, then *Ready*, *Working*, and *Idle*. Sort by project to see each repo's agents together. **Clear idle** (in the flight style, *Send parked to the hangar*) clears every idle conversation from the list at once, with an Undo.
 
 A conversation stays Working while any of its subagents are active; its header in Now shows a small `↳ N` count of working subagents. Expanding its Tracker row shows working, *No signal* and stopped children first, with finished children summarized as a count. Subagents and turns have separate collapse controls.
 
@@ -89,6 +89,7 @@ A conversation stays Working while any of its subagents are active; its header i
 - **Keyboard** — `Ctrl+Shift+T` tracker, `n` new in Next, `r` reply to the latest item, `j`/`k` through Next, `e` edit, `Esc` close, `[` collapse the sidebar, `?` for the full list.
 - **Flight style** — Settings → Appearance has a style switch next to theme and accent: the cup is the everyday look, the plane dresses the whole app as an airport. Now becomes *Arrivals*, Next *Departures*, Notes the *Logbook*, Break the *Lounge*; workspaces are *Gates*, the Tracker is the *Tower* with a departures-board header, working agents are *In flight* and finished ones *At the gate*. Every button and shortcut works the same way.
 - **Focus** — the start of a turn is the one moment Layover comes forward, because you just pressed Enter and are waiting. Items and completions never move the window. Settings → *When an agent starts a turn* offers: come forward (default), open behind my work, only if already open, stay quiet.
+- **When a turn finishes** — a silent notification while Layover is behind your work (on by default), and, if you turn it on, a short sound wherever you are: a chime, a cabin chime or a soft pop, a note lower when the turn stopped with an error or went quiet. Turns you interrupt yourself make no sound.
 
 <p align="center"><img src="docs/screenshots/compact.png" alt="The compact companion window" width="320"></p>
 

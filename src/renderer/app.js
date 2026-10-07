@@ -382,6 +382,8 @@
     S.offers.set(req.project, t);
   }
   function onRunEnded({ run, status, project: pid }) {
+    // An interruption was your own doing; anything else gets the sound, wherever you are looking.
+    if (S.settings.sound?.enabled && status !== 'cancelled') playSound(S.settings.sound.tone, { low: status !== 'completed' });
     if (S.layout === 'tracker' || pid === S.project) return; // the thread (or the tracker row) shows it
     const r = S.state.runs.find(x => x.id === run); const p = S.state.projects.find(x => x.id === pid);
     if (!r || !p) return;
@@ -648,9 +650,11 @@
     const working = flight() ? 'in flight' : 'working';
     const label = need ? `${need} need${need === 1 ? 's' : ''} you` + (c.working ? ` · ${c.working} ${working}` : '') : c.working ? `${c.working} ${working}` : T('All quiet');
     const seenable = rows.filter(r => r.bucket === 'ready');
+    const clearable = rows.filter(r => r.bucket === 'idle' && !r.older); // what the Idle group shows; older and cleared ones are already folded away
     h.append(el('div', { class: 'head-row tr-head' }, S.mode === 'compact' ? null : el('h1', { text: T('Tracker') }),
       el('span', { class: 'status ' + cls }, el('span', { class: 'dot ' + cls }), label),
       seenable.length ? el('button', { class: 'btn small ghost', title: 'Mark every ready agent as seen; they move to Idle', onclick: () => markSeen(seenable) }, svg(ICON.check, 12), ...lbl('Mark all seen', 'All seen')) : null,
+      clearable.length ? el('button', { class: 'btn small ghost', title: flight() ? 'Send every parked flight to the hangar' : 'Clear every idle agent from the list', onclick: () => clearIdle(clearable) }, svg(ICON.x, 12), ...(flight() ? lbl('Send parked to the hangar', 'Hangar all') : lbl('Clear idle', 'Clear idle'))) : null,
       el('span', { class: 'grow' }),
       el('span', { class: 't-small l', text: 'Sort' }),
       seg([['status', 'Status'], ['project', T('Project')]], S.tracker.sort, setTrackerSort)));
@@ -661,6 +665,23 @@
     for (const r of rows) if (r.latest) { S.acked[r.latest.id] = true; if (!byProject.has(r.pid)) byProject.set(r.pid, []); byProject.get(r.pid).push(r.latest.id); }
     for (const [pid, ids] of byProject) { const u = user(pid); if (!u) continue; u.place.acked = { ...(u.place.acked || {}) }; for (const id of ids) u.place.acked[id] = Date.now(); api.setPlace(pid, { acked: u.place.acked }); }
     render(true);
+  }
+
+  /** Clear every idle agent from the list (the hangar, in the flight style) with one write per project, and offer to undo it. */
+  async function clearIdle(rows) {
+    const byProject = new Map();
+    for (const r of rows) { if (!byProject.has(r.pid)) byProject.set(r.pid, []); byProject.get(r.pid).push(r.task.id); }
+    const write = (on) => Promise.all([...byProject].map(([pid, ids]) => {
+      const u = user(pid); if (!u) return null;
+      u.place.archived = { ...(u.place.archived || {}) };
+      for (const id of ids) { if (on) u.place.archived[id] = Date.now(); else delete u.place.archived[id]; }
+      return api.setPlace(pid, { archived: u.place.archived });
+    }));
+    await write(true);
+    render(true);
+    const n = rows.length;
+    toast({ text: flight() ? `${n} parked flight${n === 1 ? '' : 's'} sent to the hangar.` : `Cleared ${n} idle agent${n === 1 ? '' : 's'}.`, ttl: 8000,
+      actions: [{ label: 'Undo', fn: async () => { await write(false); render(true); } }] });
   }
 
   function renderTrackerView(v) {
@@ -1347,8 +1368,48 @@
     p.classList.remove('is-open'); p.classList.add('is-closing'); setTimeout(() => p.remove(), 150);
   }
 
+  // ---------- sound ----------
+  /**
+   * The finish sounds, made on the spot with Web Audio (no files ship). Each note is [start s, Hz, length s];
+   * every note also rings a quiet octave above, which turns a plain sine into something bell-like.
+   */
+  const TONES = {
+    chime: { label: 'Chime', wave: 'sine', notes: [[0, 659.25, 0.9], [0.12, 987.77, 1.2]] }, // E5 then B5, rising
+    cabin: { label: 'Cabin', wave: 'sine', notes: [[0, 880, 1.1], [0.45, 698.46, 1.4]] },    // high then low, like the cabin chime
+    pop: { label: 'Pop', wave: 'triangle', notes: [[0, 587.33, 0.25]] },                      // one short, soft knock
+  };
+  let audio = null, lastSound = 0;
+  /** low: a fourth lower, for a turn that ended in an error or went quiet. Several finishing at once make one sound. */
+  function playSound(tone, { low = false, preview = false } = {}) {
+    const t = TONES[tone] || TONES.chime;
+    if (!preview) { if (Date.now() - lastSound < 1500) return; lastSound = Date.now(); }
+    try {
+      audio = audio || new AudioContext();
+      if (audio.state === 'suspended') audio.resume();
+      const t0 = audio.currentTime + 0.03, out = audio.createGain();
+      out.gain.value = 0.16; out.connect(audio.destination);
+      for (const [at, hz, len] of t.notes) for (const [mult, level] of [[1, 1], [2, 0.12]]) {
+        const o = audio.createOscillator(), g = audio.createGain();
+        o.type = t.wave; o.frequency.value = hz * mult * (low ? 0.75 : 1);
+        g.gain.setValueAtTime(0.0001, t0 + at);
+        g.gain.exponentialRampToValueAtTime(level, t0 + at + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + at + len);
+        o.connect(g).connect(out); o.start(t0 + at); o.stop(t0 + at + len + 0.05);
+      }
+    } catch { /* no audio output: stay quiet */ }
+  }
+
   // ---------- sheets ----------
-  function sheet(content) { $('#overlay').textContent = ''; const scrim = el('div', { class: 'scrim', onclick: e => { if (e.target === scrim) closeOverlay(); } }, el('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true' }, ...content)); $('#overlay').append(scrim); return scrim; }
+  /**
+   * A modal sheet. The rounded card never scrolls itself: its content does, inside it, so the scrollbar
+   * stays within the card's corners. head stays put above the scrolling part (Settings: title and tabs).
+   */
+  function sheet(content, { head } = {}) {
+    $('#overlay').textContent = '';
+    const card = el('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true' }, head ? el('div', { class: 'sheet-top' }, ...head) : null, el('div', { class: 'sheet-in' + (head ? ' under-top' : '') }, ...content));
+    const scrim = el('div', { class: 'scrim', onclick: e => { if (e.target === scrim) closeOverlay(); } }, card);
+    $('#overlay').append(scrim); return scrim;
+  }
   /** Close whatever sheet is open; it scales back down before it goes. A sheet opened meanwhile is left alone. */
   function closeOverlay() {
     for (const s of [...$('#overlay').children]) { if (s.classList.contains('is-closing')) continue; s.classList.add('is-closing'); s.inert = true; setTimeout(() => s.remove(), 150); }
@@ -1444,6 +1505,20 @@
       draw(); return row;
     };
     const p = project();
+    /** How a finished turn reaches you: a notification when Layover is behind your work, a sound wherever you are. */
+    const finishSection = () => {
+      const snd = () => S.settings.sound || { enabled: false, tone: 'chime' };
+      const setSound = (patch) => { S.settings.sound = { ...snd(), ...patch }; api.setSettings({ sound: patch }); };
+      const tones = seg(Object.entries(TONES).map(([v, t]) => [v, t.label]), snd().tone, v => { setSound({ tone: v }); playSound(v, { preview: true }); });
+      const pick = el('div', { class: 'switch sound-pick', hidden: !snd().enabled },
+        el('div', { class: 'l' }, el('b', { text: 'Sound' }), el('span', { text: 'A lower note when a turn stops with an error or goes quiet.' })),
+        el('div', { class: 'row' }, tones,
+          el('button', { class: 'btn small ghost', title: 'Play it again', 'aria-label': 'Play the sound', onclick: () => playSound(snd().tone, { preview: true }) }, svg('M5 3.5v9l7-4.5z', 12), 'Play')));
+      return el('div', { class: 'sheet-sec' }, el('h3', { text: flight() ? 'When a flight lands' : 'When a turn finishes' }),
+        switchRow('Show a notification', 'Silent, and only when Layover is not in front.', s.notifyOnComplete, v => api.setSettings({ notifyOnComplete: v })),
+        switchRow('Play a sound', 'Even when Layover is in front. Not for turns you interrupt yourself.', snd().enabled, v => { setSound({ enabled: v }); pick.hidden = !v; if (v) playSound(snd().tone, { preview: true }); }),
+        pick);
+    };
     const panes = {
       agents: () => [el('div', { class: 'sheet-sec' }, agentRow('claude', 'Claude Code', st.claude), agentRow('codex', 'Codex', st.codex),
         el('p', { class: 't-small' }, 'Command agents use: ', el('code', { class: 'path', text: st.cli }), ' ', el('button', { class: 'btn small ghost', onclick: () => api.copy(st.cli) }, 'Copy'), st.cliExists ? null : el('span', { style: 'color:var(--danger)', text: ' (missing)' })))],
@@ -1456,8 +1531,9 @@
       preferences: () => [
         el('div', { class: 'sheet-sec' }, el('h3', { text: 'When an agent starts a turn' }),
           seg([['focus', 'Bring forward'], ['open', 'Behind my work'], ['reveal', 'Only if open'], ['never', 'Stay quiet']], s.openOnRunStart, v => { s.openOnRunStart = v; api.setSettings({ openOnRunStart: v }); }),
-          el('p', { class: 't-small', text: 'Only the start of a turn can bring Layover forward; items and completions never move the window.' }),
-          switchRow('Notify me when a turn finishes', 'A silent notification, only when Layover is not in front.', s.notifyOnComplete, v => api.setSettings({ notifyOnComplete: v })),
+          el('p', { class: 't-small', text: 'Only the start of a turn can bring Layover forward; items and completions never move the window.' })),
+        finishSection(),
+        el('div', { class: 'sheet-sec' }, el('h3', { text: 'In the background' }),
           switchRow(S.platform === 'darwin' ? 'Keep running in the menu bar when the window is closed' : 'Keep running in the tray when the window is closed', 'Needed so agents can reach it.', s.closeToTray, v => api.setSettings({ closeToTray: v })),
           switchRow(S.platform === 'darwin' ? 'Menu bar icon opens the compact companion' : 'Tray icon opens the compact companion', 'A popover under the icon that closes when you click away. Off: the icon opens the main window.', s.trayPopover, v => api.setSettings({ trayPopover: v })),
           switchRow('Tell the agent its run id', 'One short line per prompt so it can publish items without guessing.', s.hookContext, v => api.setSettings({ hookContext: v }))),
@@ -1491,9 +1567,9 @@
     const body = el('div', { class: 'sheet-body' });
     const TABS = { workspace: 'Workspace', agents: 'Agents', preferences: 'Preferences' };
     const relabel = () => { for (const b of tabs.querySelectorAll('[data-v]')) b.textContent = T(TABS[b.dataset.v]); }; // a style change renames the tabs in place
-    const tabs = seg(Object.entries(TABS).map(([v, label]) => [v, T(label)]), current, v => { current = v; S.settingsTab = v; body.textContent = ''; body.append(...panes[v]()); });
+    const tabs = seg(Object.entries(TABS).map(([v, label]) => [v, T(label)]), current, v => { current = v; S.settingsTab = v; body.textContent = ''; body.append(...panes[v]()); body.parentElement.scrollTop = 0; });
     body.append(...panes[current]());
-    sheet([el('div', { class: 'sheet-h' }, el('h2', { text: 'Settings' }), el('button', { class: 'icon-btn', 'aria-label': 'Close', onclick: closeOverlay }, svg(ICON.x, 14))), tabs, body]);
+    sheet([body], { head: [el('div', { class: 'sheet-h' }, el('h2', { text: 'Settings' }), el('button', { class: 'icon-btn', 'aria-label': 'Close', onclick: closeOverlay }, svg(ICON.x, 14))), tabs] });
   }
 
   // ---------- updates ----------

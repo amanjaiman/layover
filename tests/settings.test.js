@@ -34,6 +34,15 @@ test('style defaults to the plain look and accepts flight', () => {
   assert.throws(() => validateSettings({ style: 'boat' }), /Invalid style/);
 });
 
+test('the finish sound is off by default, and turning it on keeps the chosen tone', () => {
+  assert.deepEqual(DEFAULTS.sound, { enabled: false, tone: 'chime' });
+  let s = applySettings(structuredClone(DEFAULTS), { sound: { tone: 'cabin' } });
+  assert.deepEqual(s.sound, { enabled: false, tone: 'cabin' });
+  s = applySettings(s, { sound: { enabled: true } });
+  assert.deepEqual(s.sound, { enabled: true, tone: 'cabin' });
+  assert.throws(() => validateSettings({ sound: { tone: 'siren' } }), /Invalid sound/);
+});
+
 test('saved window bounds are fitted to the display they come back on', () => {
   const area = { x: 0, y: 25, width: 1440, height: 875 };
   assert.deepEqual(fitBounds({ x: 900, y: 40, width: 400, height: 580 }, area), { x: 900, y: 40, width: 400, height: 580 });

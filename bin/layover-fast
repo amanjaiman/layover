@@ -3,4 +3,9 @@
 # message from the user is queued; otherwise behave exactly like layover.
 flag="${LAYOVER_DATA:-$HOME/Library/Application Support/Layover}/data/outbox.flag"
 [ -f "$flag" ] || [ -f "${XDG_DATA_HOME:-$HOME/.local/share}/Layover/data/outbox.flag" ] || exit 0
-exec "$(dirname "$0")/layover" "$@"
+self="$0"
+while [ -L "$self" ]; do
+  link="$(readlink "$self")"
+  case "$link" in /*) self="$link" ;; *) self="$(dirname "$self")/$link" ;; esac
+done
+exec "$(dirname "$self")/layover" "$@"

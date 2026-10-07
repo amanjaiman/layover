@@ -2,7 +2,15 @@
 # Layover CLI shim for macOS/Linux. Inside the app bundle this runs the app's own Node runtime;
 # in a checkout it uses node. Layout: Layover.app/Contents/bin/layover (this file),
 # Contents/MacOS/Layover (the app), Contents/Resources/src/cli/layover.js (the CLI).
-here="$(cd "$(dirname "$0")" && pwd)"
+# The installer links ~/.local/bin/layover (or /usr/local/bin/layover) to this file, so follow links
+# first: from the link's folder, ../src/cli/layover.js is ~/.local/src/cli/layover.js, which is not there.
+# Plain readlink in a loop, since macOS before 12.3 has no readlink -f.
+self="$0"
+while [ -L "$self" ]; do
+  link="$(readlink "$self")"
+  case "$link" in /*) self="$link" ;; *) self="$(dirname "$self")/$link" ;; esac
+done
+here="$(cd "$(dirname "$self")" && pwd)"
 if [ -x "$here/../MacOS/Layover" ]; then
   ELECTRON_RUN_AS_NODE=1 exec "$here/../MacOS/Layover" "$here/../Resources/src/cli/layover.js" "$@"
 fi
