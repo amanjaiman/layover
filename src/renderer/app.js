@@ -648,9 +648,11 @@
     const working = flight() ? 'in flight' : 'working';
     const label = need ? `${need} need${need === 1 ? 's' : ''} you` + (c.working ? ` · ${c.working} ${working}` : '') : c.working ? `${c.working} ${working}` : T('All quiet');
     const seenable = rows.filter(r => r.bucket === 'ready');
+    const clearable = rows.filter(r => r.bucket === 'idle' && !r.older); // what the Idle group shows; older and cleared ones are already folded away
     h.append(el('div', { class: 'head-row tr-head' }, S.mode === 'compact' ? null : el('h1', { text: T('Tracker') }),
       el('span', { class: 'status ' + cls }, el('span', { class: 'dot ' + cls }), label),
       seenable.length ? el('button', { class: 'btn small ghost', title: 'Mark every ready agent as seen; they move to Idle', onclick: () => markSeen(seenable) }, svg(ICON.check, 12), ...lbl('Mark all seen', 'All seen')) : null,
+      clearable.length ? el('button', { class: 'btn small ghost', title: flight() ? 'Send every parked flight to the hangar' : 'Clear every idle agent from the list', onclick: () => clearIdle(clearable) }, svg(ICON.x, 12), ...(flight() ? lbl('Send parked to the hangar', 'Hangar all') : lbl('Clear idle', 'Clear idle'))) : null,
       el('span', { class: 'grow' }),
       el('span', { class: 't-small l', text: 'Sort' }),
       seg([['status', 'Status'], ['project', T('Project')]], S.tracker.sort, setTrackerSort)));
@@ -661,6 +663,23 @@
     for (const r of rows) if (r.latest) { S.acked[r.latest.id] = true; if (!byProject.has(r.pid)) byProject.set(r.pid, []); byProject.get(r.pid).push(r.latest.id); }
     for (const [pid, ids] of byProject) { const u = user(pid); if (!u) continue; u.place.acked = { ...(u.place.acked || {}) }; for (const id of ids) u.place.acked[id] = Date.now(); api.setPlace(pid, { acked: u.place.acked }); }
     render(true);
+  }
+
+  /** Clear every idle agent from the list (the hangar, in the flight style) with one write per project, and offer to undo it. */
+  async function clearIdle(rows) {
+    const byProject = new Map();
+    for (const r of rows) { if (!byProject.has(r.pid)) byProject.set(r.pid, []); byProject.get(r.pid).push(r.task.id); }
+    const write = (on) => Promise.all([...byProject].map(([pid, ids]) => {
+      const u = user(pid); if (!u) return null;
+      u.place.archived = { ...(u.place.archived || {}) };
+      for (const id of ids) { if (on) u.place.archived[id] = Date.now(); else delete u.place.archived[id]; }
+      return api.setPlace(pid, { archived: u.place.archived });
+    }));
+    await write(true);
+    render(true);
+    const n = rows.length;
+    toast({ text: flight() ? `${n} parked flight${n === 1 ? '' : 's'} sent to the hangar.` : `Cleared ${n} idle agent${n === 1 ? '' : 's'}.`, ttl: 8000,
+      actions: [{ label: 'Undo', fn: async () => { await write(false); render(true); } }] });
   }
 
   function renderTrackerView(v) {

@@ -73,7 +73,7 @@ Git linked worktrees share their main repository's workspace, including worktree
 
 ![Tracker: conversations across projects grouped by what needs attention](docs/screenshots/tracker.png)
 
-**Tracker** — a cross-project view of every Claude Code and Codex conversation. Switch to it at the top of the sidebar (`Ctrl+Shift+T`, or the tray menu) to see *Waiting on you*, then *Ready*, *Working*, and *Idle*. Sort by project to see each repo's agents together.
+**Tracker** — a cross-project view of every Claude Code and Codex conversation. Switch to it at the top of the sidebar (`Ctrl+Shift+T`, or the tray menu) to see *Waiting on you*, then *Ready*, *Working*, and *Idle*. Sort by project to see each repo's agents together. **Clear idle** (in the flight style, *Send parked to the hangar*) clears every idle conversation from the list at once, with an Undo.
 
 A conversation stays Working while any of its subagents are active; its header in Now shows a small `↳ N` count of working subagents. Expanding its Tracker row shows working, *No signal* and stopped children first, with finished children summarized as a count. Subagents and turns have separate collapse controls.
 
