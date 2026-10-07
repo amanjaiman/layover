@@ -496,6 +496,7 @@ body.compact .cnav{ padding:4px 6px; gap:2px; }
 body.compact .cnav button{ display:inline-flex; align-items:center; justify-content:center; gap:5px; padding:7px 4px; font-size:12.5px; border-radius:var(--r-sm); }
 body.compact .cnav .count{ font-size:10.5px; color:var(--text-faint); }
 body.compact .cnav button[aria-selected="true"] .count{ color:var(--accent-text); }
+body.compact .cnav:empty{ display:none; } /* the Tracker (or no workspace) has no views to switch: no bar, not an empty grey strip */
 body.compact .break-grid{ display:grid; gap:var(--s3); }
 body.compact .break-timer{ gap:var(--s2); }
 /* pick: pill + menu, replaces native selects */
