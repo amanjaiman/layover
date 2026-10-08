@@ -65,7 +65,7 @@
     'Mark done': 'Mark landed', 'Reopen': 'Reschedule', 'See in Now': 'See in Arrivals', 'Add to Next': 'Add to Departures',
     // going back to an agent
     'Return': 'Board', 'Got it': 'Roger', 'OK': 'Roger', 'Go there': 'Go to the gate', 'Switch': 'Switch gates',
-    'Archive': 'Send to the hangar', 'Restore to Now': 'Back to Arrivals', 'Move to Idle': 'Park it', 'Clear from the list': 'Send to the hangar',
+    'Archive': 'Send to the hangar', 'Restore to Now': 'Back to Arrivals', 'Move to Idle': 'Park it', 'Clear from the list': 'Send to the hangar', 'Clear all from the list': 'Send all to the hangar',
     'Reply in the workspace': 'Reply at the gate', 'Open this workspace': 'Go to this gate', 'Workspace settings': 'Gate settings',
     // empty rooms
     'Nothing here yet.': 'No flights yet.',
@@ -650,11 +650,9 @@
     const working = flight() ? 'in flight' : 'working';
     const label = need ? `${need} need${need === 1 ? 's' : ''} you` + (c.working ? ` · ${c.working} ${working}` : '') : c.working ? `${c.working} ${working}` : T('All quiet');
     const seenable = rows.filter(r => r.bucket === 'ready');
-    const clearable = rows.filter(r => r.bucket === 'idle' && !r.older); // what the Idle group shows; older and cleared ones are already folded away
     h.append(el('div', { class: 'head-row tr-head' }, S.mode === 'compact' ? null : el('h1', { text: T('Tracker') }),
       el('span', { class: 'status ' + cls }, el('span', { class: 'dot ' + cls }), label),
       seenable.length ? el('button', { class: 'btn small ghost', title: 'Mark every ready agent as seen; they move to Idle', onclick: () => markSeen(seenable) }, svg(ICON.check, 12), ...lbl('Mark all seen', 'All seen')) : null,
-      clearable.length ? el('button', { class: 'btn small ghost', title: flight() ? 'Send every parked flight to the hangar' : 'Clear every idle agent from the list', onclick: () => clearIdle(clearable) }, svg(ICON.x, 12), ...(flight() ? lbl('Send parked to the hangar', 'Hangar all') : lbl('Clear idle', 'Clear idle'))) : null,
       el('span', { class: 'grow' }),
       el('span', { class: 't-small l', text: 'Sort' }),
       seg([['status', 'Status'], ['project', T('Project')]], S.tracker.sort, setTrackerSort)));
@@ -667,6 +665,12 @@
     render(true);
   }
 
+  function idleMenu(anchor, rows) {
+    closePopover();
+    const pop = el('div', { class: 'pop menu', role: 'menu' });
+    pop.append(el('button', { class: 'menu-item', role: 'menuitem', onclick: () => { closePopover(); clearIdle(rows); } }, svg(ICON.x, 13), T('Clear all from the list')));
+    place(pop, anchor);
+  }
   /** Clear every idle agent from the list (the hangar, in the flight style) with one write per project, and offer to undo it. */
   async function clearIdle(rows) {
     const byProject = new Map();
@@ -709,8 +713,10 @@
       // Any group folds to its header (Idle is the one that grows); the header, or its chevron, toggles it.
       const chev = el('button', { class: 'icon-btn chev tr-fold', 'aria-label': folded ? 'Expand' : 'Collapse', 'aria-expanded': folded ? 'false' : 'true', onclick: () => toggleFold(g.key, card, chev) }, svg('M6 4l4 4-4 4', 14));
       const head = (...kids) => el('div', { class: 'tr-card-h', onclick: e => { if (!e.target.closest('button')) toggleFold(g.key, card, chev); } }, chev, ...kids);
+      const clearable = g.key === 'idle' ? rows.filter(r => !r.older) : []; // what the Idle group shows; older and cleared ones are already folded away
       if (byStatus) card.append(head(el('span', { class: 'dot ' + { waiting: 'attention', ready: 'done', working: 'working', idle: 'quiet' }[g.key] }),
-        el('div', { class: 'tr-card-t' }, el('b', {}, T(BUCKET_LABEL[g.key]), el('span', { class: 'tr-n', text: String(g.rows.length - (showOlder ? 0 : olderN)) })))));
+        el('div', { class: 'tr-card-t' }, el('b', {}, T(BUCKET_LABEL[g.key]), el('span', { class: 'tr-n', text: String(g.rows.length - (showOlder ? 0 : olderN)) }))),
+        clearable.length ? el('button', { class: 'icon-btn', title: 'More', 'aria-label': T('Idle') + ' menu', onclick: e => idleMenu(e.currentTarget, clearable) }, svg('M3 8h.01M8 8h.01M13 8h.01', 16, 'stroke-width="2.4"')) : null));
       else { const p = g.rows[0].p; card.append(head(projTok(p),
         el('div', { class: 'tr-card-t' }, el('b', { text: projectName(p) }), el('span', { text: [countLine(trackerCounts(g.rows)), p.path].filter(Boolean).join(' · '), title: p.path || null })),
         el('button', { class: 'btn small ghost l', title: T('Open this workspace'), onclick: () => openInWorkspace(p.id) }, T('Workspace'), svg(ICON.arrow, 12)))); }
