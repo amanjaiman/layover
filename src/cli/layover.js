@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { projectPathFromPath, projectIdFromPath, projectNameFromPath, isId, APP_NAME } from '../main/paths.js';
 import { request, health, ensureApp, launch, deliver, readSettings, appLauncher } from './client.js';
-import { mapHook, resolveLatest } from './hook.js';
+import { mapHook, resolveLatest, resolveHolds } from './hook.js';
 import * as setup from './setup.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -110,6 +110,10 @@ async function runHook(agent) {
   if (ready.some(e => e.run === '__latest__')) {
     const state = await request('/api/state');
     ready = resolveLatest(ready, state);
+  }
+  // The agent got past whatever it was holding on (a tool call finished), so its turn is in flight again.
+  if (hookName === 'PostToolUse' && session) {
+    try { ready = [...ready, ...resolveHolds(`${agent}:${session}`, await request('/api/state'))]; } catch (e) { process.stderr.write('layover: holds ' + e.message + '\n'); }
   }
   if (ready.length) {
     const { results } = await request('/api/events/batch', ready, 8000);

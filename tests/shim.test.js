@@ -49,3 +49,12 @@ test('the fast shim exits at once without a queued message, and follows a symlin
   fs.writeFileSync(path.join(data, 'data', 'outbox.flag'), '');
   assert.match(execFileSync(path.join(root, 'layover-fast'), ['hook', 'claude'], { encoding: 'utf8', env }), /layover\.js hook claude/);
 });
+
+test('the fast shim also runs while a turn is held on the user', { skip }, () => {
+  const { root, contents } = bundle();
+  const data = path.join(root, 'data-root');
+  const env = { ...process.env, LAYOVER_DATA: data, XDG_DATA_HOME: path.join(root, 'xdg') };
+  fs.mkdirSync(path.join(data, 'data'), { recursive: true });
+  fs.writeFileSync(path.join(data, 'data', 'holding.flag'), '');
+  assert.match(execFileSync(path.join(contents, 'bin', 'layover-fast'), ['hook', 'claude'], { encoding: 'utf8', env }), /layover\.js hook claude/);
+});

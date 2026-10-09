@@ -131,4 +131,17 @@ export function resolveLatest(events, state) {
   return out;
 }
 
+/**
+ * Close the "waiting for you" notices of a conversation once its agent is working again: a tool call
+ * finishing means the permission was granted or the question answered, all within the same turn, so
+ * no new prompt would close them. Ids and bodies are fixed by the item, so two hooks racing agree.
+ */
+export function resolveHolds(task, state) {
+  const active = new Set((state?.runs || []).filter(r => r.task === task && r.status === 'active').map(r => r.id));
+  return (state?.items || []).filter(i => i.task === task && i.origin === 'notification' && i.status === 'open' && active.has(i.run)).map(i => ({
+    id: `resolve:${i.key}:${i.revision + 1}`, type: 'item', project: i.project, task: i.task, agent: i.agent, run: i.run, seq: i.revision + 1,
+    item: i.item, kind: i.kind, status: 'resolved', revision: i.revision + 1, text: i.text, ...(i.title ? { title: i.title } : {}), waiting: true, origin: 'notification',
+  }));
+}
+
 export function newId() { return crypto.randomUUID(); }

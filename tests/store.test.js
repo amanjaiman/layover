@@ -293,3 +293,28 @@ test('moving a stuck turn to Idle ends it as cancelled, and the agent\'s own lat
   assert.equal(s.state().runs[0].status, 'completed');
   s.close();
 });
+
+test('a held turn: the flag file tracks it, and the next tool call puts the turn back in flight', async () => {
+  const { mapHook, resolveLatest, resolveHolds } = await import('../src/cli/hook.js');
+  const dir = tmp();
+  const s = new Store(dir);
+  s.event(start('r1'));
+  const flag = path.join(dir, 'holding.flag');
+  assert.ok(!fs.existsSync(flag));
+  const { events } = mapHook('claude', { session_id: 's1', cwd: 'C:/demo', hook_event_name: 'Notification', notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' });
+  for (const e of resolveLatest(events, s.state())) s.event({ ...e, project: 'p1', task: 'claude:s1' });
+  assert.ok(fs.existsSync(flag));
+  const held = s.state().items.find(i => i.origin === 'notification');
+  assert.equal(held.status, 'open'); assert.equal(held.waiting, true);
+  assert.deepEqual(resolveHolds('claude:other', s.state()), []);
+  const resolve = resolveHolds('claude:s1', s.state());
+  assert.equal(resolve.length, 1);
+  for (const e of resolve) s.event(e);
+  for (const e of resolveHolds('claude:s1', s.state())) s.event(e); // nothing left to resolve
+  assert.deepEqual(s.event(resolve[0]), { duplicate: true }); // a racing hook sends the same event
+  assert.equal(s.state().items.find(i => i.origin === 'notification').status, 'resolved');
+  assert.equal(s.state().runs[0].status, 'active');
+  assert.ok(!fs.existsSync(flag));
+  s.close();
+  assert.ok(!fs.existsSync(flag), 'reopening keeps it gone');
+});

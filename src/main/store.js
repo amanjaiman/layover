@@ -75,6 +75,7 @@ export class Store {
     this.userDoc = { version: 1, projects: {}, manualProjects: {} };
     this.outboxFile = path.join(dir, 'outbox.json');
     this.outboxFlag = path.join(dir, 'outbox.flag'); // exists while anything is queued; the fast hook shim checks it
+    this.holdFlag = path.join(dir, 'holding.flag'); // exists while an agent's turn is held on the user; the fast shim checks it too
     this.outbox = [];
     this.load();
   }
@@ -89,6 +90,13 @@ export class Store {
   syncFlag() {
     const pending = this.outbox.some(m => m.status === 'queued');
     try { if (pending) fs.writeFileSync(this.outboxFlag, '1'); else if (fs.existsSync(this.outboxFlag)) fs.unlinkSync(this.outboxFlag); } catch { /* best effort */ }
+  }
+  /** A held turn (a permission prompt or a question) goes on without a new prompt, so the next tool call has to say so. */
+  syncHoldFlag() {
+    const now = Date.now();
+    let held = false;
+    for (const i of this.items.values()) if (i.origin === 'notification' && i.status === 'open') { const r = this.runs.get(i.run); if (r && this.runStatus(r, now) === 'active') { held = true; break; } }
+    try { if (held) fs.writeFileSync(this.holdFlag, '1'); else if (fs.existsSync(this.holdFlag)) fs.unlinkSync(this.holdFlag); } catch { /* best effort */ }
   }
   /** Queue a message for the agent behind a conversation. It is handed over by that agent's next hook. */
   queueMessage({ project, task, run, itemKey, text }) {
@@ -148,6 +156,7 @@ export class Store {
     }
     this.fd = fs.openSync(this.eventsFile, 'a');
     this.loadOutbox();
+    this.syncHoldFlag();
     for (const m of this.outbox) m.project = this.resolveProject(m.project);
   }
 
@@ -298,6 +307,7 @@ export class Store {
     this.ids.set(e.id, body);
     const change = this.apply(e, received);
     this.append(original, received);
+    if (e.type !== 'session') this.syncHoldFlag();
     this.emit({ type: e.type, event: e, ...change });
     return { accepted: true, ...change };
   }
