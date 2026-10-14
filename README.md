@@ -67,7 +67,7 @@ Git linked worktrees share their main repository's workspace, including worktree
 - Start a turn with that key in the prompt and the entry moves itself to In progress; the thread shows the key and offers *Mark done* when the turn finishes.
 - `n` or `Ctrl+N` creates one. The key prefix is yours to set (Settings → Workspace).
 
-**Notes** — the project's running notes. Autosaved, with conflict protection. Select text and a small menu adds it to Next as *Up next* or *In progress*: the first selected line becomes the title, the whole selection its description, the note stays as it was, and the toast offers *Open*.
+**Notes** — the project's running notes. Autosaved, with conflict protection. Select text and a small menu moves it to Next as *Up next* or *In progress*: the first selected line becomes the title, the whole selection its description, the selected text is removed from the note after the task saves (if the note changed meanwhile, it is kept and the toast says so), and the toast offers *Open*.
 
 **Break** — stretch prompts, a timer, and optional reminders; it can suggest a break or start one once you stop typing.
 

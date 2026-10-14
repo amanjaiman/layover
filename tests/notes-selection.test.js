@@ -27,19 +27,22 @@ async function checkSelection() {
     }
     await wait(40); return ta;
   };
+  const resetNotes = async () => { const ta = document.querySelector('.notes'); ta.value = originalBody; ta.dispatchEvent(new Event('input', { bubbles: true })); await wait(550); };
   try {
     await wait(100);
     let ta = await select(0, 31, true);
     assert(menu(), 'menu on mouse selection');
-    assert(menu().getAttribute('aria-label') === 'Add to Departures', 'flight title');
+    assert(menu().getAttribute('aria-label') === 'Move to Departures', 'flight title');
     let buttons = [...menu().querySelectorAll('button')];
     assert(buttons.length === 2 && buttons[0].textContent === 'Scheduled' && buttons[1].textContent === 'In flight', 'two existing status labels');
     const rect = menu().getBoundingClientRect();
     assert(rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight, 'compact viewport bounds');
     buttons[0].click(); buttons[0].click(); await wait(60);
     assert(calls.length === 1 && calls[0].project === 'p_notes', 'single save to source project');
-    assert(calls[0].ticket.status === 'todo' && calls[0].ticket.title === 'Plan a launch' && calls[0].ticket.description === ta.value.slice(0, 31), 'todo and multiline text');
-    assert(ta.value === originalBody && document.querySelector('.notes') === ta, 'note preserved and view retained');
+    assert(calls[0].ticket.status === 'todo' && calls[0].ticket.title === 'Plan a launch' && calls[0].ticket.description === originalBody.slice(0, 31), 'todo and multiline text');
+    assert(ta.value === originalBody.slice(31) && document.querySelector('.notes') === ta, 'saved selection removed and view retained');
+    await wait(550); assert(noteCalls.at(-1).body === originalBody.slice(31), 'removal autosaved');
+    await resetNotes();
     ta = await select(36, ta.value.length);
     ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
     assert(document.activeElement === menu().querySelector('button'), 'Tab enters selection actions');
@@ -47,17 +50,26 @@ async function checkSelection() {
     assert(document.activeElement.textContent === 'In flight', 'arrow navigation');
     document.activeElement.click(); await wait(60);
     assert(calls[1].ticket.status === 'progress' && calls[1].ticket.description === 'Review the release', 'progress status');
+    assert(ta.value === originalBody.slice(0, 36), 'in-progress move removes precisely its selection');
+    await resetNotes();
     await select(32, 35); assert(!menu(), 'whitespace ignored');
     await select(0, 0); assert(!menu(), 'collapsed selection ignored');
     await select(0, 4); ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await wait(20); assert(!menu(), 'Escape dismisses');
     await select(0, 5); ta.dispatchEvent(new Event('scroll')); assert(!menu(), 'scroll dismisses');
     await select(0, 6); document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); assert(!menu(), 'outside click dismisses');
     await select(0, 7); window.dispatchEvent(new Event('resize')); assert(!menu(), 'resize dismisses');
+    await select(0, 8); menu().querySelector('button').click(); ta.value = originalBody + '\nA newer edit'; ta.dispatchEvent(new Event('input', { bubbles: true })); await wait(60);
+    assert(ta.value.endsWith('A newer edit') && ta.value.startsWith('Plan a launch'), 'edits during task save are retained');
+    await resetNotes();
+    const beforeFailure = calls.length;
     await select(0, 8); failNext = true; menu().querySelector('button').click(); await wait(20);
     assert(menu() && !menu().querySelector('button').disabled && document.querySelector('.toasts').textContent.includes('Test save failure'), 'failed save retry');
-    menu().querySelector('button').click(); await wait(60); assert(calls.length === 4 && !menu(), 'retry succeeds');
+    assert(ta.value === originalBody, 'failed task save does not remove notes');
+    menu().querySelector('button').click(); await wait(60); assert(calls.length === beforeFailure + 2 && !menu(), 'retry succeeds');
+    assert(ta.value === originalBody.slice(8), 'retry removes only after task success');
+    await resetNotes();
     handlers.settings({ style: 'default' }); await wait(20); ta = await select(0, 9);
-    assert(menu().getAttribute('aria-label') === 'Add to Next' && [...menu().querySelectorAll('button')].map(b => b.textContent).join('|') === 'Up next|In progress', 'default style labels');
+    assert(menu().getAttribute('aria-label') === 'Move to Next' && [...menu().querySelectorAll('button')].map(b => b.textContent).join('|') === 'Up next|In progress', 'default style labels');
     document.dispatchEvent(new KeyboardEvent('keydown', { key: '2', ctrlKey: true, bubbles: true })); await wait(20);
     assert(!menu() && document.querySelector('.view-tickets'), 'view navigation dismisses');
     document.dispatchEvent(new KeyboardEvent('keydown', { key: '3', ctrlKey: true, bubbles: true })); await wait(20);
@@ -101,7 +113,7 @@ test('renderer: notes selection actions and compact tracker agent logos', { skip
     html = html.replace('<script src="brand-icons.js"></script>', '<script src="mock.js"></script><script src="brand-icons.js"></script>');
     html = html.replace('</body>', '<script src="check.js"></script></body>');
     fs.writeFileSync(path.join(dir, 'index.html'), html);
-    fs.writeFileSync(path.join(dir, 'mock.js'), `window.calls = []; window.handlers = {}; window.failNext = false; window.errors = []; window.originalBody = ${JSON.stringify(body)};
+    fs.writeFileSync(path.join(dir, 'mock.js'), `window.calls = []; window.noteCalls = []; window.handlers = {}; window.failNext = false; window.errors = []; window.originalBody = ${JSON.stringify(body)};
       window.addEventListener('error', e => errors.push(e.message));
       window.addEventListener('unhandledrejection', e => errors.push(String(e.reason)));
       window.layover = {
@@ -109,7 +121,7 @@ test('renderer: notes selection actions and compact tracker agent logos', { skip
         getUser: async () => ({ok:true,value:${JSON.stringify(user)}}),
         getSettings: async () => ({ok:true,value:{onboarded:true,theme:'light',style:'flight',layout:'full',window:{mode:'compact',lastProject:'p_notes'}}}),
         getUpdate: async () => ({ok:true,value:null}), setPlace: async () => ({ok:true}), setSettings: async () => ({ok:true}), engaged: () => {},
-        setNotes: async (project, body, revision) => ({ok:true,value:{revision:revision+1}}),
+        setNotes: async (project, body, revision) => {noteCalls.push({project,body,revision}); return {ok:true,value:{revision:revision+1}};},
         upsertTicket: async (project, ticket) => {
           calls.push({project,ticket});
           if (failNext) { failNext = false; return {ok:false,error:'Test save failure'}; }
@@ -119,7 +131,7 @@ test('renderer: notes selection actions and compact tracker agent logos', { skip
       };`);
     fs.writeFileSync(path.join(dir, 'check.js'), '(' + checkSelection.toString() + ')();');
     const url = new URL('file:///' + path.join(dir, 'index.html').replaceAll('\\', '/')).href;
-    const { stdout } = await run(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox', '--no-first-run', '--no-default-browser-check', '--user-data-dir=' + path.join(dir, 'chrome'), '--window-size=400,580', '--virtual-time-budget=3000', '--dump-dom', url], { windowsHide: true, timeout: 25000, maxBuffer: 2e6 });
+    const { stdout } = await run(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox', '--no-first-run', '--no-default-browser-check', '--user-data-dir=' + path.join(dir, 'chrome'), '--window-size=400,580', '--virtual-time-budget=7000', '--dump-dom', url], { windowsHide: true, timeout: 25000, maxBuffer: 2e6 });
     const result = stdout.match(/<pre id="test-result">([\s\S]*?)<\/pre>/)?.[1];
     assert.equal(result, 'PASS', result || 'Browser did not complete the checks');
   } finally {
