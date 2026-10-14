@@ -76,6 +76,7 @@
     // breaks and notes
     'Remind me to take breaks': 'Remind me to visit the lounge', 'Take a break': 'Visit the lounge', 'Break’s over.': 'Final boarding call: break’s over.',
     'Notes for this project…': 'Logbook for this gate…',
+    'Saved as you type. Select text to add to Next.': 'Saved as you type. Select text to add to Departures.',
     // workspace settings
     'Key prefix': 'Flight code', 'Hide this workspace': 'Close this gate', 'No workspace selected.': 'No gate selected.',
     // shortcuts
@@ -572,6 +573,7 @@
 
   function renderView(force = false) {
     const v = $('#view');
+    if (S.popover?.classList.contains('notes-selection') && (force || S.layout === 'tracker' || S.view !== 'notes')) closePopover();
     if (S.layout === 'tracker') { renderTrackerView(v); return; }
     const key = `${S.project}|${S.view}|${S.mode}`;
     if (!force && key === S.viewKey && S.view !== 'now') return;
@@ -764,7 +766,7 @@
     const row = el('div', { class: 'tr-row b-' + r.bucket + (open ? ' open' : '') + (moved ? ' moved' : ''), role: 'button', tabindex: '0', 'aria-expanded': open ? 'true' : 'false', dataset: { task: r.task.id },
       onclick: e => { if (!e.target.closest('button')) toggle(); }, onkeydown: e => { if (e.key === 'Enter' && e.target === row) { e.preventDefault(); toggle(); } }, onfocus: () => { S.tracker.sel = r.task.id; } },
       el('span', { class: 'tr-time', text: clock(r.since), title: ago(r.since) }),
-      el('span', { class: 'tr-agent ' + agent, text: AGENT_SHORT[agent] || agent, title: who }),
+      S.mode === 'compact' ? agentIcon(agent, 26) : el('span', { class: 'tr-agent ' + agent, text: AGENT_SHORT[agent] || agent, title: who }),
       byStatus ? el('span', { class: 'tr-proj' }, projTok(r.p, true), el('span', { text: projectName(r.p) })) : el('span', { class: 'tr-kind k-' + kind }, el('i'), T(TR_KIND[kind])),
       el('span', { class: 'tr-item' }, el('b', { text: title }), r.activeChildren.length ? el('span', { text: `${r.activeChildren.length} subagent${r.activeChildren.length === 1 ? '' : 's'} working · ${r.children.length} total` }) : r.children.length ? el('span', { text: `${r.children.length} subagent${r.children.length === 1 ? '' : 's'} · expand to view` }) : item ? el('span', { text: (item.title || item.text).split('\n')[0] }) : turn && turn !== title ? el('span', { text: turn }) : null),
       trackerStatus(r),
@@ -1259,24 +1261,110 @@
   }
 
   // ---------- Notes ----------
+  /** Textareas have no DOM range: mirror their layout to anchor keyboard selections. */
+  function notesSelectionAnchor(ta) {
+    const rect = ta.getBoundingClientRect(), css = getComputedStyle(ta);
+    const mirror = el('div', { 'aria-hidden': 'true' });
+    for (const prop of ['boxSizing', 'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight', 'textAlign', 'textIndent', 'tabSize', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth']) mirror.style[prop] = css[prop];
+    Object.assign(mirror.style, { position: 'fixed', left: rect.left + 'px', top: rect.top + 'px', width: ta.clientWidth + 'px', boxSizing: 'content-box', padding: '0', visibility: 'hidden', whiteSpace: 'pre-wrap', overflowWrap: 'break-word' });
+    // clientWidth includes padding; the content must wrap at the same width as the editor.
+    mirror.style.width = (ta.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight)) + 'px';
+    mirror.style.padding = css.padding;
+    mirror.append(document.createTextNode(ta.value.slice(0, ta.selectionDirection === 'backward' ? ta.selectionStart : ta.selectionEnd)));
+    const caret = el('span', { text: '\u200b' }); mirror.append(caret); document.body.append(mirror);
+    const at = caret.getBoundingClientRect(); mirror.remove();
+    const x = Math.max(rect.left, Math.min(at.left - ta.scrollLeft, rect.right));
+    const y = Math.max(rect.top, Math.min(at.bottom - ta.scrollTop, rect.bottom));
+    return { getBoundingClientRect: () => ({ left: x, top: y, bottom: y, width: 0 }) };
+  }
+  function notesSelectionMenu(ta, anchor) {
+    const selected = ta.value.slice(ta.selectionStart, ta.selectionEnd).trim();
+    if (!selected) { if (S.popover?.classList.contains('notes-selection')) closePopover(); return; }
+    closePopover();
+    const pid = S.project, u = user(pid), prefix = project()?.prefix || 'WS';
+    const pop = el('div', { class: 'pop menu notes-selection', role: 'menu', 'aria-label': T('Add to Next') }, el('div', { class: 'notes-selection-label', text: T('Add to Next') }));
+    let adding = false;
+    for (const status of ['todo', 'progress']) pop.append(el('button', { class: 'menu-item', role: 'menuitem', onclick: async () => {
+      if (adding) return;
+      if (selected.length > 48000) { toast({ text: 'Select less text (up to 48,000 characters).', ttl: 5000 }); return; }
+      adding = true;
+      for (const b of pop.querySelectorAll('button')) b.disabled = true;
+      try {
+        const title = selected.split(/\r?\n/)[0].trim().slice(0, 300);
+        const t = await call(api.upsertTicket(pid, { title, description: selected, status }));
+        const current = user(pid) || u;
+        if (current && !current.tickets.some(x => x.id === t.id)) current.tickets.unshift(t);
+        if (S.popover === pop) closePopover();
+        toast({ text: 'Added to ' + T('Next') + ' as ' + prefix + '-' + t.number + ' · ' + T(STATUS[status]) + '.', ttl: 5000, actions: [{ label: 'Open', fn: async () => {
+          await switchProject(pid); S.ticket = t.id; S.ticketFilter = 'active'; setView('tickets'); savePlace(); render(true);
+        } }] });
+        renderHead(); renderCompactNav();
+      } catch (e) {
+        adding = false;
+        for (const b of pop.querySelectorAll('button')) b.disabled = false;
+        toast({ text: e.message, ttl: 5000 });
+      }
+    } }, el('span', { class: 'tk-status ' + status }, STATUS_ICON[status]()), T(STATUS[status])));
+    // Mouse clicks keep the text selected; Tab/ArrowDown can still focus the actions.
+    pop.addEventListener('pointerdown', e => e.preventDefault());
+    pop.addEventListener('keydown', e => {
+      const buttons = [...pop.querySelectorAll('button')];
+      if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
+        e.preventDefault(); e.stopPropagation();
+        const i = buttons.indexOf(document.activeElement);
+        buttons[e.key === 'Home' ? 0 : e.key === 'End' ? buttons.length - 1 : (i + (e.key === 'ArrowUp' ? -1 : 1) + buttons.length) % buttons.length].focus();
+      } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closePopover(); ta.focus(); }
+    });
+    pop.addEventListener('focusout', e => { if (e.relatedTarget !== ta && !pop.contains(e.relatedTarget) && S.popover === pop) closePopover(); });
+    const cleanup = new AbortController();
+    pop.onClose = () => cleanup.abort();
+    document.addEventListener('scroll', () => { if (S.popover === pop) closePopover(); }, { capture: true, signal: cleanup.signal });
+    window.addEventListener('resize', () => { if (S.popover === pop) closePopover(); }, { signal: cleanup.signal });
+    place(pop, anchor || notesSelectionAnchor(ta));
+    // Keep the menu fully inside compact windows, including selections near the top.
+    pop.style.top = Math.max(8, parseFloat(pop.style.top)) + 'px';
+  }
   function renderNotes(wrap) {
     const u = user(); if (!u) return;
     if (S.notesConflict) wrap.append(el('div', { class: 'banner warn' }, el('span', { class: 'txt' }, el('b', { text: 'These notes changed elsewhere.' }), ' Your text is kept until you choose.'),
       el('button', { class: 'btn small', onclick: () => { api.copy(S.notesConflict.mine); toast({ text: 'Your version is on the clipboard.', ttl: 4000 }); } }, 'Copy mine'),
       el('button', { class: 'btn small primary', onclick: async () => { S.notesConflict = null; await loadUser(S.project); render(true); } }, 'Load the saved version')));
-    wrap.append(el('div', { class: 'section-h' }, el('span', { class: 't-eyebrow', text: T('Notes') }), el('span', { class: 't-small l', text: 'Saved as you type.' })));
+    wrap.append(el('div', { class: 'section-h' }, el('span', { class: 't-eyebrow', text: T('Notes') }), el('span', { class: 't-small l', text: T('Saved as you type. Select text to add to Next.') })));
     const ta = el('textarea', { class: 'notes', placeholder: T('Notes for this project…'), 'aria-label': 'Project notes', spellcheck: 'true' });
     ta.value = u.notes.body;
+    const pid = S.project;
     let revision = u.notes.revision;
     const meta = el('div', { class: 'notes-meta' }, el('span', { text: u.notes.updatedAt ? `Saved ${ago(u.notes.updatedAt)}` : 'Not written yet' }), el('span', { class: 'faint l', text: '· Only on this computer' }));
     const save = debounce(async () => {
       const body = ta.value;
-      const r = await call(api.setNotes(S.project, body, revision));
+      const r = await call(api.setNotes(pid, body, revision));
       if (r.conflict) { S.notesConflict = { mine: body, theirs: r.body }; revision = r.revision; render(true); return; }
       revision = r.revision; u.notes = { body, revision, updatedAt: Date.now() }; meta.firstChild.textContent = 'Saved just now';
     }, 500);
     registerFlush('notes', () => save.flush());
-    ta.addEventListener('input', () => { meta.firstChild.textContent = 'Saving…'; save(); });
+    let selecting = false, selectionTimer;
+    const hideMenu = () => { clearTimeout(selectionTimer); if (S.popover?.classList.contains('notes-selection')) closePopover(); };
+    const showMenu = anchor => {
+      clearTimeout(selectionTimer);
+      selectionTimer = setTimeout(() => { if (!selecting && ta.isConnected && document.activeElement === ta) notesSelectionMenu(ta, anchor); }, 0);
+    };
+    ta.addEventListener('pointerdown', () => { selecting = true; hideMenu(); });
+    ta.addEventListener('pointerup', e => {
+      selecting = false;
+      const rect = ta.getBoundingClientRect();
+      const x = Math.max(rect.left, Math.min(e.clientX, rect.right)), y = Math.max(rect.top, Math.min(e.clientY, rect.bottom));
+      showMenu({ getBoundingClientRect: () => ({ left: x, top: y, bottom: y, width: 0 }) });
+    });
+    ta.addEventListener('pointercancel', () => { selecting = false; hideMenu(); });
+    ta.addEventListener('select', () => { if (!selecting) showMenu(); });
+    ta.addEventListener('keydown', e => {
+      if (S.popover?.classList.contains('notes-selection') && (e.key === 'Tab' && !e.shiftKey || e.key === 'ArrowDown' && e.altKey)) {
+        e.preventDefault(); S.popover.querySelector('button')?.focus(); return;
+      }
+      hideMenu();
+    });
+    ta.addEventListener('blur', e => { if (!S.popover?.contains(e.relatedTarget)) hideMenu(); });
+    ta.addEventListener('input', () => { hideMenu(); meta.firstChild.textContent = 'Saving…'; save(); });
     wrap.append(el('div', { class: 'notes-wrap' }, el('div', { class: 'spine' }, ta), meta));
   }
 
@@ -1370,7 +1458,7 @@
   function onDocDown(e) { if (S.popover && !S.popover.contains(e.target)) closePopover(); }
   function closePopover() {
     const p = S.popover; if (!p) return;
-    S.popover = null; document.removeEventListener('pointerdown', onDocDown);
+    S.popover = null; p.onClose?.(); document.removeEventListener('pointerdown', onDocDown);
     p.classList.remove('is-open'); p.classList.add('is-closing'); setTimeout(() => p.remove(), 150);
   }
 
