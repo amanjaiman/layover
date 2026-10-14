@@ -76,7 +76,8 @@
     // breaks and notes
     'Remind me to take breaks': 'Remind me to visit the lounge', 'Take a break': 'Visit the lounge', 'Break’s over.': 'Final boarding call: break’s over.',
     'Notes for this project…': 'Logbook for this gate…',
-    'Saved as you type. Select text to add to Next.': 'Saved as you type. Select text to add to Departures.',
+    'Saved as you type. Select text to move to Next.': 'Saved as you type. Select text to move to Departures.',
+    'Move to Next': 'Move to Departures',
     // workspace settings
     'Key prefix': 'Flight code', 'Hide this workspace': 'Close this gate', 'No workspace selected.': 'No gate selected.',
     // shortcuts
@@ -1278,11 +1279,12 @@
     return { getBoundingClientRect: () => ({ left: x, top: y, bottom: y, width: 0 }) };
   }
   function notesSelectionMenu(ta, anchor) {
-    const selected = ta.value.slice(ta.selectionStart, ta.selectionEnd).trim();
+    const body = ta.value, start = ta.selectionStart, end = ta.selectionEnd;
+    const selected = body.slice(start, end).trim();
     if (!selected) { if (S.popover?.classList.contains('notes-selection')) closePopover(); return; }
     closePopover();
     const pid = S.project, u = user(pid), prefix = project()?.prefix || 'WS';
-    const pop = el('div', { class: 'pop menu notes-selection', role: 'menu', 'aria-label': T('Add to Next') }, el('div', { class: 'notes-selection-label', text: T('Add to Next') }));
+    const pop = el('div', { class: 'pop menu notes-selection', role: 'menu', 'aria-label': T('Move to Next') }, el('div', { class: 'notes-selection-label', text: T('Move to Next') }));
     let adding = false;
     for (const status of ['todo', 'progress']) pop.append(el('button', { class: 'menu-item', role: 'menuitem', onclick: async () => {
       if (adding) return;
@@ -1295,7 +1297,11 @@
         const current = user(pid) || u;
         if (current && !current.tickets.some(x => x.id === t.id)) current.tickets.unshift(t);
         if (S.popover === pop) closePopover();
-        toast({ text: 'Added to ' + T('Next') + ' as ' + prefix + '-' + t.number + ' · ' + T(STATUS[status]) + '.', ttl: 5000, actions: [{ label: 'Open', fn: async () => {
+        // Remove precisely the saved selection, only from the editor it came from.
+        // If the user edited or left while saving, keep the note rather than deleting newer text.
+        const moved = ta.isConnected && S.project === pid && ta.value === body;
+        if (moved) { ta.setRangeText('', start, end, 'start'); ta.dispatchEvent(new Event('input', { bubbles: true })); }
+        toast({ text: (moved ? 'Moved to ' : 'Added to ') + T('Next') + ' as ' + prefix + '-' + t.number + ' · ' + T(STATUS[status]) + '.' + (moved ? '' : ' Your notes changed, so the text was kept in ' + T('Notes') + '.'), ttl: 5000, actions: [{ label: 'Open', fn: async () => {
           await switchProject(pid); S.ticket = t.id; S.ticketFilter = 'active'; setView('tickets'); savePlace(); render(true);
         } }] });
         renderHead(); renderCompactNav();
@@ -1329,7 +1335,7 @@
     if (S.notesConflict) wrap.append(el('div', { class: 'banner warn' }, el('span', { class: 'txt' }, el('b', { text: 'These notes changed elsewhere.' }), ' Your text is kept until you choose.'),
       el('button', { class: 'btn small', onclick: () => { api.copy(S.notesConflict.mine); toast({ text: 'Your version is on the clipboard.', ttl: 4000 }); } }, 'Copy mine'),
       el('button', { class: 'btn small primary', onclick: async () => { S.notesConflict = null; await loadUser(S.project); render(true); } }, 'Load the saved version')));
-    wrap.append(el('div', { class: 'section-h' }, el('span', { class: 't-eyebrow', text: T('Notes') }), el('span', { class: 't-small l', text: T('Saved as you type. Select text to add to Next.') })));
+    wrap.append(el('div', { class: 'section-h' }, el('span', { class: 't-eyebrow', text: T('Notes') }), el('span', { class: 't-small l', text: T('Saved as you type. Select text to move to Next.') })));
     const ta = el('textarea', { class: 'notes', placeholder: T('Notes for this project…'), 'aria-label': 'Project notes', spellcheck: 'true' });
     ta.value = u.notes.body;
     const pid = S.project;
