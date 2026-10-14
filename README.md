@@ -67,7 +67,7 @@ Git linked worktrees share their main repository's workspace, including worktree
 - Start a turn with that key in the prompt and the entry moves itself to In progress; the thread shows the key and offers *Mark done* when the turn finishes.
 - `n` or `Ctrl+N` creates one. The key prefix is yours to set (Settings → Workspace).
 
-**Notes** — the project's running notes. Autosaved, with conflict protection.
+**Notes** — the project's running notes. Autosaved, with conflict protection. Select text and a small menu adds it to Next as *Up next* or *In progress*: the first selected line becomes the title, the whole selection its description, the note stays as it was, and the toast offers *Open*.
 
 **Break** — stretch prompts, a timer, and optional reminders; it can suggest a break or start one once you stop typing.
 
@@ -85,7 +85,7 @@ A conversation stays Working while any of its subagents are active; its header i
 
 - **Workspaces** (left rail) — one per project folder, with a colour, a name, and a dot that breathes marigold while an agent works. Switching never loses your place or your unfinished writing.
 - **Return to the agent** — brings forward the window the session started in (terminal, VS Code, the Claude desktop app), recorded by the hook at session start. If it's gone, you get the session details and a copyable resume command.
-- **Compact companion** (`Ctrl+Shift+C`) — the same app at 400×580, floating. Its top bar switches between Workspaces and Tracker, opens Settings, and shows an update when one is waiting; an update's notice there stays until you answer it. On macOS it also lives in the menu bar as a popover that closes when you click away.
+- **Compact companion** (`Ctrl+Shift+C`) — the same app at 400×580, floating. Its top bar switches between Workspaces and Tracker (whose rows show each conversation's Claude or Codex logo), opens Settings, and shows an update when one is waiting; an update's notice there stays until you answer it. On macOS it also lives in the menu bar as a popover that closes when you click away.
 - **Keyboard** — `Ctrl+Shift+T` tracker, `n` new in Next, `r` reply to the latest item, `j`/`k` through Next, `e` edit, `Esc` close, `[` collapse the sidebar, `?` for the full list.
 - **Flight style** — Settings → Appearance has a style switch next to theme and accent: the cup is the everyday look, the plane dresses the whole app as an airport. Now becomes *Arrivals*, Next *Departures*, Notes the *Logbook*, Break the *Lounge*; workspaces are *Gates*, the Tracker is the *Tower* with a departures-board header, working agents are *In flight* and finished ones *At the gate*. Every button and shortcut works the same way.
 - **Focus** — the start of a turn is the one moment Layover comes forward, because you just pressed Enter and are waiting. Items and completions never move the window. Settings → *When an agent starts a turn* offers: come forward (default), open behind my work, only if already open, stay quiet.
