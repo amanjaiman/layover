@@ -57,6 +57,7 @@ const cliCommand = () => app.isPackaged ? path.join(process.resourcesPath, '..',
 async function boot() {
   app.setAppUserModelId('com.layover.app');
   settings = loadSettings();
+  if (!settings.readySince) { settings.readySince = Date.now() - 86400000; saveSettings(settings); } // finishes from the last day stay ready; older ones count as seen
   nativeTheme.themeSource = settings.theme;
   store = new Store(dataDir);
   bridge = new Bridge(store, dataDir);
