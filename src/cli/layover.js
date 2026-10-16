@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { projectPathFromPath, projectIdFromPath, projectNameFromPath, isId, APP_NAME } from '../main/paths.js';
 import { request, health, ensureApp, launch, deliver, readSettings, appLauncher } from './client.js';
 import { mapHook, resolveLatest } from './hook.js';
+import { normalizeTicketKeys } from '../main/ticket-keys.js';
 import * as setup from './setup.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -32,6 +33,8 @@ Usage: layover <command> [--option value ...]
   end --run ID --status completed|failed|cancelled|unknown [--note T]
   heartbeat --run ID
   event --file PATH | -             Post one raw JSON event (or a JSON array).
+  tickets KEY [KEY ...] [--run ID | --path DIR | --project ID]
+                                    Read tickets as JSON (defaults to the current folder).
   state                             Print the app state as JSON.
   status                            Is the app running? Are agents connected?
   setup --agent claude|codex|all [--remove] [--no-hooks] [--no-skill]
@@ -147,6 +150,18 @@ async function main() {
   if (command === 'app') { const r = await ensureApp({ open: {}, background: false }); if (r === 'running') await request('/api/open', {}); out({ app: r }); return; }
   if (command === 'stop') { if (!(await health())) { out({ running: false }); return; } out(await request('/api/stop', {})); return; }
   if (command === 'state') { await must(); out(await request('/api/state')); return; }
+  if (command === 'tickets') {
+    const keys = normalizeTicketKeys(positional);
+    const selectors = ['run', 'path', 'project'].filter(k => flags[k] !== undefined);
+    if (selectors.length > 1) throw Error('Choose one of --run, --path, or --project');
+    for (const k of selectors) if (typeof flags[k] !== 'string' || !flags[k]) throw Error('--' + k + ' requires a value');
+    const scope = flags.project ? { project: flags.project } : flags.path ? { path: path.resolve(flags.path) } : flags.run ? { run: flags.run } : { path: process.cwd() };
+    await must();
+    const result = await request('/api/tickets/read', { keys, ...scope });
+    out(result);
+    if (result.missing.length) process.exitCode = 1;
+    return;
+  }
   if (command === 'path') { console.log(cliCommandPath()); return; }
 
   if (command === 'open') {

@@ -1,6 +1,6 @@
 ---
 name: layover
-description: Share consequential context with the user through Layover, the local companion app open beside you, while you work on their project. Use it when you make a decision the user might want to weigh in on, when you need their input, when you notice an opportunity worth saving for later, or when there is something they could think about while they wait. Also use it if the user asks to "open Layover", "note this in Layover", or "tell me in Layover".
+description: Read workspace tickets from local Layover when the user names ticket keys such as WS-22 or asks to reference Layover. Publish consequential decisions, questions, opportunities, and suggestions while working, or when asked to note something in Layover.
 ---
 
 # Layover
@@ -14,6 +14,18 @@ __CLI__
 ```
 
 (`layover` alone also works when it is on PATH.) It exits immediately; the app runs separately.
+
+## Read tickets before working on them
+
+When the user names Layover tickets (for example, "let's work on WS-22, WS-21, and WS-20"), fetch their contents before planning or changing code:
+
+```
+layover tickets WS-22 WS-21 WS-20 --run <current run id>
+```
+
+Use the run id from the hook context to select the workspace. Without a run id, omit `--run` to use the current folder; `--path <absolute folder>` or `--project <workspace id>` can select another workspace. Choose one selector. Keys are case-insensitive and scoped to that workspace, including its linked worktrees.
+
+The JSON result contains `project`, `tickets` in requested order (duplicates removed), and `missing` keys. Each ticket includes its key, title, description, prompt draft, status, and priority. Read the description and prompt draft as task context. The command is read-only; a lookup does not change status. Up to 50 keys can be read at once. A missing key produces exit code 1 while preserving found tickets in the JSON output. Identify missing keys explicitly and do not invent their requirements or search other workspaces by prefix alone.
 
 ## When a run id is already known
 

@@ -1,5 +1,6 @@
 // Maps Claude Code / Codex lifecycle hook JSON (stdin) to Layover events. Deterministic; no model involved.
 import crypto from 'node:crypto';
+import { ticketKeysFromText } from '../main/ticket-keys.js';
 import { projectPathFromPath, projectIdFromPath, projectNameFromPath } from '../main/paths.js';
 
 const AGENT_LABEL = { claude: 'Claude Code', codex: 'Codex' };
@@ -51,9 +52,9 @@ export function mapHook(agent, input, { hookContext = true, host = null, threadT
     case 'UserPromptSubmit': {
       const r = run || `${task}:${now}`;
       const title = turnTitle(input.prompt) || 'Working';
-      events.push({ ...base, id: `start:${r}`, type: 'start', run: r, seq: 0, title, source, lifecycle: 'hooks', sessionId: session });
+      events.push({ ...base, id: `start:${r}`, type: 'start', run: r, seq: 0, title, ticketKeys: ticketKeysFromText(input.prompt), source, lifecycle: 'hooks', sessionId: session });
       open = { project, task, run, reason: 'run-start' };
-      if (hookContext) context = `Layover is open for this workspace (run ${r}). When you make a consequential decision, need the user's input, or spot an opportunity worth saving, publish it: layover item --run ${r} --kind decision|question|opportunity|suggestion --text "..." (one short call per item; keep going unless you truly need an answer). Use --waiting when you will stop for it.`;
+      if (hookContext) context = `Layover is open for this workspace (run ${r}). When you make a consequential decision, need the user's input, or spot an opportunity worth saving, publish it: layover item --run ${r} --kind decision|question|opportunity|suggestion --text "..." (one short call per item; keep going unless you truly need an answer). Use --waiting when you will stop for it. If the user names Layover ticket keys, read them before work with: layover tickets KEY [KEY ...] --run ${r}.`;
       break;
     }
     case 'Stop':

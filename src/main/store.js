@@ -2,7 +2,8 @@
 // Agent events are content, never commands. Every write is durable before it is acknowledged.
 import fs from 'node:fs';
 import path from 'node:path';
-import { isId, canonicalPath, projectPathFromPath, folderId, managedWorktreeRoot } from './paths.js';
+import { isId, canonicalPath, projectPathFromPath, folderId, managedWorktreeRoot, projectIdFromPath } from './paths.js';
+import { normalizeTicketKeys, MAX_TICKET_KEYS } from './ticket-keys.js';
 
 export const AGENTS = new Set(['codex', 'claude', 'test']);
 export const EVENT_TYPES = new Set(['session', 'start', 'heartbeat', 'item', 'end']);
@@ -241,6 +242,10 @@ export class Store {
     if (e.type !== 'session' && (!Number.isSafeInteger(e.seq) || e.seq < 0)) throw Error('seq must be a nonnegative integer');
     for (const k of ['title', 'projectName', 'projectPath', 'source', 'name', 'sessionId', 'note']) text(e[k], MAX_META, k);
     text(e.threadTitle, 200, 'threadTitle');
+    if (e.ticketKeys !== undefined) {
+      if (e.type !== 'start' || !Array.isArray(e.ticketKeys) || e.ticketKeys.length > MAX_TICKET_KEYS) throw Error('Invalid ticket references');
+      if (e.ticketKeys.length) normalizeTicketKeys(e.ticketKeys);
+    }
     if (e.type === 'start' && e.lifecycle !== undefined && !LIFECYCLES.has(e.lifecycle)) throw Error('Invalid lifecycle');
     if (e.host !== undefined) {
       const h = e.host;
@@ -374,6 +379,7 @@ export class Store {
     r.lastSeen = Math.max(r.lastSeen, received);
     if (e.type === 'start') {
       if (e.title) r.title = e.title;
+      if (e.ticketKeys !== undefined) r.ticketKeys = e.ticketKeys.length ? normalizeTicketKeys(e.ticketKeys) : [];
       if (e.source) r.source = e.source;
       if (e.lifecycle) r.lifecycle = e.lifecycle;
       change.started = r.id;
@@ -443,6 +449,35 @@ export class Store {
     return { color: u.color || 'teal', displayName: u.name || '', hidden: !!u.hidden, prefix: u.prefix || ticketPrefix(u.name || p?.name || id) };
   }
   user(id) { return structuredClone(this.userProject(id)); }
+
+  /** Read only the requested tickets; never include notes or unrelated workspace content. */
+  readTickets({ keys, run, project, path: folder } = {}) {
+    keys = normalizeTicketKeys(keys);
+    const selectors = [run, project, folder].filter(v => v !== undefined);
+    if (selectors.length !== 1) throw Error('Choose one workspace selector: run, project, or path');
+    if (run !== undefined) {
+      if (!isId(run)) throw Error('Invalid run');
+      const r = this.runs.get(run);
+      if (!r) throw Error('Unknown run: ' + run);
+      project = r.project;
+    } else if (folder !== undefined) {
+      if (typeof folder !== 'string' || folder.length > 4000 || !path.isAbsolute(folder)) throw Error('An absolute workspace path is required');
+      project = this.resolveEvent({ project: projectIdFromPath(folder), projectPath: folder }).event.project;
+    } else if (!isId(project)) throw Error('Invalid project');
+    project = this.resolveProject(project);
+    const p = this.projects.get(project);
+    if (!p) throw Error('Unknown workspace. Use --run ID, --path DIR, or --project ID for an existing workspace.');
+    const meta = this.projectMeta(project);
+    const u = this.userDoc.projects[project];
+    // Clone before migration so a read cannot create or change user content.
+    const tickets = u ? migrateUserProject(structuredClone(u)).tickets : [];
+    const byKey = new Map(tickets.map(t => [meta.prefix + '-' + t.number, t]));
+    return {
+      project: { id: project, name: meta.displayName || p.name, path: p.path, prefix: meta.prefix },
+      tickets: keys.filter(key => byKey.has(key)).map(key => ({ ...byKey.get(key), key })),
+      missing: keys.filter(key => !byKey.has(key)),
+    };
+  }
 
   /** Create a workspace by hand (no agent yet). */
   createProject({ id, name, path: projectPath }) {

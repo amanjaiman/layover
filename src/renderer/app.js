@@ -222,17 +222,23 @@
       const archived = archivedAt > 0 && archivedAt >= lastActivity; // new activity un-archives on its own
       const live = status === 'working' || status === 'attention';
       const recent = live || (!archived && Date.now() - lastActivity < RECENT_MS);
-      const ticket = latest ? ticketForRun(latest, id) : null;
-      return { task: t, runs: tr, items: ti, children, activeChildren, latest, waiting, lastActivity, status, archived, recent, ticket, open: ti.filter(i => i.status === 'open' && !i.userDismissed).length };
+      const tickets = latest ? ticketsForRun(latest, id) : [];
+      return { task: t, runs: tr, items: ti, children, activeChildren, latest, waiting, lastActivity, status, archived, recent, tickets, open: ti.filter(i => i.status === 'open' && !i.userDismissed).length };
     }).sort((a, b) => (b.status === 'working' || b.status === 'attention') - (a.status === 'working' || a.status === 'attention') || b.lastActivity - a.lastActivity);
   }
-  /** A turn whose prompt carries a key like LAY-12 is linked to that ticket. Copy prompt puts the key there. */
-  function ticketForRun(run, pid = S.project) {
+  /** New runs retain all prompt references; older runs fall back to their title. */
+  function ticketsForRun(run, pid = S.project) {
     const u = user(pid); const p = S.state?.projects.find(x => x.id === pid);
-    if (!u || !p || !run?.title) return null;
-    const m = run.title.match(new RegExp(`\\b${p.prefix}-(\\d+)\\b`, 'i'));
-    if (!m) return null;
-    return u.tickets.find(t => t.number === Number(m[1])) || null;
+    if (!u || !p || !run) return [];
+    const keys = run.ticketKeys || [...(run.title || '').matchAll(/\b[A-Z0-9]{1,4}-[1-9]\d*\b/gi)].map(m => m[0].toUpperCase());
+    const found = new Set();
+    const tickets = [];
+    for (const key of keys) {
+      const t = u.tickets.find(t => key.toUpperCase() === p.prefix + '-' + t.number);
+      if (t && !found.has(t.id)) { found.add(t.id); tickets.push(t); }
+    }
+    for (const t of u.tickets) if ((t.runs || []).includes(run.id) && !found.has(t.id)) tickets.push(t);
+    return tickets;
   }
   /** Runs that mention a ticket move it to In progress once, and remember the run on the ticket. */
   async function linkRuns() {
@@ -243,12 +249,13 @@
     const u = user(pid) || await loadUser(pid); if (!u) return;
     for (const r of runsOf(pid)) {
       if (Date.now() - r.startedAt > 24 * 3600000) continue;
-      const t = ticketForRun(r, pid);
-      if (!t || (t.runs || []).includes(r.id) || r.startedAt < t.createdAt) continue;
-      const patch = { id: t.id, runs: [...(t.runs || []), r.id] };
-      if (t.status === 'backlog' || t.status === 'todo') patch.status = 'progress';
-      const saved = await call(api.upsertTicket(pid, patch));
-      const i = u.tickets.findIndex(x => x.id === t.id); if (i >= 0) u.tickets[i] = saved;
+      for (const t of ticketsForRun(r, pid)) {
+        if ((t.runs || []).includes(r.id) || r.startedAt < t.createdAt) continue;
+        const patch = { id: t.id, runs: [...(t.runs || []), r.id] };
+        if (t.status === 'backlog' || t.status === 'todo') patch.status = 'progress';
+        const saved = await call(api.upsertTicket(pid, patch));
+        const i = u.tickets.findIndex(x => x.id === t.id); if (i >= 0) u.tickets[i] = saved;
+      }
     }
   }
   async function setArchived(taskId, on, pid = S.project) {
@@ -912,7 +919,7 @@
     const pop = el('div', { class: 'pop menu', role: 'menu' });
     const item = (label, fn, icon) => el('button', { class: 'menu-item', role: 'menuitem', onclick: () => { closePopover(); fn(); } }, icon ? svg(icon, 13) : null, label);
     pop.append(item(`How to return to ${who}`, () => returnSheet(t.latest || { agent: t.task.agent, task: t.task.id, id: '', source: t.task.source }), ICON.arrow));
-    if (t.ticket) pop.append(item(`Open ${ticketKey(t.ticket)}`, () => { S.ticket = t.ticket.id; S.ticketFilter = 'all'; setView('tickets'); }, ICON.plus));
+    for (const ticket of t.tickets) pop.append(item(`Open ${ticketKey(ticket)}`, () => { S.ticket = ticket.id; S.ticketFilter = 'all'; setView('tickets'); }, ICON.plus));
     pop.append(item(T(t.archived || !t.recent ? 'Restore to Now' : 'Archive'), () => setArchived(t.task.id, !(t.archived || !t.recent)), ICON.x));
     if (t.task.sessionId) pop.append(item('Copy session id', () => { api.copy(t.task.sessionId); toast({ text: 'Session id copied.', ttl: 3000 }); }, ICON.copy));
     if (t.task.agent === 'codex' && t.latest) pop.append(item('Send to Codex…', () => sendSheet(t.latest)));
@@ -947,7 +954,7 @@
     card.append(el('div', { class: 'thread-h', onclick: e => { if (!e.target.closest('button')) toggle(); } },
       el('button', { class: 'icon-btn chev', 'aria-label': collapsed ? 'Expand' : 'Collapse', 'aria-expanded': collapsed ? 'false' : 'true', onclick: toggle }, svg('M6 4l4 4-4 4', 14)),
       agentIcon(agent, 26),
-      el('div', { class: 'thread-t' }, el('div', { class: 'thread-title' }, el('b', { text: title }), t.activeChildren.length ? el('span', { class: 'thread-child-count', title: `${t.activeChildren.length} subagent${t.activeChildren.length === 1 ? '' : 's'} working`, 'aria-label': `${t.activeChildren.length} subagent${t.activeChildren.length === 1 ? '' : 's'} working`, text: `↳ ${t.activeChildren.length}` }) : null, t.ticket ? el('button', { class: 'chip accent link', title: t.ticket.title, onclick: () => { S.ticket = t.ticket.id; S.ticketFilter = 'all'; setView('tickets'); } }, ticketKey(t.ticket)) : null, t.open ? el('span', { class: 'chip open-badge' + (t.waiting ? ' warn' : ''), text: `${t.open} open`, hidden: !collapsed }) : null), el('span', { text: `${t.runs.length} ${flight() ? 'leg' : 'turn'}${t.runs.length === 1 ? '' : 's'} · ${flight() ? 'departed' : 'started'} ${clock(t.runs[0]?.startedAt || t.task.createdAt)}` })),
+      el('div', { class: 'thread-t' }, el('div', { class: 'thread-title' }, el('b', { text: title }), t.activeChildren.length ? el('span', { class: 'thread-child-count', title: `${t.activeChildren.length} subagent${t.activeChildren.length === 1 ? '' : 's'} working`, 'aria-label': `${t.activeChildren.length} subagent${t.activeChildren.length === 1 ? '' : 's'} working`, text: `↳ ${t.activeChildren.length}` }) : null, ...t.tickets.map(ticket => el('button', { class: 'chip accent link', title: ticket.title, onclick: () => { S.ticket = ticket.id; S.ticketFilter = 'all'; setView('tickets'); } }, ticketKey(ticket))), t.open ? el('span', { class: 'chip open-badge' + (t.waiting ? ' warn' : ''), text: `${t.open} open`, hidden: !collapsed }) : null), el('span', { text: `${t.runs.length} ${flight() ? 'leg' : 'turn'}${t.runs.length === 1 ? '' : 's'} · ${flight() ? 'departed' : 'started'} ${clock(t.runs[0]?.startedAt || t.task.createdAt)}` })),
       statusChip,
       el('button', { class: 'btn small ghost l', title: t.task.host ? `Bring ${t.task.host.name} forward` : `How to return to ${who}`, onclick: () => returnTo(latest || { agent, task: t.task.id, id: '', source: t.task.source }) }, T('Return'), svg(ICON.arrow, 13)),
       el('button', { class: 'icon-btn', title: 'More', 'aria-label': 'Conversation menu', onclick: e => threadMenu(e.currentTarget, t, who) }, svg('M3 8h.01M8 8h.01M13 8h.01', 16, 'stroke-width="2.4"'))));
@@ -972,7 +979,7 @@
       else if (e.kind === 'msg') tl.append(msgEntry(e.m, t));
       // Only the latest turn's ending deserves the prominent row; older completions read as quiet history,
       // and so does the latest one while its subagents are still working.
-      else tl.append(endEntry(e.run, who, quiet || e.run.id !== latest?.id || t.activeChildren.length > 0, e.run.id === latest?.id ? t.ticket : null));
+      else tl.append(endEntry(e.run, who, quiet || e.run.id !== latest?.id || t.activeChildren.length > 0, e.run.id === latest?.id ? t.tickets : []));
     }
     if (t.status === 'working' && !shown.some(e => e.kind === 'item' && e.item.runStatus === 'active')) tl.append(el('div', { class: 'tl-quiet', text: T('Working quietly.') }));
     if (!quiet && t.latest?.status === 'active') tl.append(composer(t, who));
@@ -1017,7 +1024,7 @@
     return row;
   }
 
-  function endEntry(r, who, quiet, ticket = null) {
+  function endEntry(r, who, quiet, tickets = []) {
     const acked = isAcked(r.id) || quiet;
     const cls = r.status === 'completed' ? 'done' : r.status === 'failed' ? 'failed' : 'attention';
     const text = r.status === 'completed' ? `${T('Finished')} · ${flight() ? 'flew' : 'ran'} ${dur((r.endedAt || r.lastSeen) - r.startedAt)}`
@@ -1026,8 +1033,8 @@
       : flight() ? 'Lost contact. It may still be in the air, or the session may have closed.' : 'No recent signal. It may still be thinking, or the session may have closed.';
     const row = el('div', { class: 'tl-end ' + cls + (acked ? ' acked' : '') }, agentIcon(r.agent, 16), el('span', { class: 'tl-end-text' }, acked ? text : [el('b', { text: r.status === 'completed' ? T('Ready when you are') + '. ' : '' }), text]), el('span', { class: 'tl-time', text: clock(r.endedAt || r.lastSeen) }));
     if (!acked) row.append(el('span', { class: 'tl-end-actions' }, el('button', { class: 'btn small primary', title: `Return to ${who}`, onclick: () => returnTo(r) }, T('Return'), svg(ICON.arrow, 12)),
-      ticket && ticket.status !== 'done' && r.status === 'completed' ? el('button', { class: 'btn small', onclick: () => setTicket(ticket, { status: 'done' }) }, svg(ICON.check, 12), ...lbl(`Mark ${ticketKey(ticket)} ${flight() ? 'landed' : 'done'}`, T('Done'))) : null,
-      el('button', { class: 'btn small ghost', onclick: (e) => { ack(r.id); const row = e.currentTarget.closest('.tl-end'); if (row) row.replaceWith(endEntry(r, who, true, ticket)); } }, ...lbl(T('Got it'), T('OK')))));
+      ...tickets.filter(ticket => ticket.status !== 'done' && ticket.status !== 'cancelled' && r.status === 'completed').map(ticket => el('button', { class: 'btn small', onclick: async e => { const button = e.currentTarget; await setTicket(ticket, { status: 'done' }); button.remove(); } }, svg(ICON.check, 12), ...lbl(`Mark ${ticketKey(ticket)} ${flight() ? 'landed' : 'done'}`, tickets.length > 1 ? ticketKey(ticket) : T('Done')))),
+      el('button', { class: 'btn small ghost', onclick: (e) => { ack(r.id); const row = e.currentTarget.closest('.tl-end'); if (row) row.replaceWith(endEntry(r, who, true, tickets)); } }, ...lbl(T('Got it'), T('OK')))));
     return row;
   }
 

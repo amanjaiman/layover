@@ -64,7 +64,8 @@ Git linked worktrees share their main repository's workspace, including worktree
 **Next** — what you'll do after this, grouped into In progress, Up next, Someday, Done, and Dropped. Each entry can have a key like `LAY-12`, a priority, a description, and a **prompt draft**.
 
 - *Copy prompt* packages the title, description and draft for the agent, key included.
-- Start a turn with that key in the prompt and the entry moves itself to In progress; the thread shows the key and offers *Mark done* when the turn finishes.
+- Tell an agent "let’s work on LAY-12, LAY-13, and LAY-14". The installed skill reads those tickets with `layover tickets LAY-12 LAY-13 LAY-14 --run <run id>`; without a run id, the command uses the current folder. `--path DIR` or `--project ID` selects another workspace. The JSON contains the requested ticket contents and any missing keys; missing keys produce exit code 1. Reading leaves ticket status unchanged.
+- Start a turn with keys in the prompt and the entries move themselves to In progress; the thread shows every linked key and offers individual *Mark done* actions when the turn finishes.
 - `n` or `Ctrl+N` creates one. The key prefix is yours to set (Settings → Workspace).
 
 **Notes** — the project's running notes. Autosaved, with conflict protection. Select text and a small menu moves it to Next as *Up next* or *In progress*: the first selected line becomes the title, the whole selection its description, the selected text is removed from the note after the task saves (if the note changed meanwhile, it is kept and the toast says so), and the toast offers *Open*.
@@ -101,7 +102,7 @@ Flight style's Tower:
 
 **Hooks (deterministic).** `UserPromptSubmit` starts a run; `Stop` ends it as completed, `StopFailure` as failed, `Interrupt`/`SessionEnd` as cancelled. `SubagentStart`/`SubagentStop` track child agents under their conversation; Layover also checks Claude's local subagent transcripts while a conversation is active to catch missed worktree hooks. Claude's `Notification` hook turns permission prompts into "Input requested" items. Each prompt hook prints one short line so the agent knows its run id. No model reasoning is involved in lifecycle.
 
-**Skill (voluntary).** The `layover` skill tells the agent when a decision, question, or opportunity is worth a `layover item` call — and when to stay silent. Publishing is one shell call per item, at the moment it becomes true.
+**Skill (voluntary).** The `layover` skill tells the agent to read named tickets with `layover tickets` before working on them, and when a decision, question, or opportunity is worth a `layover item` call — and when to stay silent. Publishing is one shell call per item, at the moment it becomes true.
 
 **CLI.**
 
