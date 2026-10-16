@@ -5,7 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'layover-tickets-'));
+// Resolve symlinks (macOS /var → /private/var) so the path matches the CLI's process.cwd().
+const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'layover-tickets-')));
 process.env.LAYOVER_DATA = dir;
 process.env.LAYOVER_PORT = '43198';
 const { Store } = await import('../src/main/store.js');
