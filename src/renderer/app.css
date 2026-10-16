@@ -426,7 +426,7 @@ body.rail-collapsed .rail-list{ padding:0; gap:4px; }
 body.rail-collapsed .rail-foot{ padding:var(--s2) 6px; }
 body.rail-collapsed .rail-btn{ width:44px; height:36px; margin:0 auto; }
 /* thread header */
-.thread-title{ display:flex; align-items:center; gap:8px; min-width:0; }
+.thread-title{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; min-width:0; }
 .thread-title b{ min-width:0; }
 .chip.link{ border:none; cursor:pointer; flex:none; font-family:var(--f-mono); }
 .chip.link:hover{ background:var(--accent-soft); }
@@ -453,7 +453,7 @@ body.rail-collapsed .rail-list{ padding:0; gap:4px; }
 body.rail-collapsed .rail-foot{ padding:var(--s2) 6px; }
 body.rail-collapsed .rail-btn{ width:44px; height:36px; margin:0 auto; }
 /* thread header */
-.thread-title{ display:flex; align-items:center; gap:8px; min-width:0; }
+.thread-title{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; min-width:0; }
 .thread-title b{ min-width:0; }
 .chip.link{ border:none; cursor:pointer; flex:none; font-family:var(--f-mono); }
 .chip.link:hover{ background:var(--accent-soft); }

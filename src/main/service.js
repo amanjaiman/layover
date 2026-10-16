@@ -52,6 +52,7 @@ export function createService({ store, bridge, onOpen, onEvent, settings = () =>
           for (const e of input) { try { const r = store.event(e); if (onEvent) r.open = await onEvent(e, r); results.push(r); } catch (err) { results.push({ error: err.message }); } }
           return send(200, { results });
         }
+        case '/api/tickets/read': return send(200, store.readTickets(input));
         case '/api/open': return send(200, await onOpen(input || {}));
         case '/api/outbox/take': return send(200, { messages: store.takeMessages(String(input.task || ''), String(input.moment || '')) });
         case '/api/outbox/send': return send(200, store.queueMessage(input));
