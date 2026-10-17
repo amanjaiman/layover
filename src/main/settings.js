@@ -19,6 +19,7 @@ export const DEFAULTS = {
   breakReminder: { enabled: false, minutes: 30, mode: 'suggest' }, // suggest | auto
   updates: { check: true, skip: '' }, // check: ask GitHub for the latest release every hour (the only outbound request); skip: a version the user chose to ignore
   window: { mode: 'expanded' },
+  readySince: 0,                   // finishes that ended before this count as seen; set once on first launch so an upgrade does not surface every old unseen finish
 };
 
 export const TONES = ['chime', 'cabin', 'pop'];

@@ -11,7 +11,7 @@
   const STATUS_ORDER = ['progress', 'todo', 'backlog', 'done', 'cancelled'];
   const PRIORITY = ['No priority', 'Low', 'Medium', 'High', 'Urgent'];
   const FILTERS = { active: ['progress', 'todo', 'backlog'], done: ['done', 'cancelled'], all: STATUS_ORDER };
-  const RECENT_MS = 30 * 60000;   // a quiet conversation stays in Now for 30 minutes, then moves to Archive on its own
+  const RECENT_MS = 30 * 60000;   // a quiet conversation stays in Now for 30 minutes, then moves to Archive on its own; a finish you have not seen stays until you have
   const STRETCHES = [
     ['Shoulders', 'Roll your shoulders back five times, slowly. Let your arms hang.'],
     ['Eyes', 'Look at something at least six metres away for twenty seconds. Blink a few times.'],
@@ -189,6 +189,10 @@
   }
   function openItems(id) { return itemsOf(id).filter(i => i.status === 'open' && !i.userDismissed); }
   function isAcked(runId, pid = S.project) { return !!(S.acked[runId] || user(pid)?.place?.acked?.[runId]); }
+  /** A finish you have not looked at yet. It waits for you however long you are away; finishes from before readySince (set once, on upgrade) count as seen. */
+  function unseenFinish(run, pid = S.project) {
+    return !!run && ['completed', 'failed', 'disconnected'].includes(run.status) && !isAcked(run.id, pid) && (run.endedAt || run.lastSeen) >= (S.settings?.readySince || 0);
+  }
   function projectStatus(id) {
     const active = activeRuns(id);
     const activeChildren = (S.state?.subagents || []).filter(c => c.project === id && c.status === 'active');
@@ -197,7 +201,7 @@
     if (active.length) return { cls: 'working', label: `${T('Working')}${active.length > 1 ? ` · ${active.length} ${flight() ? 'flights' : 'runs'}` : ''}`, run: active[0], agent: active[0].agent };
     if (activeChildren.length) return { cls: 'working', label: `${T('Working')} · ${activeChildren.length} subagent${activeChildren.length === 1 ? '' : 's'}`, run: latestRun(id), agent: activeChildren[0].agent };
     const last = latestRun(id);
-    if (last && !isAcked(last.id) && Date.now() - (last.endedAt || last.lastSeen) < 12 * 3600000) {
+    if (last && !isAcked(last.id) && (unseenFinish(last, id) || last.status === 'cancelled' && Date.now() - (last.endedAt || last.lastSeen) < 12 * 3600000)) {
       if (last.status === 'completed') return { cls: 'done', label: T('Ready when you are'), run: last };
       if (last.status === 'failed') return { cls: 'attention', label: T('Stopped with an error'), run: last };
       if (last.status === 'cancelled') return { cls: 'attention', label: T('Interrupted'), run: last };
@@ -221,7 +225,7 @@
       const archivedAt = user(id)?.place?.archived?.[t.id] || 0;
       const archived = archivedAt > 0 && archivedAt >= lastActivity; // new activity un-archives on its own
       const live = status === 'working' || status === 'attention';
-      const recent = live || (!archived && Date.now() - lastActivity < RECENT_MS);
+      const recent = live || (!archived && (Date.now() - lastActivity < RECENT_MS || unseenFinish(latest, id)));
       const tickets = latest ? ticketsForRun(latest, id) : [];
       return { task: t, runs: tr, items: ti, children, activeChildren, latest, waiting, lastActivity, status, archived, recent, tickets, open: ti.filter(i => i.status === 'open' && !i.userDismissed).length };
     }).sort((a, b) => (b.status === 'working' || b.status === 'attention') - (a.status === 'working' || a.status === 'attention') || b.lastActivity - a.lastActivity);
@@ -605,8 +609,8 @@
   const BUCKET_ORDER = ['waiting', 'ready', 'working', 'idle'];
   const BUCKET_LABEL = { waiting: 'Waiting on you', ready: 'Ready', working: 'Working', idle: 'Idle' };
   const TR_KIND = { question: 'Question', decision: 'Decision', suggestion: 'Think ahead', opportunity: 'Opportunity', turn: 'Turn', done: 'Done', error: 'Error', stopped: 'Stopped', quiet: 'No signal', idle: 'Idle' };
-  const READY_MS = 24 * 3600000;   // an unacknowledged finish stays "ready" for a day, then settles into idle
-  const IDLE_MS = 3 * 86400000;    // idle conversations older than this (or cleared) fold under "older"
+  // A finish stays "ready" until you mark it seen, however long you are away.
+  const IDLE_MS = 3 * 86400000;    // idle conversations this much older than the latest agent activity (or cleared) fold under "older"
 
   async function loadAllUsers() { await Promise.all(visibleProjects().filter(p => !user(p.id)).map(p => loadUser(p.id).catch(() => null))); }
   async function setLayout(layout, { save = true } = {}) {
@@ -630,7 +634,7 @@
   async function openInWorkspace(pid) { await setLayout('full'); await switchProject(pid, { view: 'now' }); if (S.view !== 'now') setView('now'); }
 
   function trackerRows(p) {
-    const now = Date.now(), pid = p.id;
+    const pid = p.id;
     return threadsOf(pid).map(t => {
       const r = t.latest;
       const waitingItem = t.waiting ? [...t.items].reverse().find(i => i.waiting && i.status === 'open' && !i.userDismissed && i.runStatus === 'active') : null;
@@ -638,13 +642,18 @@
       if (waitingItem) { bucket = 'waiting'; since = waitingItem.updatedAt; }
       else if (t.status === 'working' || t.status === 'attention') { bucket = 'working'; since = r?.status === 'active' ? r.startedAt : t.activeChildren[0]?.startedAt || t.lastActivity; }
       // Interrupted or closed sessions were your own doing; only outcomes you have not seen are "ready".
-      else if (r && ['completed', 'failed', 'disconnected'].includes(t.status) && !isAcked(r.id, pid) && now - (r.endedAt || r.lastSeen) < READY_MS) { bucket = 'ready'; since = r.endedAt || r.lastSeen; }
-      const older = bucket === 'idle' && (t.archived || now - t.lastActivity > IDLE_MS);
-      return { ...t, pid, p, bucket, since, waitingItem, older };
+      else if (['completed', 'failed', 'disconnected'].includes(t.status) && unseenFinish(r, pid)) { bucket = 'ready'; since = r.endedAt || r.lastSeen; }
+      return { ...t, pid, p, bucket, since, waitingItem, older: false };
     });
   }
   const byBucket = (a, b) => BUCKET_ORDER.indexOf(a.bucket) - BUCKET_ORDER.indexOf(b.bucket) || b.since - a.since;
-  function trackerAll() { return visibleProjects().flatMap(trackerRows).sort(byBucket); }
+  function trackerAll() {
+    const rows = visibleProjects().flatMap(p => trackerRows(p));
+    // Idle rows age against the latest agent activity, not the clock: a weekend away folds nothing, and your last stretch of work is still there on Monday.
+    const pulse = Math.max(0, ...rows.map(r => r.lastActivity));
+    for (const r of rows) r.older = r.bucket === 'idle' && (r.archived || pulse - r.lastActivity > IDLE_MS);
+    return rows.sort(byBucket);
+  }
   function trackerCounts(rows) { const c = { waiting: 0, ready: 0, working: 0, idle: 0 }; for (const r of rows) if (!r.older) c[r.bucket]++; return c; }
   function countLine(c) {
     const [waiting, ready, working, idle] = flight() ? ['holding', 'at the gate', 'in flight', 'parked'] : ['waiting', 'ready', 'working', 'idle'];

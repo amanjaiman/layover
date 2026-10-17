@@ -57,7 +57,7 @@ Git linked worktrees share their main repository's workspace, including worktree
 
 - A **Waiting on you** chip appears only when the agent is genuinely stopped — a permission prompt, or an item it marked as blocking.
 - **Reply inline.** Your message reaches the agent at its next pause (after a tool call, as the turn ends, or with your next prompt), and the thread shows when that happened.
-- Proposals can be pushed to Next; anything can be dismissed. Threads quiet for 30 minutes archive themselves, and can be restored any time.
+- Proposals can be pushed to Next; anything can be dismissed. Threads quiet for 30 minutes archive themselves once you have seen how they finished, and can be restored any time.
 
 ![Next: work grouped by status, with a selected entry's details](docs/screenshots/next.png)
 
@@ -79,8 +79,8 @@ Git linked worktrees share their main repository's workspace, including worktree
 A conversation stays Working while any of its subagents are active; its header in Now shows a small `↳ N` count of working subagents. Expanding its Tracker row shows working, *No signal* and stopped children first, with finished children summarized as a count. Subagents and turns have separate collapse controls.
 
 - Each agent is one row: when, which agent, what kind of thing it last did, what it is about, and its status. Click a row for its recent questions, decisions and turns.
-- *Return* brings the agent's window forward, and in the Codex app opens that conversation; *Seen* (`s`) moves a finished agent to Idle. Interrupted or closed sessions go straight to Idle; finishes you never look at settle there after a day.
-- `j`/`k` move through rows, `r` returns to the agent. Idle agents older than three days fold under *older*.
+- *Return* brings the agent's window forward, and in the Codex app opens that conversation; *Seen* (`s`) moves a finished agent to Idle. Interrupted or closed sessions go straight to Idle; a finish stays Ready until you mark it seen, however long you are away.
+- `j`/`k` move through rows, `r` returns to the agent. Idle agents more than three days older than the latest agent activity fold under *older*, so time away never folds your last stretch of work.
 
 ### Around the views
 
