@@ -1,14 +1,16 @@
 {
   "name": "layover",
   "productName": "Layover",
-  "version": "0.6.21",
+  "version": "0.7.0",
   "description": "A calm companion for the time while your coding agent works.",
   "main": "src/main/main.js",
   "type": "module",
   "private": true,
   "author": "Layover",
   "license": "MIT",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "electron . --dev",
     "test": "node --test tests/*.test.js",

@@ -7,7 +7,7 @@ export const DEFAULTS = {
   version: 2,
   onboarded: false,
   theme: 'system',                 // system | light | dark
-  layout: 'full',                  // full: workspaces with Now · Next · Notes · Break | tracker: every agent across projects, as a to-do list
+  layout: 'tracker',               // tracker (default): every agent across projects, as a to-do list | full: workspaces with Now · Next · Notes · Break
   accent: 'teal',                  // teal | ink | mulberry | ember | oxblood | umber (foundations v0.7)
   style: 'default',                // default | flight: airport words and a departures-board look; copy and styling only, never behaviour
   openOnRunStart: 'focus',         // focus: bring Layover forward | open: show it behind your work | reveal: only if already open | never

@@ -75,7 +75,8 @@ export function scanClaudeSubagents(transcript, now = Date.now(), track = () => 
       const finished = state === 'done' || idle && state === 'waiting';
       const updatedAt = Math.floor(stat.mtimeMs);
       const startedAt = stat.birthtimeMs > 0 ? Math.floor(stat.birthtimeMs) : updatedAt;
-      children.push({ id, type: meta.agentType || 'Subagent', status: finished ? 'completed' : 'active', startedAt: startedAt > 0 ? startedAt : undefined, updatedAt });
+      const description = typeof meta.description === 'string' ? meta.description.replace(/[\u0000-\u001f\u007f\s]+/g, ' ').trim().slice(0, 120) : '';
+      children.push({ id, type: meta.agentType || 'Subagent', description, status: finished ? 'completed' : 'active', startedAt: startedAt > 0 ? startedAt : undefined, updatedAt });
     } catch { /* a child may be creating its files right now */ }
   }
   return children;
@@ -93,12 +94,17 @@ export function reconcileClaudeSubagents(store, now = Date.now(), root = path.jo
     const track = id => { const c = hasActiveChild && store.subagents.get(`${task.id}:${id}`); return c?.status === 'active' && !c.hooked; };
     for (const child of scanClaudeSubagents(transcript, now, track)) {
       const old = store.subagents.get(`${task.id}:${child.id}`);
-      if (old && (old.status !== 'active' || old.status === child.status && now - old.lastSeen < 3_600_000)) continue;
-      if (old && child.updatedAt < old.seq) continue;
-      if (!old && child.status === 'active' && child.updatedAt <= (task.childrenCancelledAt || 0)) continue;
       const project = store.projects.get(task.project);
-      try { store.event({ id: `subagent:transcript:${task.id}:${child.id}:${child.status}:${now}`, type: 'session', project: task.project, task: task.id, agent: 'claude', projectName: project?.name, projectPath: project?.path,
-        seq: Math.max(child.updatedAt, (old?.seq || 0) + 1), subagentId: child.id, subagentType: child.type, subagentStatus: child.status, subagentStartedAt: child.startedAt }, now); }
+      const base = { type: 'session', project: task.project, task: task.id, agent: 'claude', projectName: project?.name, projectPath: project?.path, subagentId: child.id, subagentType: child.type, ...(child.description ? { subagentDescription: child.description } : {}) };
+      const stale = old && (old.status !== 'active' || old.status === child.status && now - old.lastSeen < 3_600_000 || child.updatedAt < old.seq);
+      if (stale) {
+        // Its state is settled, but a child reported only by hooks may still lack its name: add that alone (an old seq changes nothing else).
+        if (child.description && !old.description) try { store.event({ ...base, id: `subagent:transcript:name:${task.id}:${child.id}`, seq: old.seq, subagentStatus: 'completed' }, now); } catch { /* best effort */ }
+        continue;
+      }
+      if (!old && child.status === 'active' && child.updatedAt <= (task.childrenCancelledAt || 0)) continue;
+      try { store.event({ ...base, id: `subagent:transcript:${task.id}:${child.id}:${child.status}:${now}`,
+        seq: Math.max(child.updatedAt, (old?.seq || 0) + 1), subagentStatus: child.status, subagentStartedAt: child.startedAt }, now); }
       catch { /* reconciliation is best effort; normal hooks continue to work */ }
     }
   }

@@ -258,6 +258,7 @@ export class Store {
     if (e.type === 'session' && e.subagentId !== undefined) {
       text(e.subagentId, 200, 'subagentId', false);
       text(e.subagentType, 200, 'subagentType');
+      text(e.subagentDescription, 200, 'subagentDescription');
       if (!['active', 'completed'].includes(e.subagentStatus)) throw Error('Invalid subagent status');
       if (!Number.isSafeInteger(e.seq) || e.seq < 0) throw Error('seq must be a nonnegative integer');
       if (e.subagentStartedAt !== undefined && (!Number.isSafeInteger(e.subagentStartedAt) || e.subagentStartedAt <= 0)) throw Error('Invalid subagent start time');
@@ -366,6 +367,7 @@ export class Store {
         if (e.subagentStatus === 'active') { if (!wasActive) child.startedAt = startedAt; child.endedAt = 0; }
         else child.endedAt = received;
       }
+      if (e.subagentDescription) child.description = e.subagentDescription; // a name, not a state: any report may carry it
       if (e.subagentStatus === 'active' || e.subagentStartedAt !== undefined) child.observedStart = true;
       if (!e.id.startsWith('subagent:transcript:')) child.hooked = true;
       return change;

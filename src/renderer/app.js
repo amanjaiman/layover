@@ -95,7 +95,7 @@
     state: null, settings: null, project: null, view: 'now', mode: 'expanded', users: {},
     viewKey: '', pendingRefresh: false, acked: {}, offers: new Map(), theme: 'system', style: 'default',
     brk: { timer: null, left: 300, total: 300, stretch: 0, lastStretchAt: 0 }, lastBreak: Date.now(), reminderShown: 0, reminderToast: null,
-    layout: 'full', tracker: { sort: 'status', open: new Set(), turns: new Set(), subagentsClosed: new Set(), older: new Set(), folded: new Set(), bucket: new Map(), sel: null },
+    layout: 'tracker', tracker: { sort: 'status', kidsOpen: new Set(), older: new Set(), folded: new Set(), bucket: new Map(), sel: null },
     lastInteraction: 0, popover: null, notesConflict: null, ticket: null, ticketFilter: 'active', expandedThreads: new Set(), flushers: {}, promptOpen: new Set(), editingTitle: null,
   };
 
@@ -278,7 +278,7 @@
     S.settings = await call(api.getSettings());
     S.state = await call(api.getState());
     S.mode = S.settings.window?.mode || 'expanded';
-    S.layout = S.settings.layout === 'tracker' ? 'tracker' : 'full';
+    S.layout = S.settings.layout === 'full' ? 'full' : 'tracker';
     document.body.classList.toggle('tracker', S.layout === 'tracker');
     S.tracker.sort = S.settings.window?.trackerSort === 'project' ? 'project' : 'status';
     S.tracker.folded = new Set(S.settings.window?.trackerFolded || []);
@@ -768,32 +768,77 @@
     const turn = r.task.threadTitle ? cleanTitle(run?.title) : ''; // with the agent's own name up front, the line under it says what the latest turn was
     const item = r.waitingItem || (run ? [...r.items].reverse().find(i => i.run === run.id && !i.userDismissed) : null);
     const kind = item ? item.kind : !run ? 'idle' : r.status === 'working' || r.status === 'attention' ? 'turn' : r.status === 'completed' ? 'done' : r.status === 'failed' ? 'error' : r.status === 'cancelled' ? 'stopped' : r.status === 'disconnected' ? 'quiet' : 'idle';
-    const open = S.tracker.open.has(r.task.id);
     const prev = S.tracker.bucket.get(r.task.id);
     const moved = prev !== undefined && prev !== r.bucket; // it just changed state: let it land, so the eye catches it
-    const toggle = () => {
-      S.tracker.sel = r.task.id;
-      if (!S.tracker.open.has(r.task.id)) { S.tracker.open.add(r.task.id); S.tracker.opening = r.task.id; render(true); return; }
-      // fold the history away first, then drop it
-      const wrap = row.parentElement?.querySelector(':scope > .tr-feed-wrap');
-      const done = () => { S.tracker.open.delete(r.task.id); S.tracker.turns.delete(r.task.id); S.tracker.subagentsClosed.delete(r.task.id); render(true); };
-      if (wrap && !matchMedia('(prefers-reduced-motion: reduce)').matches) { wrap.classList.add('closing'); setTimeout(done, 150); } else done();
-    };
     const back = { ...(run || { agent, task: r.task.id, id: '', source: r.task.source }), project: r.pid };
-    const row = el('div', { class: 'tr-row b-' + r.bucket + (open ? ' open' : '') + (moved ? ' moved' : ''), role: 'button', tabindex: '0', 'aria-expanded': open ? 'true' : 'false', dataset: { task: r.task.id },
+    const kids = trackerKids(r);
+    // The whole row folds its subagents open and shut; with none to show, it is only a place for j/k to land.
+    const expandable = kidsHidden(r), expanded = expandable && S.tracker.kidsOpen.has(r.task.id);
+    const toggle = () => { S.tracker.sel = r.task.id; if (expandable) toggleKids(r.task.id); };
+    const row = el('div', { class: 'tr-row b-' + r.bucket + (moved ? ' moved' : '') + (expandable ? ' expandable' : ''), role: expandable ? 'button' : null, tabindex: '0', 'aria-expanded': expandable ? String(expanded) : null, dataset: { task: r.task.id },
       onclick: e => { if (!e.target.closest('button')) toggle(); }, onkeydown: e => { if (e.key === 'Enter' && e.target === row) { e.preventDefault(); toggle(); } }, onfocus: () => { S.tracker.sel = r.task.id; } },
       el('span', { class: 'tr-time', text: clock(r.since), title: ago(r.since) }),
       S.mode === 'compact' ? agentIcon(agent, 26) : el('span', { class: 'tr-agent ' + agent, text: AGENT_SHORT[agent] || agent, title: who }),
       byStatus ? el('span', { class: 'tr-proj' }, projTok(r.p, true), el('span', { text: projectName(r.p) })) : el('span', { class: 'tr-kind k-' + kind }, el('i'), T(TR_KIND[kind])),
-      el('span', { class: 'tr-item' }, el('b', { text: title }), r.activeChildren.length ? el('span', { text: `${r.activeChildren.length} subagent${r.activeChildren.length === 1 ? '' : 's'} working · ${r.children.length} total` }) : r.children.length ? el('span', { text: `${r.children.length} subagent${r.children.length === 1 ? '' : 's'} · expand to view` }) : item ? el('span', { text: (item.title || item.text).split('\n')[0] }) : turn && turn !== title ? el('span', { text: turn }) : null),
+      el('span', { class: 'tr-item' }, el('span', { class: 'tr-title' }, el('b', { text: title }), kidCount(r)),
+        item ? el('span', { class: 'tr-sub', text: (item.title || item.text).split('\n')[0] }) : turn && turn !== title ? el('span', { class: 'tr-sub', text: turn }) : null),
       trackerStatus(r),
       el('span', { class: 'tr-act' },
         el('button', { class: 'btn small tr-return' + (r.bucket === 'waiting' || r.bucket === 'ready' ? ' primary' : ' ghost'), title: r.task.host ? `Bring ${r.task.host.name} forward (r)` : `How to return to ${who} (r)`, 'aria-label': 'Return to ' + who, onclick: () => returnTo(back) }, el('span', { class: 'l', text: T('Return') }), svg(ICON.arrow, 12)),
         r.bucket === 'ready' ? el('button', { class: 'btn small ghost tr-seen', title: 'Seen: move it to Idle (s)', 'aria-label': 'Mark seen', onclick: () => ack(run.id, r.pid) }, svg(ICON.check, 12)) : null,
-        el('button', { class: 'icon-btn', title: 'More', 'aria-label': 'Agent menu', onclick: e => trackerRowMenu(e.currentTarget, r) }, svg('M3 8h.01M8 8h.01M13 8h.01', 16, 'stroke-width="2.4"'))));
-    if (!open) return row;
-    const opening = S.tracker.opening === r.task.id; if (opening) S.tracker.opening = null; // animate the open once, not on every refresh
-    return el('div', { class: 'tr-entry' }, row, el('div', { class: 'tr-feed-wrap' + (opening ? ' opening' : '') }, trackerFeed(r)));
+        el('button', { class: 'icon-btn', title: 'More', 'aria-label': 'Agent menu', onclick: e => trackerRowMenu(e.currentTarget, r) }, svg('M3 8h.01M8 8h.01M13 8h.01', 16, 'stroke-width="2.4"'))),
+      kids); // its own line of the row's grid, under the item and status columns
+    return row;
+  }
+  /** The subagents this row shows: every one still running (oldest first), then those the turn that launched the newest one finished (newest first).
+   *  A background agent's report starts a turn of its own, so "the latest turn" would lose the batch the moment it lands. */
+  function kidsOf(r) {
+    const newest = r.children[0]?.startedAt || 0;
+    const since = [...r.runs].reverse().find(run => run.startedAt <= newest)?.startedAt || 0;
+    const live = r.children.filter(c => c.status === 'active' || c.status === 'disconnected' && c.startedAt >= since).reverse();
+    const done = r.children.filter(c => c.status !== 'active' && c.status !== 'disconnected' && c.startedAt >= since);
+    return { live, done };
+  }
+  /** "↳ n" beside the title, like a workspace thread. */
+  function kidCount(r) {
+    const { live, done } = kidsOf(r), n = live.length + done.length;
+    return n ? el('span', { class: 'tr-kids-n', text: `↳ ${n}`, title: `${n} subagent${n === 1 ? '' : 's'}` }) : null;
+  }
+  const KIDS_SHOWN = 3;
+  /** Whether opening the row would show more: finished subagents, or running ones past the first few. */
+  function kidsHidden(r) {
+    if (S.mode === 'compact') return false;
+    const { live, done } = kidsOf(r);
+    return done.length > 0 || live.length > KIDS_SHOWN;
+  }
+  /** Running subagents sit inside the row; finished ones are a click away in the same list. */
+  function trackerKids(r) {
+    if (S.mode === 'compact') return null;
+    const { live, done } = kidsOf(r);
+    const open = S.tracker.kidsOpen.has(r.task.id);
+    if (!live.length && !(open && done.length)) return null;
+    const shown = open ? [...live, ...done] : live.slice(0, KIDS_SHOWN);
+    const list = el('span', { class: 'tr-kids' }, ...shown.map(kidLine));
+    const hidden = open ? 0 : live.length - shown.length;
+    const finished = `${done.length} ${flight() ? 'landed' : 'done'}`;
+    const more = [hidden && `${hidden} more working`, done.length && finished].filter(Boolean).join(' · ');
+    if (open || more) list.append(el('button', { class: 'tr-kids-more', 'aria-expanded': open ? 'true' : 'false', onclick: () => toggleKids(r.task.id) },
+      svg('M6 4l4 4-4 4', 11), open ? (done.length ? `Hide ${flight() ? 'landed' : 'done'}` : 'Show fewer') : more));
+    return list;
+  }
+  function kidLine(c) {
+    const live = c.status === 'active', lost = c.status === 'disconnected';
+    const type = c.subagentType && !['general-purpose', 'default', 'Subagent'].includes(c.subagentType) ? c.subagentType : ''; // the default type says nothing
+    const time = dur((live || lost ? Date.now() : c.endedAt || c.lastSeen) - c.startedAt);
+    return el('span', { class: 'tr-kid' + (live ? ' live' : ''), title: lost ? T('No signal') : c.status === 'cancelled' ? T('Stopped') : null },
+      el('i', { class: live ? 'dot working' : lost ? 'dot attention' : 'tr-kid-done', 'aria-hidden': 'true' }),
+      el('span', { class: 'tr-kid-t' }, c.description || type || T('Subagent'), c.description && type ? el('span', { class: 'tr-kid-type', text: ' · ' + type }) : null),
+      el('span', { class: 'tr-kid-time', text: time }));
+  }
+  function toggleKids(task) {
+    if (S.tracker.kidsOpen.has(task)) S.tracker.kidsOpen.delete(task); else S.tracker.kidsOpen.add(task);
+    render(true);
+    document.querySelector(`.tr-row[data-task="${CSS.escape(task)}"]`)?.focus({ preventScroll: true });
   }
   function trackerRowMenu(anchor, r) {
     closePopover();
@@ -810,60 +855,6 @@
     if (r.task.sessionId) pop.append(item('Copy session id', () => { api.copy(r.task.sessionId); toast({ text: 'Session id copied.', ttl: 3000 }); }, ICON.copy));
     place(pop, anchor);
   }
-  function toggleTrackerSection(set, task, buttonClass) {
-    if (set.has(task)) set.delete(task); else set.add(task);
-    render(true);
-    document.querySelector(`.tr-row[data-task="${CSS.escape(task)}"]`)?.parentElement?.querySelector(buttonClass)?.focus({ preventScroll: true });
-  }
-  /** The agent's recent history, newest first: what it asked, what it decided, each turn and how it ended. */
-  function trackerFeed(r) {
-    const entries = [];
-    for (const run of r.runs) {
-      const st = run.status === 'active' ? [T('Working'), 'gold'] : run.status === 'completed' ? [T('Done') + ' · ' + dur((run.endedAt || run.lastSeen) - run.startedAt), 'ok'] : run.status === 'failed' ? [T('Error'), 'danger'] : run.status === 'cancelled' ? [T('Stopped'), ''] : [T('No signal'), 'warn'];
-      entries.push({ at: run.startedAt, kind: 'turn', text: cleanTitle(run.title) || T('Turn'), status: st });
-    }
-    for (const i of r.items) {
-      if (i.userDismissed) continue;
-      const st = i.waiting && i.status === 'open' && i.runStatus === 'active' ? [T('Waiting on you'), 'warn'] : i.status !== 'open' ? [i.status === 'resolved' ? 'Resolved' : 'Dismissed', ''] : i.kind === 'question' ? [T('Asked'), 'warn'] : i.kind === 'decision' ? ['Logged', ''] : ['Open', ''];
-      entries.push({ at: i.createdAt, kind: i.kind, text: i.title ? i.title + ' · ' + i.text : i.text, status: st });
-    }
-    entries.sort((a, b) => b.at - a.at);
-    const feed = el('div', { class: 'tr-feed' });
-    if (r.children.length) {
-      const visible = r.children.filter(c => c.status !== 'completed');
-      const landed = r.children.length - visible.length;
-      const closed = S.tracker.subagentsClosed.has(r.task.id);
-      const label = `Subagents · ${r.children.length} total${landed ? ` · ${landed} ${flight() ? 'landed' : 'done'}` : ''}`;
-      if (visible.length) feed.append(el('button', { class: 'tr-section-toggle tr-subagent-toggle', 'aria-expanded': closed ? 'false' : 'true', onclick: () => toggleTrackerSection(S.tracker.subagentsClosed, r.task.id, '.tr-subagent-toggle') },
-        svg('M6 4l4 4-4 4', 13), label));
-      else feed.append(el('div', { class: 'tr-section-summary', text: `Subagents · ${landed} ${flight() ? 'landed' : 'done'}` }));
-      if (!closed && visible.length) {
-        const list = el('div', { class: 'tr-children' });
-        for (const child of visible) {
-          const state = child.status === 'active' ? [T('Working'), 'gold'] : child.status === 'disconnected' ? [T('No signal'), 'warn'] : [T('Stopped'), ''];
-          list.append(el('div', { class: 'tr-child' }, el('span', { class: 'tr-child-line', 'aria-hidden': 'true' }),
-            el('span', { class: 'tr-child-name', text: `${child.subagentType} · ${child.subagentId.slice(-6)}` }),
-            el('span', { class: 'tr-child-time', text: child.status === 'active' ? dur(Date.now() - child.startedAt) : ago(child.endedAt) }),
-            el('span', { class: 'chip ' + state[1], text: state[0] })));
-        }
-        feed.append(list);
-      }
-    }
-    const turnsOpen = S.tracker.turns.has(r.task.id);
-    if (entries.length) {
-      feed.append(el('button', { class: 'tr-section-toggle tr-turn-toggle', 'aria-expanded': turnsOpen ? 'true' : 'false', onclick: () => toggleTrackerSection(S.tracker.turns, r.task.id, '.tr-turn-toggle') },
-        svg('M6 4l4 4-4 4', 13), `${flight() ? 'Flights' : 'Turns'} · ${entries.length}`));
-      if (turnsOpen) {
-        for (const e of entries.slice(0, 8)) feed.append(el('div', { class: 'tr-feed-row' },
-          el('span', { class: 'tr-time', text: clock(e.at) }), el('span', { class: 'tr-kind k-' + e.kind }, el('i'), T(TR_KIND[e.kind])),
-          el('span', { class: 'tr-feed-text', text: e.text.split('\n')[0] }), (([label, time]) => el('span', { class: 'chip ' + e.status[1] }, label, time ? el('span', { class: 'chip-dur', text: time }) : null))(e.status[0].split(' · '))));
-      }
-    }
-    feed.append(el('div', { class: 'tr-feed-f' }, el('span', { class: 't-small', text: turnsOpen && entries.length > 8 ? `${entries.length - 8} earlier` : `${flight() ? 'Departed' : 'Started'} ${ago(r.runs[0]?.startedAt || r.task.createdAt)}` }), el('span', { class: 'spacer' }),
-      el('button', { class: 'btn small ghost', onclick: () => openInWorkspace(r.pid) }, T('Reply in the workspace'), svg(ICON.arrow, 12))));
-    return feed;
-  }
-  /** j/k move through rows, Enter opens one, r returns to the agent, s marks it seen. */
   /** Fold or unfold one Tracker group in place (the CSS animates it) and remember it across restarts. */
   function toggleFold(key, card, chev) {
     const folded = !S.tracker.folded.has(key);
@@ -874,6 +865,7 @@
     S.settings.window.trackerFolded = [...S.tracker.folded];
     api.setSettings({ window: { trackerFolded: S.settings.window.trackerFolded } });
   }
+  /** j/k move through rows, Enter opens one's subagents, r returns to the agent, s marks it seen. */
   function trackerKey(e, mod) {
     if (mod || e.altKey || typing() || $('#overlay').firstChild || S.popover) return false;
     if (e.key === 'j' || e.key === 'k') {

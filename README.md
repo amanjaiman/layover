@@ -7,7 +7,7 @@
 <p align="center"><b>A companion for the time your coding agent is working.</b><br>
 Windows and macOS · no model calls · runs entirely on your machine</p>
 
-When Claude Code or Codex starts a turn in a project folder, Layover opens that project beside you — what the agent decided, what it needs from you, what you'll do next, and a break if you want one. When the turn ends, it says so and gets out of the way.
+When Claude Code or Codex starts a turn, Layover comes forward with every agent on one board: the ones waiting on you first, then the finished ones, then the ones still working, with their subagents inside their rows. Each project folder also has a workspace — what the agent decided, what it needs from you, what you'll do next, and a break if you want one. When a turn ends, Layover says so and gets out of the way.
 
 Three pieces: an Electron app hosting a loopback service, a small CLI that agents call, and lifecycle hooks that report start and finish. Nothing asks a model to remember anything.
 
@@ -27,7 +27,7 @@ macOS:
 curl -fsSL https://raw.githubusercontent.com/amanjaiman/layover/main/scripts/install.sh | sh
 ```
 
-Then start an agent in any project folder — Layover opens that workspace. (The macOS build is unsigned; the script clears the quarantine flag so Gatekeeper lets it run.)
+Then start an agent in any project folder — Layover comes forward with it on the Tracker. (The macOS build is unsigned; the script clears the quarantine flag so Gatekeeper lets it run.)
 
 Everything the app's buttons do is also a command: `layover setup --agent all`, `layover setup --agent claude --remove`, `layover status`.
 
@@ -47,7 +47,19 @@ Uninstall from Windows Settings, or run `Uninstall Layover.exe`. Your data in `%
 
 ## What it does
 
-The workspace has four views. `Ctrl+1…4` switches between them. The screenshots below use sample conversations and projects.
+The screenshots below use sample conversations and projects.
+
+![Tracker: conversations across projects grouped by what needs attention](docs/screenshots/tracker.png)
+
+**Tracker** — a cross-project view of every Claude Code and Codex conversation, and where Layover opens by default. The switch at the top of the sidebar moves between it and the workspaces (`Ctrl+Shift+T`, or the tray menu). It shows *Waiting on you*, then *Ready*, *Working*, and *Idle*. Sort by project to see each repo's agents together. The Idle group's menu (⋯) clears every idle conversation from the list at once (*Send all to the hangar*, in the flight style), with an Undo.
+
+A conversation stays Working while any of its subagents are active; its header in Now shows a small `↳ N` count of working subagents. In the Tracker, running subagents sit inside their conversation's row, each named by what it was launched to do; the finished ones from the turn that launched them are one click away under the same row ("2 done"), even after a background agent's report starts a new turn.
+
+- Each agent is one row: when, which agent, what kind of thing it last did, what it is about, and its status. Click a row with subagents to fold its finished ones open or shut; a conversation's questions, decisions and turns live in its workspace thread.
+- *Return* brings the agent's window forward, and in the Codex app opens that conversation; *Seen* (`s`) moves a finished agent to Idle. Interrupted or closed sessions go straight to Idle; a finish stays Ready until you mark it seen, however long you are away.
+- `j`/`k` move through rows, `r` returns to the agent. Idle agents more than three days older than the latest agent activity fold under *older*, so time away never folds your last stretch of work.
+
+Each project folder also has a workspace with four views; `Ctrl+1…4` switches between them.
 
 Git linked worktrees share their main repository's workspace, including worktrees created by agents. Existing worktree history, notes, and tickets are grouped there when Git metadata is still available; the association is then remembered even after the worktree is removed. Checkouts made by no-mistakes are grouped even after they are deleted: Layover reads the main repository's `no-mistakes` remote, which points at `~/.no-mistakes/repos/<id>.git`, and treats every folder under `~/.no-mistakes/worktrees/<id>/` as part of that repository. Other folders whose worktree metadata was already deleted keep their existing workspace. Only workspaces Layover named after the worktree folder are merged; a workspace you created or chose with `--project` keeps its own identity. When a worktree workspace is merged, its color, name, and ticket prefix carry over only where the main workspace has none.
 
@@ -71,16 +83,6 @@ Git linked worktrees share their main repository's workspace, including worktree
 **Notes** — the project's running notes. Autosaved, with conflict protection. Select text and a small menu moves it to Next as *Up next* or *In progress*: the first selected line becomes the title, the whole selection its description, the selected text is removed from the note after the task saves (if the note changed meanwhile, it is kept and the toast says so), and the toast offers *Open*.
 
 **Break** — stretch prompts, a timer, and optional reminders; it can suggest a break or start one once you stop typing.
-
-![Tracker: conversations across projects grouped by what needs attention](docs/screenshots/tracker.png)
-
-**Tracker** — a cross-project view of every Claude Code and Codex conversation. Switch to it at the top of the sidebar (`Ctrl+Shift+T`, or the tray menu) to see *Waiting on you*, then *Ready*, *Working*, and *Idle*. Sort by project to see each repo's agents together. The Idle group's menu (⋯) clears every idle conversation from the list at once (*Send all to the hangar*, in the flight style), with an Undo.
-
-A conversation stays Working while any of its subagents are active; its header in Now shows a small `↳ N` count of working subagents. Expanding its Tracker row shows working, *No signal* and stopped children first, with finished children summarized as a count. Subagents and turns have separate collapse controls.
-
-- Each agent is one row: when, which agent, what kind of thing it last did, what it is about, and its status. Click a row for its recent questions, decisions and turns.
-- *Return* brings the agent's window forward, and in the Codex app opens that conversation; *Seen* (`s`) moves a finished agent to Idle. Interrupted or closed sessions go straight to Idle; a finish stays Ready until you mark it seen, however long you are away.
-- `j`/`k` move through rows, `r` returns to the agent. Idle agents more than three days older than the latest agent activity fold under *older*, so time away never folds your last stretch of work.
 
 ### Around the views
 

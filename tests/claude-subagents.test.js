@@ -82,3 +82,31 @@ test('Claude transcript reconciliation finishes stalled children and respects en
   ended.close();
   store.close();
 });
+
+test('Claude subagents carry the description they were launched with, filled in for hooked children without changing their state', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'layover-children-'));
+  const root = path.join(dir, 'projects');
+  const childrenDir = path.join(root, 'project', 's3', 'subagents');
+  fs.mkdirSync(childrenDir, { recursive: true });
+  fs.writeFileSync(path.join(root, 'project', 's3.jsonl'), '');
+  for (const [id, description] of [['hooked', 'Map the subagent hooks'], ['missed', 'Find the tracker CSS']]) {
+    fs.writeFileSync(path.join(childrenDir, `agent-${id}.meta.json`), JSON.stringify({ agentType: 'Explore', description, toolUseId: `tool-${id}` }));
+    fs.writeFileSync(path.join(childrenDir, `agent-${id}.jsonl`), JSON.stringify({ type: 'assistant', message: { role: 'assistant', stop_reason: 'tool_use' } }) + '\n');
+  }
+  const now = Date.now();
+  const store = new Store(path.join(dir, 'data'));
+  store.event({ id: 'start:r3', type: 'start', project: 'p1', task: 'claude:s3', agent: 'claude', sessionId: 's3', run: 'r3', seq: 0, title: 'Working', lifecycle: 'hooks' }, now - 1000);
+  store.event({ id: 'hook:hooked', type: 'session', project: 'p1', task: 'claude:s3', agent: 'claude', seq: now - 500, subagentId: 'hooked', subagentType: 'Explore', subagentStatus: 'active' }, now - 500);
+  assert.equal(scanClaudeSubagents(path.join(root, 'project', 's3.jsonl'), now).find(c => c.id === 'missed').description, 'Find the tracker CSS');
+  reconcileClaudeSubagents(store, now, root);
+  const kids = store.state(now).subagents;
+  assert.equal(kids.find(c => c.subagentId === 'missed').description, 'Find the tracker CSS');
+  const hooked = kids.find(c => c.subagentId === 'hooked');
+  assert.equal(hooked.description, 'Map the subagent hooks');
+  assert.equal(hooked.status, 'active');
+  assert.equal(hooked.seq, now - 500);
+  const count = fs.readFileSync(store.eventsFile, 'utf8').trim().split('\n').length;
+  reconcileClaudeSubagents(store, now + 1000, root);
+  assert.equal(fs.readFileSync(store.eventsFile, 'utf8').trim().split('\n').length, count);
+  store.close();
+});
