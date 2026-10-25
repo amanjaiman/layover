@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { claudeThreadTitle, codexThreadTitle, threadTitle } from '../src/cli/titles.js';
+import { claudeThreadTitle, claudeSubagentDescription, codexSubagentDescription, codexThreadTitle, threadTitle } from '../src/cli/titles.js';
 import { mapHook } from '../src/cli/hook.js';
 import { macHostFromProcesses, liveMacHost, codexThreadLink } from '../src/cli/host.js';
 
@@ -21,6 +21,29 @@ test('Claude: the latest ai-title from the transcript, and a /rename wins over i
   assert.equal(threadTitle('claude', { session_id: 's1', transcript_path: file }), 'Auth bug');
   assert.equal(threadTitle('claude', { session_id: 's1', transcript_path: path.join(tmp(), 'missing.jsonl') }), '');
   assert.equal(threadTitle('claude', { session_id: 's1' }), '');
+});
+
+test('Claude: a subagent is named by the description it was launched with', () => {
+  const dir = tmp();
+  const transcript = path.join(dir, 's1.jsonl');
+  fs.mkdirSync(path.join(dir, 's1', 'subagents'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 's1', 'subagents', 'agent-a1.meta.json'), JSON.stringify({ agentType: 'Explore', description: 'Find the\ntracker  CSS', toolUseId: 't1' }));
+  assert.equal(claudeSubagentDescription(transcript, 'a1'), 'Find the tracker CSS');
+  assert.equal(claudeSubagentDescription(transcript, 'missing'), '');
+  assert.equal(claudeSubagentDescription(transcript, '../s1/subagents/agent-a1'), '');
+  assert.equal(claudeSubagentDescription('', 'a1'), '');
+});
+
+test('Codex: a subagent is named by the last part of its agent_path, found by id in the last two days of session folders', () => {
+  const home = tmp(), now = new Date(2026, 9, 10, 0, 5);
+  const dir = path.join(home, 'sessions', '2026', '10', '09');
+  fs.mkdirSync(dir, { recursive: true });
+  const meta = { type: 'session_meta', payload: { id: 'c1', source: { subagent: { thread_spawn: { agent_path: '/root/floral_critic_final', agent_nickname: 'Mencius' } } }, agent_path: '/root/floral_critic_final', base_instructions: { text: 'x'.repeat(100000) } } };
+  fs.writeFileSync(path.join(dir, 'rollout-2026-10-09T23-58-00-c1.jsonl'), jsonl([meta]));
+  assert.equal(codexSubagentDescription('c1', home, now), 'Floral critic final');
+  assert.equal(codexSubagentDescription('c2', home, now), '');
+  assert.equal(codexSubagentDescription('../c1', home, now), '');
+  assert.equal(codexSubagentDescription('c1', home, new Date(2026, 9, 12)), ''); // only the last two days are searched
 });
 
 test('Claude: a title only near the start of a large transcript is still found', () => {

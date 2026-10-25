@@ -59,6 +59,40 @@ export function codexThreadTitle(session, home = codexDir()) {
   return cleanThreadTitle(lastMatch(path.join(home, 'session_index.jsonl'), session, d => d.id === session ? d.thread_name : ''));
 }
 
+/** The short description Claude gave a subagent when it launched it (the Agent call's `description`), kept in the child's metadata beside the parent transcript. */
+export function claudeSubagentDescription(transcript, agentId) {
+  if (!transcript || !/^[\w-]{1,100}$/.test(String(agentId || ''))) return '';
+  try {
+    const file = path.join(path.dirname(transcript), path.basename(transcript, '.jsonl'), 'subagents', `agent-${agentId}.meta.json`);
+    return cleanThreadTitle(JSON.parse(fs.readFileSync(file, 'utf8')).description);
+  } catch { return ''; }
+}
+
+/** The task name Codex gave a subagent when it spawned it: the last part of `agent_path` ("/root/floral_critic_final") in the
+ *  child's own session_meta, the first line of `sessions/YYYY/MM/DD/rollout-<time>-<id>.jsonl` (the folders use local dates). */
+export function codexSubagentDescription(agentId, home = codexDir(), now = new Date()) {
+  const id = String(agentId || '');
+  if (!/^[\w-]{1,100}$/.test(id)) return '';
+  for (const back of [0, 1]) { // a child spawned just before midnight sits in yesterday's folder
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - back);
+    const dir = path.join(home, 'sessions', String(d.getFullYear()), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0'));
+    let name;
+    try { name = fs.readdirSync(dir).find(f => f.startsWith('rollout-') && f.endsWith(`-${id}.jsonl`)); } catch { continue; }
+    if (!name) continue;
+    let fd;
+    try {
+      fd = fs.openSync(path.join(dir, name), 'r');
+      // session_meta carries the base instructions too, so read a prefix and take the field rather than parse the whole line
+      const head = linesAt(fd, 0, 1 << 16)[0] || '';
+      const m = /"agent_path":("(?:[^"\\]|\\.)*")/.exec(head);
+      const task = m ? String(JSON.parse(m[1])).split('/').filter(Boolean).pop() || '' : '';
+      const words = cleanThreadTitle(task.replace(/[_-]+/g, ' '));
+      return words ? words[0].toUpperCase() + words.slice(1) : '';
+    } catch { return ''; } finally { if (fd !== undefined) fs.closeSync(fd); }
+  }
+  return '';
+}
+
 /** The agent's own name for this conversation, or '' when it has not named it (yet). */
 export function threadTitle(agent, input) {
   const session = String(input?.session_id || input?.thread_id || '');

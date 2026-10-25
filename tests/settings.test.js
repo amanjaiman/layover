@@ -2,10 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULTS, applySettings, validateSettings, fitBounds } from '../src/main/settings.js';
 
-test('layout defaults to the full workspace view and accepts the tracker', () => {
-  assert.equal(DEFAULTS.layout, 'full');
-  const s = applySettings(structuredClone(DEFAULTS), { layout: 'tracker' });
-  assert.equal(s.layout, 'tracker');
+test('layout defaults to the tracker and accepts the full workspace view', () => {
+  assert.equal(DEFAULTS.layout, 'tracker');
+  const s = applySettings(structuredClone(DEFAULTS), { layout: 'full' });
+  assert.equal(s.layout, 'full');
   assert.throws(() => validateSettings({ layout: 'kanban' }), /Invalid layout/);
 });
 

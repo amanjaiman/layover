@@ -83,6 +83,9 @@ test('subagent hooks keep the parent conversation identity and SessionEnd closes
     assert.equal(started.events[0].subagentId, 'child-1');
     const stopped = mapHook(agent, { ...common, hook_event_name: 'SubagentStop', agent_id: 'child-1', agent_type: 'Explore' });
     assert.equal(stopped.events[0].subagentStatus, 'completed');
+    assert.equal(started.events[0].subagentDescription, undefined);
+    const named = mapHook(agent, { ...common, hook_event_name: 'SubagentStart', agent_id: 'child-1', agent_type: 'Explore' }, { subagentDescription: 'Find the tracker CSS' });
+    assert.equal(named.events[0].subagentDescription, 'Find the tracker CSS');
     const ended = mapHook(agent, { ...common, hook_event_name: 'SessionEnd' });
     assert.ok(ended.events.some(e => e.type === 'session' && e.sessionEnded));
   }

@@ -24,7 +24,7 @@ export function turnTitle(prompt) {
 }
 
 /** Turn a hook payload into {events, context, open}. `context` is printed to stdout when allowed. */
-export function mapHook(agent, input, { hookContext = true, host = null, threadTitle = '' } = {}) {
+export function mapHook(agent, input, { hookContext = true, host = null, threadTitle = '', subagentDescription = '' } = {}) {
   if (!['claude', 'codex'].includes(agent)) throw Error('agent must be claude or codex');
   if (!input || typeof input !== 'object') throw Error('hook input must be JSON');
   const name = input.hook_event_name;
@@ -76,7 +76,7 @@ export function mapHook(agent, input, { hookContext = true, host = null, threadT
     case 'SubagentStart':
     case 'SubagentStop':
       if (input.agent_id) events.push({ ...base, id: `subagent:${task}:${input.agent_id}:${name}:${now}`, type: 'session', seq: now,
-        subagentId: String(input.agent_id), subagentType: String(input.agent_type || 'Subagent'), subagentStatus: name === 'SubagentStart' ? 'active' : 'completed' });
+        subagentId: String(input.agent_id), subagentType: String(input.agent_type || 'Subagent'), subagentStatus: name === 'SubagentStart' ? 'active' : 'completed', ...(subagentDescription ? { subagentDescription } : {}) });
       break;
     case 'Notification': {
       const kind = String(input.notification_type || '');

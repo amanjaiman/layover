@@ -85,7 +85,12 @@ async function runHook(agent) {
   // The name the agent gave the conversation (its sidebar title), read once the turn has one.
   let threadTitle = '';
   if (['SessionStart', 'UserPromptSubmit', 'Stop'].includes(input?.hook_event_name)) { try { const t = await import('./titles.js'); threadTitle = t.threadTitle(agent, input); } catch { threadTitle = ''; } }
-  const { events, context, open } = mapHook(agent, input, { hookContext: settings.hookContext !== false, host, threadTitle });
+  // What a subagent was launched to do, so the tracker can name it.
+  let subagentDescription = '';
+  if (['SubagentStart', 'SubagentStop'].includes(input?.hook_event_name)) {
+    try { const t = await import('./titles.js'); subagentDescription = agent === 'claude' ? t.claudeSubagentDescription(input.transcript_path, input.agent_id) : agent === 'codex' ? t.codexSubagentDescription(input.agent_id) : ''; } catch { subagentDescription = ''; }
+  }
+  const { events, context, open } = mapHook(agent, input, { hookContext: settings.hookContext !== false, host, threadTitle, subagentDescription });
   const hookName = input?.hook_event_name;
   const deliveryMoment = { PostToolUse: 'mid-turn', Stop: 'turn-end', UserPromptSubmit: 'next-prompt' }[hookName];
   const session = String(input?.session_id || input?.thread_id || '');
