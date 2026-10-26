@@ -829,6 +829,7 @@ body:not(.compact) .tr-card-h{ padding:var(--s3) var(--s4) var(--s2); }
 body.compact .tr-cols, body.compact .tr-row{ grid-template-columns:20px minmax(0,1fr) auto auto; gap:var(--s1); padding:6px var(--s2); min-height:44px; }
 body.compact .tr-row .tr-time, body.compact .tr-row .tr-kind, body.compact .tr-row .tr-agent, body.compact .tr-row .tr-proj > span:last-child{ display:none; }
 body.compact .tr-row > .agent-ic{ width:20px; height:20px; }
+body.compact .tr-kids{ grid-column:2 / -1; } /* under the logo column, as wide as the row allows */
 body.compact .tr-item b{ font-size:13.5px; }
 body.compact .tr-card-h{ padding:var(--s1) var(--s2); }
 body.compact .tr-card-t b{ font-size:14px; }

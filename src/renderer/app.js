@@ -805,25 +805,26 @@
     return n ? el('span', { class: 'tr-kids-n', text: `↳ ${n}`, title: `${n} subagent${n === 1 ? '' : 's'}` }) : null;
   }
   const KIDS_SHOWN = 3;
-  /** Whether opening the row would show more: finished subagents, or running ones past the first few. */
+  /** Whether opening the row would show more: finished subagents, or running ones past the first few (in the compact companion, any at all). */
   function kidsHidden(r) {
-    if (S.mode === 'compact') return false;
     const { live, done } = kidsOf(r);
+    if (S.mode === 'compact') return live.length + done.length > 0;
     return done.length > 0 || live.length > KIDS_SHOWN;
   }
   /** Running subagents sit inside the row; finished ones are a click away in the same list. */
   function trackerKids(r) {
-    if (S.mode === 'compact') return null;
     const { live, done } = kidsOf(r);
-    const open = S.tracker.kidsOpen.has(r.task.id);
-    if (!live.length && !(open && done.length)) return null;
+    const open = S.tracker.kidsOpen.has(r.task.id), compact = S.mode === 'compact';
+    if (!live.length && !done.length) return null;
+    // The compact companion keeps each agent to one line: all its subagents, running ones too, wait behind the click.
+    if (compact ? !open : !live.length && !(open && done.length)) return null;
     const shown = open ? [...live, ...done] : live.slice(0, KIDS_SHOWN);
     const list = el('span', { class: 'tr-kids' }, ...shown.map(kidLine));
     const hidden = open ? 0 : live.length - shown.length;
     const finished = `${done.length} ${flight() ? 'landed' : 'done'}`;
     const more = [hidden && `${hidden} more working`, done.length && finished].filter(Boolean).join(' · ');
     if (open || more) list.append(el('button', { class: 'tr-kids-more', 'aria-expanded': open ? 'true' : 'false', onclick: () => toggleKids(r.task.id) },
-      svg('M6 4l4 4-4 4', 11), open ? (done.length ? `Hide ${flight() ? 'landed' : 'done'}` : 'Show fewer') : more));
+      svg('M6 4l4 4-4 4', 11), open ? (compact ? 'Hide subagents' : done.length ? `Hide ${flight() ? 'landed' : 'done'}` : 'Show fewer') : more));
     return list;
   }
   function kidLine(c) {
