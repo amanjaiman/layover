@@ -55,7 +55,7 @@ The screenshots below use sample conversations and projects.
 
 A conversation stays Working while any of its subagents are active; its header in Now shows a small `↳ N` count of working subagents. In the Tracker, running subagents sit inside their conversation's row, each named by what it was launched to do; the finished ones from the turn that launched them are one click away under the same row ("2 done"), even after a background agent's report starts a new turn.
 
-- Each agent is one row: when, which agent, what kind of thing it last did, what it is about, and its status. Click a row with subagents to fold its finished ones open or shut; a conversation's questions, decisions and turns live in its workspace thread.
+- Each agent is one row: when, which agent, what kind of thing it last did, what it is about, and its status. Click a row with subagents to fold its finished ones open or shut (in the compact companion, where rows stay one line, clicking shows or hides all of them); a conversation's questions, decisions and turns live in its workspace thread.
 - *Return* brings the agent's window forward, and in the Codex app opens that conversation; *Seen* (`s`) moves a finished agent to Idle. Interrupted or closed sessions go straight to Idle; a finish stays Ready until you mark it seen, however long you are away.
 - `j`/`k` move through rows, `r` returns to the agent. Idle agents more than three days older than the latest agent activity fold under *older*, so time away never folds your last stretch of work.
 
