@@ -1628,6 +1628,26 @@
         switchRow('Play a sound', 'Even when Layover is in front. Not for turns you interrupt yourself.', snd().enabled, v => { setSound({ enabled: v }); pick.hidden = !v; if (v) playSound(snd().tone, { preview: true }); }),
         pick);
     };
+    /** Folders Layover stays out of: their hooks do nothing, so agents there run as if Layover were not installed. */
+    const ignoredSection = () => {
+      const list = el('div', { class: 'ignored-list' });
+      const setIgnored = async (folder, ignore) => {
+        try { const r = await call(api.setIgnored(folder, ignore)); S.settings.ignoredFolders = r.ignoredFolders; draw(); }
+        catch (e) { toast({ text: e.message, ttl: 6000, cls: 'gold' }); }
+      };
+      const draw = () => {
+        const folders = S.settings.ignoredFolders || [];
+        list.textContent = '';
+        if (!folders.length) list.append(el('p', { class: 't-small', text: 'None. Layover follows agents in every folder.' }));
+        for (const f of folders) list.append(el('div', { class: 'switch' }, el('div', { class: 'l' }, el('code', { class: 'path', text: f })),
+          el('button', { class: 'btn small ghost', 'aria-label': 'Stop ignoring ' + f, onclick: () => setIgnored(f, false) }, 'Remove')));
+      };
+      draw();
+      return el('div', { class: 'sheet-sec' }, el('h3', { text: 'Folders Layover stays out of' }),
+        el('p', { class: 't-small', text: 'Agents working in these folders, or anywhere inside them, run as if Layover were not installed: nothing is tracked, the window never opens, and their workspaces stay hidden.' }),
+        list,
+        el('div', { class: 'card-actions' }, el('button', { class: 'btn small', onclick: async () => { const f = await call(api.pickFolder()); if (f) setIgnored(f, true); } }, 'Add folder…')));
+    };
     const panes = {
       agents: () => [el('div', { class: 'sheet-sec' }, agentRow('claude', 'Claude Code', st.claude), agentRow('codex', 'Codex', st.codex),
         el('p', { class: 't-small' }, 'Command agents use: ', el('code', { class: 'path', text: st.cli }), ' ', el('button', { class: 'btn small ghost', onclick: () => api.copy(st.cli) }, 'Copy'), st.cliExists ? null : el('span', { style: 'color:var(--danger)', text: ' (missing)' })))],
@@ -1636,7 +1656,8 @@
         el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'Colour' })), el('div', { class: 'row' }, ...['clay', 'gold', 'moss', 'teal', 'slate', 'plum'].map(c => el('button', { class: 'ws-tok', style: 'background:var(--ws-' + c + ');width:26px;height:26px;border:' + (c === p.color ? '2px solid var(--text)' : 'none') + ';cursor:pointer', title: c, onclick: () => api.setProjectMeta(p.id, { color: c }) })))),
         el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: T('Key prefix') }), el('span', { text: (flight() ? 'Departures are numbered like ' + p.prefix + '-1, as flights are. ' : 'Next entries are numbered like ' + p.prefix + '-1. ') + 'Up to 4 capital letters or digits.' })), el('input', { class: 'input', style: 'width:90px', maxlength: '4', value: p.prefix, onchange: async e => { try { await call(api.setProjectMeta(p.id, { prefix: e.target.value.toUpperCase() })); } catch (err) { toast({ text: err.message, ttl: 5000 }); } } })),
         el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: 'Folder' }), el('span', {}, el('code', { class: 'path', text: p.path || 'No folder yet' }))), p.path ? el('button', { class: 'btn small ghost', onclick: () => api.openPath(p.path) }, 'Open') : null),
-        el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: T('Hide this workspace') }), el('span', { text: 'Keeps its notes and history; it comes back when an agent works here again.' })), el('button', { class: 'btn small ghost danger', onclick: async () => { await api.setProjectMeta(p.id, { hidden: true }); closeOverlay(); S.state = await call(api.getState()); S.project = null; onState(); } }, 'Hide'))) : el('p', { class: 't-small', text: T('No workspace selected.') })],
+        el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: T('Hide this workspace') }), el('span', { text: 'Keeps its notes and history; it comes back when an agent works here again.' })), el('button', { class: 'btn small ghost danger', onclick: async () => { await api.setProjectMeta(p.id, { hidden: true }); closeOverlay(); S.state = await call(api.getState()); S.project = null; onState(); } }, 'Hide')),
+        p.path ? el('div', { class: 'switch' }, el('div', { class: 'l' }, el('b', { text: T('Always hide this folder') }), el('span', { text: 'Agents here run as if Layover were not installed, until you remove the folder under Preferences.' })), el('button', { class: 'btn small ghost danger', onclick: async () => { try { const r = await call(api.setIgnored(p.path, true)); S.settings.ignoredFolders = r.ignoredFolders; closeOverlay(); S.state = await call(api.getState()); S.project = null; onState(); toast({ text: 'Layover will stay out of ' + p.path + '.', ttl: 6000 }); } catch (e) { toast({ text: e.message, ttl: 6000, cls: 'gold' }); } } }, 'Always hide')) : null) : el('p', { class: 't-small', text: T('No workspace selected.') })],
       preferences: () => [
         el('div', { class: 'sheet-sec' }, el('h3', { text: 'When an agent starts a turn' }),
           seg([['focus', 'Bring forward'], ['open', 'Behind my work'], ['reveal', 'Only if open'], ['never', 'Stay quiet']], s.openOnRunStart, v => { s.openOnRunStart = v; api.setSettings({ openOnRunStart: v }); }),
@@ -1646,6 +1667,7 @@
           switchRow(S.platform === 'darwin' ? 'Keep running in the menu bar when the window is closed' : 'Keep running in the tray when the window is closed', 'Needed so agents can reach it.', s.closeToTray, v => api.setSettings({ closeToTray: v })),
           switchRow(S.platform === 'darwin' ? 'Menu bar icon opens the compact companion' : 'Tray icon opens the compact companion', 'A popover under the icon that closes when you click away. Off: the icon opens the main window.', s.trayPopover, v => api.setSettings({ trayPopover: v })),
           switchRow('Tell the agent its run id', 'One short line per prompt so it can publish items without guessing.', s.hookContext, v => api.setSettings({ hookContext: v }))),
+        ignoredSection(),
         el('div', { class: 'sheet-sec' }, el('h3', { text: 'Appearance' }), el('div', { class: 'appearance' },
           (() => {
             const icons = { light: 'M8 4.9a3.1 3.1 0 1 0 0 6.2a3.1 3.1 0 0 0 0-6.2ZM8 1.1v1.7M8 13.2v1.7M1.1 8h1.7M13.2 8h1.7M3.3 3.3l1.2 1.2M11.5 11.5l1.2 1.2M12.7 3.3l-1.2 1.2M4.5 11.5l-1.2 1.2', system: 'M2.4 3.4h11.2a.8.8 0 0 1 .8.8v7.2a.8.8 0 0 1-.8.8H2.4a.8.8 0 0 1-.8-.8V4.2a.8.8 0 0 1 .8-.8ZM5.6 14h4.8', dark: 'M13.4 9.9A5.8 5.8 0 0 1 6.1 2.6a5.8 5.8 0 1 0 7.3 7.3Z' };

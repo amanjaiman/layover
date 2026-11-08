@@ -85,3 +85,23 @@ export function projectNameFromPath(p) {
 export function homeDir() {
   return process.env.LAYOVER_HOME || os.homedir();
 }
+
+/**
+ * The entry of `list` that covers `folder`, or '' when none does. A folder is covered when it is an
+ * entry or sits inside one, and so is a linked worktree whose main checkout is covered (`resolve:
+ * false` skips that Git lookup, for paths that are already a workspace's own folder).
+ */
+export function ignoredFolder(folder, list, { resolve = true } = {}) {
+  if (!folder || !Array.isArray(list) || !list.length) return '';
+  const under = (p, root) => p === root || p.startsWith(root.endsWith('/') ? root : root + '/');
+  const here = [canonicalPath(folder)];
+  for (const entry of list) {
+    if (typeof entry !== 'string' || !entry) continue;
+    const root = canonicalPath(entry);
+    if (under(here[0], root)) return entry;
+    if (!resolve) continue;
+    if (here.length === 1) here.push(canonicalPath(projectPathFromPath(folder))); // resolved only when needed: it reads Git metadata
+    if (under(here[1], root)) return entry;
+  }
+  return '';
+}

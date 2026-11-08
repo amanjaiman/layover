@@ -40,3 +40,20 @@ test('open is routed to the app handler', async () => {
 });
 
 test.after(async () => { await svc.close(); store.close(); });
+
+test('events the app ignores are dropped, and the ignore route reaches the app', async () => {
+  const root2 = fs.mkdtempSync(path.join(os.tmpdir(), 'layover-svc-ign-'));
+  const s2 = new Store(path.join(root2, 'data'));
+  const asks = [];
+  const svc2 = await createService({ store: s2, onOpen: async () => ({}), ignores: e => e.projectPath === '/secret', onIgnore: async (req) => { asks.push(req); return { ignoredFolders: [req.folder] }; }, port: 43197 });
+  try {
+    const call = (route, body) => fetch('http://127.0.0.1:43197' + route, { method: 'POST', headers: { Authorization: 'Bearer ' + svc2.token, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
+    const ev = { project: 'p9', task: 'test:s9', agent: 'test', type: 'start', run: 'r9', seq: 0, lifecycle: 'voluntary' };
+    assert.deepEqual(await call('/api/events', { ...ev, id: 'i1', projectPath: '/secret' }), { ignored: true });
+    const b = await call('/api/events/batch', [{ ...ev, id: 'i2', projectPath: '/secret' }, { ...ev, id: 'i3', projectPath: '/open', run: 'r10', task: 'test:s10' }]);
+    assert.deepEqual(b.results[0], { ignored: true }); assert.equal(b.results[1].accepted, true);
+    assert.equal(s2.state().runs.length, 1);
+    assert.deepEqual(await call('/api/ignored', { folder: '/secret' }), { ignoredFolders: ['/secret'] });
+    assert.deepEqual(asks, [{ folder: '/secret', ignore: true }]);
+  } finally { await svc2.close(); s2.close(); }
+});

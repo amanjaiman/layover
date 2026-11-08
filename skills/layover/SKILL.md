@@ -53,6 +53,8 @@ layover item --run <run> --kind decision --text "…"
 layover end --run <run> --status completed|failed|cancelled
 ```
 
+If `begin` prints `"ignored": true`, the user keeps Layover out of this folder: do not call Layover again in this conversation.
+
 Use `--agent codex` from Codex. Reuse `--task <id>` from an earlier `begin` when you continue the same conversation. Never reuse a run id across different pieces of work.
 
 ## What to publish
