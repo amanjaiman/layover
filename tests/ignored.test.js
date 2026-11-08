@@ -81,7 +81,7 @@ test('begin in an ignored folder says so and starts nothing', t => {
 
 test('ignore, unignore and ignored edit the settings file while the app is not running', t => {
   const data = tmp(t, 'layover-ignored-cli-');
-  const work = tmp(t, 'layover-ignored-cli-work-');
+  const work = fs.realpathSync(tmp(t, 'layover-ignored-cli-work-')); // the spelling the CLI's own cwd reports (macOS temp sits behind /var -> /private/var)
   const env = { ...process.env, LAYOVER_DATA: data, LAYOVER_PORT: '43198' };
   const run = (...args) => JSON.parse(execFileSync(process.execPath, [cli, ...args], { env, encoding: 'utf8', cwd: work }));
   assert.deepEqual(run('ignore').ignoredFolders, [path.resolve(work)]);
