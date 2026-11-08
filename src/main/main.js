@@ -8,8 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { Store } from './store.js';
 import { Bridge } from './bridge.js';
 import { createService } from './service.js';
-import { loadSettings, saveSettings, applySettings, fitBounds } from './settings.js';
-import { dataDir, dataRoot, logFile, APP_NAME, projectIdFromPath, projectNameFromPath, port } from './paths.js';
+import { loadSettings, saveSettings, applySettings, editFolders, fitBounds } from './settings.js';
+import { dataDir, dataRoot, logFile, APP_NAME, projectIdFromPath, projectNameFromPath, ignoredFolder, port } from './paths.js';
 import { reconcileClaudeSubagents } from './claude-subagents.js';
 import * as setup from '../cli/setup.js';
 import { codexThreadLink, liveMacHost, macHostRecord, macProcesses } from '../cli/host.js';
@@ -62,7 +62,7 @@ async function boot() {
   store = new Store(dataDir);
   bridge = new Bridge(store, dataDir);
   ingestSpool();
-  service = await createService({ store, bridge, onOpen: (ctx) => handleOpen(ctx, { explicit: true }), onEvent, settings: () => settings, port, version: app.getVersion() });
+  service = await createService({ store, bridge, onOpen: (ctx) => handleOpen(ctx, { explicit: true }), onEvent, onIgnore: setIgnored, ignores: ignoresEvent, settings: () => settings, port, version: app.getVersion() });
   log(`service listening on 127.0.0.1:${port}`);
   process.on('layover:stop', () => { quitting = true; app.quit(); });
   store.onChange(change => {
@@ -106,7 +106,7 @@ function ingestSpool() {
     const file = path.join(dir, f);
     try {
       const events = JSON.parse(fs.readFileSync(file, 'utf8'));
-      for (const e of resolveLatest(Array.isArray(events) ? events : [events], store.state())) { try { store.event(e); } catch (err) { log('spool event rejected', err.message); } }
+      for (const e of resolveLatest(Array.isArray(events) ? events : [events], store.state())) { if (ignoresEvent(e)) continue; try { store.event(e); } catch (err) { log('spool event rejected', err.message); } }
     } catch (err) { log('spool file unreadable', f, err.message); }
     fs.rmSync(file, { force: true });
   }
@@ -301,6 +301,45 @@ function focusHwnd(hwnd, owner = '') {
  * as cancelled, so every view agrees. If the agent was in fact still going, its own end carries a
  * later seq and wins, and its next prompt starts a new turn as usual.
  */
+// ---------- folders Layover stays out of ----------
+/** The folder an event belongs to: its own, or that of the workspace it names. */
+function eventFolder(e) {
+  if (typeof e?.projectPath === 'string' && e.projectPath) return e.projectPath;
+  if (typeof e?.project !== 'string') return '';
+  return store.projects.get(store.resolveProject(e.project))?.path || '';
+}
+/** Events from an ignored folder are dropped: hooks there already do nothing, this catches spools and older CLIs. */
+function ignoresEvent(e) { return !!ignoredFolder(eventFolder(e), settings.ignoredFolders, { resolve: false }); }
+
+/**
+ * Add or remove a folder from the ignore list. Ignoring hides the workspaces in it and moves their
+ * running turns to Idle (no more hooks will report them); un-ignoring shows those workspaces again.
+ */
+function setIgnored({ folder, ignore }) {
+  if (typeof folder !== 'string' || !path.isAbsolute(folder)) throw Error('An absolute folder is required');
+  const before = settings.ignoredFolders || [];
+  settings = applySettings(settings, { ignoredFolders: editFolders(before, folder, !!ignore) });
+  saveSettings(settings);
+  const now = Date.now();
+  for (const p of store.projects.values()) {
+    if (!p.path) continue;
+    const covered = !!ignoredFolder(p.path, settings.ignoredFolders, { resolve: false });
+    const was = !!ignoredFolder(p.path, before, { resolve: false });
+    if (covered === was) continue;
+    store.setProjectMeta(p.id, { hidden: covered });
+    if (!covered) continue;
+    for (const r of store.runs.values()) {
+      if (r.project !== p.id || r.status !== 'active') continue;
+      try { store.event({ id: `end:${r.id}:${now}:ignored`, type: 'end', project: r.project, task: r.task, agent: r.agent, run: r.id, seq: Math.max(now, r.seq + 1), status: 'cancelled', note: 'Layover now stays out of this folder.', by: 'user' }); }
+      catch (e) { log('ignore: cannot end run', r.id, e.message); }
+    }
+  }
+  broadcast('settings', settings);
+  broadcast('state', store.state());
+  updateTray();
+  return { folder, ignored: !!ignore, ignoredFolders: settings.ignoredFolders };
+}
+
 function stopRun(runId) {
   const r = store.runs.get(runId);
   if (!r) throw Error('No such turn');
@@ -580,6 +619,7 @@ handle('project:meta', ({ project, meta }) => { const r = store.setProjectMeta(p
 handle('project:create', ({ name, folder }) => { const id = folder ? projectIdFromPath(folder) : 'm_' + Date.now().toString(36); const p = store.createProject({ id, name: name || (folder ? projectNameFromPath(folder) : 'New workspace'), path: folder || '' }); broadcast('state', store.state()); return p; });
 handle('dialog:folder', async () => { const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'] }); return r.canceled ? null : r.filePaths[0]; });
 handle('settings:get', () => ({ ...settings, cli: cliCommand(), dataDir, port, version: app.getVersion(), packaged: app.isPackaged }));
+handle('settings:ignore', ({ folder, ignore }) => setIgnored({ folder, ignore }));
 handle('settings:set', (patch) => { settings = applySettings(settings, patch); saveSettings(settings); nativeTheme.themeSource = settings.theme; applyTheme(); updateTray(); broadcast('settings', settings); return settings; });
 handle('setup:status', () => { const cli = cliCommand(); return { cli, cliExists: fs.existsSync(cli), claude: setup.status('claude', cli), codex: setup.status('codex', cli) }; });
 handle('setup:install', ({ agent, options }) => setup.install(agent, cliCommand(), options || {}));

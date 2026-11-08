@@ -1,7 +1,7 @@
 // App settings. Plain JSON, atomic writes, defaults that keep the app quiet.
 import fs from 'node:fs';
 import path from 'node:path';
-import { settingsFile } from './paths.js';
+import { settingsFile, canonicalPath } from './paths.js';
 
 export const DEFAULTS = {
   version: 2,
@@ -16,6 +16,7 @@ export const DEFAULTS = {
   closeToTray: true,               // closing the window keeps Layover in the tray
   trayPopover: process.platform === 'darwin', // tray / menu-bar click opens the compact companion as a popover
   hookContext: true,               // hooks print one short line so the agent knows the run id
+  ignoredFolders: [],              // folders Layover always stays out of: their hooks do nothing, and their workspaces stay hidden
   breakReminder: { enabled: false, minutes: 30, mode: 'suggest' }, // suggest | auto
   updates: { check: true, skip: '' }, // check: ask GitHub for the latest release every hour (the only outbound request); skip: a version the user chose to ignore
   window: { mode: 'expanded' },
@@ -75,8 +76,24 @@ export function validateSettings(patch) {
     if (u.check !== undefined) out.updates.check = !!u.check;
     if (u.skip !== undefined) { if (typeof u.skip !== 'string' || u.skip.length > 40) throw Error('Invalid skip version'); out.updates.skip = u.skip; }
   }
+  if (patch.ignoredFolders !== undefined) out.ignoredFolders = validateFolders(patch.ignoredFolders);
   if (patch.window !== undefined) { const w = patch.window || {}; out.window = {}; if (w.mode !== undefined) { if (!['expanded', 'compact'].includes(w.mode)) throw Error('Invalid window mode'); out.window.mode = w.mode; } if (w.railCollapsed !== undefined) out.window.railCollapsed = !!w.railCollapsed; if (w.trackerSort !== undefined) { if (!['status', 'project'].includes(w.trackerSort)) throw Error('Invalid tracker sort'); out.window.trackerSort = w.trackerSort; } if (w.trackerFolded !== undefined) { if (!Array.isArray(w.trackerFolded) || w.trackerFolded.length > 200 || !w.trackerFolded.every(k => typeof k === 'string' && /^[\w.:-]{1,180}$/.test(k))) throw Error('Invalid tracker folded groups'); out.window.trackerFolded = [...new Set(w.trackerFolded)]; } }
   return out;
+}
+
+/** Absolute folders, each once (the same folder spelled twice counts once), at most 200. */
+export function validateFolders(list) {
+  if (!Array.isArray(list) || list.length > 200 || !list.every(f => typeof f === 'string' && f.length <= 4000 && path.isAbsolute(f))) throw Error('Invalid ignored folders: absolute paths only');
+  const seen = new Set();
+  return list.filter(f => { const k = canonicalPath(f); if (seen.has(k)) return false; seen.add(k); return true; });
+}
+
+/** The ignore list with `folder` added (once) or removed. */
+export function editFolders(list, folder, add) {
+  const current = Array.isArray(list) ? list : [];
+  const key = canonicalPath(folder);
+  const rest = current.filter(f => canonicalPath(f) !== key);
+  return validateFolders(add ? [...rest, path.resolve(folder)] : rest);
 }
 
 export function applySettings(current, patch) { return merge(current, validateSettings(patch)); }

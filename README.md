@@ -113,10 +113,13 @@ layover item --run <id> --kind decision --text "Chose email sign-in; continuing.
 layover begin --agent claude --path C:\work\site --title "Build onboarding"   # for sessions without hooks
 layover end --run <id> --status completed
 layover open --path C:\work\site
+layover ignore | unignore | ignored [--path <folder>]
 layover state | status | setup | help
 ```
 
 The packaged CLI runs on the app's own Node runtime, so you don't need Node installed.
+
+**Keeping Layover out of a folder.** To run agents in a project without Layover, add its folder under *Settings → Preferences → Folders Layover stays out of*, use *Always hide this folder* in a workspace's settings, or run `layover ignore --path <folder>` (`layover unignore`, `layover ignored` to undo or list). Hooks from that folder, or anywhere inside it and its linked worktrees, then return at once: nothing is recorded, the window never opens, no context line is added to the prompt, and the workspace stays hidden. Ignoring a folder moves any turn still running there to Idle. The hooks stay installed, so other projects are unaffected.
 
 ## Development
 

@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('layover', {
   pickFolder: () => ipcRenderer.invoke('dialog:folder'),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
+  setIgnored: (folder, ignore) => ipcRenderer.invoke('settings:ignore', { folder, ignore }),
   setupStatus: () => ipcRenderer.invoke('setup:status'),
   setupInstall: (agent, options) => ipcRenderer.invoke('setup:install', { agent, options }),
   setupRemove: (agent) => ipcRenderer.invoke('setup:remove', agent),

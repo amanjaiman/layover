@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { projectPathFromPath, projectIdFromPath, projectNameFromPath, isId, APP_NAME } from '../main/paths.js';
+import { projectPathFromPath, projectIdFromPath, projectNameFromPath, isId, ignoredFolder, APP_NAME } from '../main/paths.js';
 import { request, health, ensureApp, launch, deliver, readSettings, appLauncher } from './client.js';
 import { mapHook, resolveLatest } from './hook.js';
 import { normalizeTicketKeys } from '../main/ticket-keys.js';
@@ -38,6 +38,9 @@ Usage: layover <command> [--option value ...]
   state                             Print the app state as JSON.
   status                            Is the app running? Are agents connected?
   setup --agent claude|codex|all [--remove] [--no-hooks] [--no-skill]
+  ignore [--path DIR]               Keep Layover out of a folder (and everything in it) for good.
+  unignore [--path DIR]             Let Layover follow agents in that folder again.
+  ignored                           List the folders Layover stays out of.
   app                               Launch the app window.
   stop                              Ask the running app to quit.
   hook claude|codex                 Internal: called by agent lifecycle hooks with JSON on stdin.
@@ -78,6 +81,8 @@ async function runHook(agent) {
   let input;
   try { input = JSON.parse(raw || '{}'); } catch { process.stderr.write('layover hook: stdin was not JSON\n'); return; }
   const settings = readSettings();
+  // A folder the user keeps Layover out of: no events, no context line, no launch, no messages.
+  if (ignoredFolder(input?.cwd || process.cwd(), settings.ignoredFolders)) return;
   // Once per session, remember which window the agent lives in so "Return" can bring it forward.
   let host = null;
   // Only a fresh start may fall back to the frontmost app: on a resume the user may be anywhere.
@@ -168,6 +173,19 @@ async function main() {
     return;
   }
   if (command === 'path') { console.log(cliCommandPath()); return; }
+  if (command === 'ignored') { out({ ignoredFolders: readSettings().ignoredFolders || [] }); return; }
+  if (command === 'ignore' || command === 'unignore') {
+    const folder = path.resolve(typeof flags.path === 'string' ? flags.path : process.cwd());
+    const ignore = command === 'ignore';
+    // The running app owns settings.json and rewrites it, so it makes the change; otherwise edit the file.
+    if (await health()) { out(await request('/api/ignored', { folder, ignore })); return; }
+    const { loadSettings, saveSettings, editFolders } = await import('../main/settings.js');
+    const s = loadSettings();
+    s.ignoredFolders = editFolders(s.ignoredFolders, folder, ignore);
+    saveSettings(s);
+    out({ folder, ignored: ignore, ignoredFolders: s.ignoredFolders });
+    return;
+  }
 
   if (command === 'open') {
     const ctx = context(flags, { allowEmpty: true });
@@ -180,6 +198,8 @@ async function main() {
   if (command === 'begin') {
     if (!['claude', 'codex', 'test'].includes(flags.agent)) throw Error('--agent claude|codex is required');
     const dir = path.resolve(flags.path || process.cwd());
+    const ignored = ignoredFolder(dir, readSettings().ignoredFolders);
+    if (ignored) { out({ ignored: true, folder: ignored, note: 'The user keeps Layover out of this folder. Do not publish anything to Layover here.' }); return; }
     const project = flags.project || projectIdFromPath(dir);
     const task = flags.task || `${flags.agent}:v_${crypto.randomUUID()}`;
     const run = flags.run || `${task}:${Date.now().toString(36)}`;

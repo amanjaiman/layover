@@ -20,8 +20,10 @@ export function ensureToken() {
  * @param {(ctx:object)=>Promise<object>} o.onOpen   app-level open/reveal handler
  * @param {(e:object, result:object)=>void} [o.onEvent]
  * @param {()=>object} [o.settings]
+ * @param {(e:object)=>boolean} [o.ignores]   true for an event from a folder Layover stays out of; it is dropped
+ * @param {(req:{folder:string, ignore:boolean})=>object} [o.onIgnore]   add or remove a folder from the ignore list
  */
-export function createService({ store, bridge, onOpen, onEvent, settings = () => ({}), port = defaultPort, version = '0', pid = process.pid }) {
+export function createService({ store, bridge, onOpen, onEvent, ignores = () => false, onIgnore, settings = () => ({}), port = defaultPort, version = '0', pid = process.pid }) {
   const token = ensureToken();
   const server = http.createServer(async (req, res) => {
     const send = (code, value) => {
@@ -41,6 +43,7 @@ export function createService({ store, bridge, onOpen, onEvent, settings = () =>
       const input = body ? JSON.parse(body) : {};
       switch (url.pathname) {
         case '/api/events': {
+          if (ignores(input)) return send(200, { ignored: true });
           const result = store.event(input);
           let open = null;
           if (onEvent) open = await onEvent(input, result);
@@ -49,13 +52,14 @@ export function createService({ store, bridge, onOpen, onEvent, settings = () =>
         case '/api/events/batch': {
           if (!Array.isArray(input) || input.length > 50) throw Error('Batch must be an array of at most 50 events');
           const results = [];
-          for (const e of input) { try { const r = store.event(e); if (onEvent) r.open = await onEvent(e, r); results.push(r); } catch (err) { results.push({ error: err.message }); } }
+          for (const e of input) { try { if (ignores(e)) { results.push({ ignored: true }); continue; } const r = store.event(e); if (onEvent) r.open = await onEvent(e, r); results.push(r); } catch (err) { results.push({ error: err.message }); } }
           return send(200, { results });
         }
         case '/api/tickets/read': return send(200, store.readTickets(input));
         case '/api/open': return send(200, await onOpen(input || {}));
         case '/api/outbox/take': return send(200, { messages: store.takeMessages(String(input.task || ''), String(input.moment || '')) });
         case '/api/outbox/send': return send(200, store.queueMessage(input));
+        case '/api/ignored': if (!onIgnore) return send(404, { error: 'Not found' }); return send(200, await onIgnore({ folder: input.folder, ignore: input.ignore !== false }));
         case '/api/stop': { send(200, { stopping: true }); setTimeout(() => process.emit('layover:stop'), 10); return; }
         case '/api/bind': return send(200, await bridge.bind(input));
         case '/api/target': return send(200, await bridge.target(input));
